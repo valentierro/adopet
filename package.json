@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "description": "Adopet - Adoção de pets no Brasil",
+  "pnpm": {
+    "patchedDependencies": {
+      "expo-image@2.0.7": "patches/expo-image@2.0.7.patch"
+    }
+  },
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
     "dev:mobile": "pnpm --filter mobile dev",
