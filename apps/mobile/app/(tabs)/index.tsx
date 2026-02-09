@@ -1,0 +1,494 @@
+import { useCallback, useState } from 'react';
+import { useRouter } from 'expo-router';
+import {
+  View,
+  Text,
+  Image,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  RefreshControl,
+  useWindowDimensions,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { useQuery } from '@tanstack/react-query';
+import { ScreenContainer, LoadingLogo, VerifiedBadge } from '../../src/components';
+import { useTheme } from '../../src/hooks/useTheme';
+import { getMe, getTutorStats } from '../../src/api/me';
+import { getMinePets } from '../../src/api/pets';
+import { getFavorites } from '../../src/api/favorites';
+import { getConversations } from '../../src/api/conversations';
+import { fetchFeed } from '../../src/api/feed';
+import { spacing } from '../../src/theme';
+
+const LogoLight = require('../../assets/brand/logo/logo_horizontal_light.png');
+const LogoDark = require('../../assets/brand/logo/logo_dark.png');
+
+function useDashboardData() {
+  const { data: user } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: 60_000 });
+  const { data: tutorStats } = useQuery({
+    queryKey: ['me', 'tutor-stats'],
+    queryFn: getTutorStats,
+    staleTime: 60_000,
+  });
+  const { data: minePage, refetch: refetchMine } = useQuery({
+    queryKey: ['pets', 'mine'],
+    queryFn: () => getMinePets({}),
+    staleTime: 60_000,
+  });
+  const { data: favoritesPage, refetch: refetchFav } = useQuery({
+    queryKey: ['favorites'],
+    queryFn: () => getFavorites(),
+    staleTime: 60_000,
+  });
+  const { data: conversations = [], refetch: refetchConv } = useQuery({
+    queryKey: ['conversations'],
+    queryFn: getConversations,
+    staleTime: 60_000,
+  });
+  const { data: feedData, refetch: refetchFeed } = useQuery({
+    queryKey: ['feed', 'preview'],
+    queryFn: () => fetchFeed({}),
+    staleTime: 2 * 60_000,
+  });
+
+  const myPets = minePage?.items ?? [];
+  const favoritesCount = Array.isArray(favoritesPage?.items) ? favoritesPage.items.length : 0;
+  const unreadTotal = conversations.reduce((s, c) => s + (c.unreadCount ?? 0), 0);
+  const feedPreviewItems = feedData?.items ?? [];
+
+  const [refreshing, setRefreshing] = useState(false);
+  const refetchAll = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([refetchMine(), refetchFav(), refetchConv(), refetchFeed()]);
+    setRefreshing(false);
+  }, [refetchMine, refetchFav, refetchConv, refetchFeed]);
+
+  return {
+    user,
+    tutorStats,
+    myPetsCount: myPets.length,
+    favoritesCount,
+    conversationsCount: conversations.length,
+    unreadTotal,
+    feedPreviewItems,
+    refetchAll,
+    refreshing,
+  };
+}
+
+export default function DashboardScreen() {
+  const router = useRouter();
+  const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const cardGap = spacing.md;
+  const cardWidth = (width - spacing.lg * 2 - cardGap) / 2;
+
+  const {
+    user,
+    tutorStats,
+    myPetsCount,
+    favoritesCount,
+    conversationsCount,
+    unreadTotal,
+    feedPreviewItems,
+    refetchAll,
+    refreshing,
+  } = useDashboardData();
+
+  const { data: _u, isLoading } = useQuery({ queryKey: ['me'], queryFn: getMe });
+  const firstName = user?.name?.trim().split(/\s+/)[0] || '';
+
+  if (isLoading && !user) {
+    return (
+      <ScreenContainer>
+        <LoadingLogo size={160} />
+      </ScreenContainer>
+    );
+  }
+
+  const cards: {
+    id: string;
+    title: string;
+    subtitle: string;
+    icon: keyof typeof Ionicons.glyphMap;
+    route: string;
+    gradient?: [string, string];
+    badge?: number;
+    fullWidth?: boolean;
+  }[] = [
+    {
+      id: 'feed',
+      title: 'Descobrir pets',
+      subtitle: 'Deslize, curta e encontre seu match',
+      icon: 'paw',
+      route: '/feed',
+      gradient: [colors.primary, colors.primaryDark || colors.primary],
+      fullWidth: true,
+    },
+    {
+      id: 'my-pets',
+      title: 'Meus anúncios',
+      subtitle: myPetsCount === 0 ? 'Nenhum anúncio' : `${myPetsCount} anúncio${myPetsCount !== 1 ? 's' : ''}`,
+      icon: 'document-text',
+      route: '/my-pets',
+      badge: myPetsCount > 0 ? myPetsCount : undefined,
+    },
+    {
+      id: 'adopted',
+      title: 'Pets adotados',
+      subtitle: (tutorStats?.adoptedCount ?? 0) === 0 ? 'Nenhuma adoção' : `${tutorStats?.adoptedCount ?? 0} adoção${(tutorStats?.adoptedCount ?? 0) !== 1 ? 'ões' : ''}`,
+      icon: 'heart-circle',
+      route: '/my-pets?status=ADOPTED',
+      badge: (tutorStats?.adoptedCount ?? 0) > 0 ? (tutorStats?.adoptedCount ?? 0) : undefined,
+    },
+    {
+      id: 'favorites',
+      title: 'Favoritos',
+      subtitle: favoritesCount === 0 ? 'Nenhum favorito' : `${favoritesCount} pet${favoritesCount !== 1 ? 's' : ''}`,
+      icon: 'heart',
+      route: '/favorites',
+      badge: favoritesCount > 0 ? favoritesCount : undefined,
+    },
+    {
+      id: 'chats',
+      title: 'Conversas',
+      subtitle: conversationsCount === 0 ? 'Nenhuma conversa' : `${conversationsCount} conversa${conversationsCount !== 1 ? 's' : ''}`,
+      icon: 'chatbubbles',
+      route: '/chats',
+      badge: unreadTotal > 0 ? unreadTotal : undefined,
+    },
+    {
+      id: 'passed',
+      title: 'Pets que passou',
+      subtitle: 'Rever lista',
+      icon: 'arrow-undo',
+      route: '/passed-pets',
+    },
+    {
+      id: 'map',
+      title: 'Ver no mapa',
+      subtitle: 'Pets na região',
+      icon: 'map',
+      route: '/map',
+    },
+  ];
+
+  return (
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            paddingTop: insets.top + spacing.md,
+            paddingBottom: insets.bottom + spacing.xl,
+            paddingHorizontal: spacing.lg,
+          },
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={refetchAll} tintColor={colors.primary} />
+        }
+      >
+        <LinearGradient
+          colors={[colors.primary + '22', colors.primary + '08']}
+          style={[styles.hero, { borderRadius: 20, overflow: 'hidden' }]}
+        >
+          <View style={styles.heroInner}>
+            <Text style={[styles.hello, { color: colors.textSecondary }]}>Olá,</Text>
+            <View style={styles.heroNameRow}>
+              <View style={styles.heroNameWithBadge}>
+                {user?.verified && <VerifiedBadge size={26} />}
+                <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={1}>
+                  {firstName || 'Visitante'}
+                </Text>
+              </View>
+              <Image
+                source={isDark ? LogoDark : LogoLight}
+                style={styles.heroLogo}
+                resizeMode="contain"
+              />
+            </View>
+            {tutorStats && (tutorStats.points > 0 || tutorStats.adoptedCount > 0) ? (
+              <View style={[styles.statsRow, { backgroundColor: colors.surface }]}>
+                <View style={styles.stat}>
+                  <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.points}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>pontos</Text>
+                </View>
+                <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
+                <View style={styles.stat}>
+                  <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.adoptedCount}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
+                    adoção{tutorStats.adoptedCount !== 1 ? 'ões' : ''}
+                  </Text>
+                </View>
+                <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
+                <View style={styles.stat}>
+                  <Text style={[styles.statTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                    {tutorStats.title}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        </LinearGradient>
+
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Atalhos</Text>
+        <View style={styles.grid}>
+          {cards.map((card) => {
+            const isFull = card.fullWidth;
+            const isFeedCard = card.id === 'feed';
+            const feedThumbs = isFeedCard ? feedPreviewItems.slice(0, 5).map((p) => p.photos?.[0]).filter(Boolean) as string[] : [];
+
+            const content = isFeedCard && feedThumbs.length > 0 ? (
+              <View style={styles.feedCardContent}>
+                <View style={styles.feedCardTop}>
+                  <View style={[styles.feedCardIconWrap, styles.iconWrapLight]}>
+                    <Ionicons name="paw" size={28} color="#fff" />
+                  </View>
+                  <View style={styles.feedCardText}>
+                    <Text style={[styles.feedCardTitle, { color: '#fff' }]} numberOfLines={1}>
+                      {card.title}
+                    </Text>
+                    <Text style={[styles.feedCardSubtitle, { color: 'rgba(255,255,255,0.9)' }]} numberOfLines={1}>
+                      {card.subtitle}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.feedThumbsRow}>
+                  {feedThumbs.map((uri, i) => (
+                    <Image
+                      key={`${uri}-${i}`}
+                      source={{ uri }}
+                      style={styles.feedThumb}
+                    />
+                  ))}
+                </View>
+              </View>
+            ) : isFeedCard && feedPreviewItems.length === 0 ? (
+              <View style={styles.feedCardContent}>
+                <View style={styles.feedCardTop}>
+                  <View style={[styles.feedCardIconWrap, styles.iconWrapLight]}>
+                    <Ionicons name="paw" size={28} color="#fff" />
+                  </View>
+                  <View style={styles.feedCardText}>
+                    <Text style={[styles.feedCardTitle, { color: '#fff' }]} numberOfLines={1}>
+                      {card.title}
+                    </Text>
+                    <Text style={[styles.feedCardSubtitle, { color: 'rgba(255,255,255,0.9)' }]} numberOfLines={1}>
+                      Nenhum pet no momento na sua região
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.feedCardMapButton}
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    router.push('/map');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="map" size={18} color="#fff" />
+                  <Text style={styles.feedCardMapButtonText}>Explorar no mapa</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.cardContent}>
+                {card.badge != null && card.badge > 0 ? (
+                  <View style={[styles.badge, { backgroundColor: card.gradient ? 'rgba(255,255,255,0.25)' : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.08)') }]}>
+                    <Text style={[styles.badgeText, { color: card.gradient ? '#fff' : colors.textPrimary }]}>
+                      {card.badge > 99 ? '99+' : card.badge}
+                    </Text>
+                  </View>
+                ) : null}
+                <View style={[styles.iconWrap, card.gradient && styles.iconWrapLight]}>
+                  <Ionicons
+                    name={card.icon}
+                    size={isFull ? 32 : 28}
+                    color={card.gradient ? '#fff' : colors.primary}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.cardTitle,
+                    { color: card.gradient ? '#fff' : colors.textPrimary },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {card.title}
+                </Text>
+                <Text
+                  style={[
+                    styles.cardSubtitle,
+                    { color: card.gradient ? 'rgba(255,255,255,0.9)' : colors.textSecondary },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {card.subtitle}
+                </Text>
+              </View>
+            );
+
+            return (
+              <TouchableOpacity
+                key={card.id}
+                style={[styles.cardWrap, isFull ? styles.cardWrapFull : { width: cardWidth }]}
+                onPress={() => router.push(card.route as any)}
+                activeOpacity={0.82}
+              >
+                {card.gradient ? (
+                  <LinearGradient
+                    colors={card.gradient as [string, string, ...string[]]}
+                    style={[
+                      styles.card,
+                      isFull && styles.cardFull,
+                      isFeedCard && (feedThumbs.length > 0 || feedPreviewItems.length === 0) && styles.cardFeedWithThumbs,
+                    ]}
+                  >
+                    {content}
+                  </LinearGradient>
+                ) : (
+                  <View style={[styles.card, { backgroundColor: colors.cardBg || colors.surface }, isFull && styles.cardFull]}>
+                    {content}
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <TouchableOpacity
+          style={[styles.ctaButton, { backgroundColor: colors.primary }]}
+          onPress={() => router.push('/(tabs)/add-pet')}
+          activeOpacity={0.9}
+        >
+          <Ionicons name="add-circle" size={24} color="#fff" />
+          <Text style={styles.ctaButtonText}>Anunciar pet para adoção</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1 },
+  scrollContent: { flexGrow: 1, paddingBottom: spacing.xl },
+  hero: {
+    marginBottom: spacing.xl,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+  },
+  heroInner: {},
+  heroNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, minHeight: 32 },
+  heroNameWithBadge: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, marginRight: spacing.sm, gap: 6 },
+  heroLogo: { height: 26, width: 90 },
+  hello: { fontSize: 14, marginBottom: 2 },
+  name: { fontSize: 22, fontWeight: '700', letterSpacing: 0.3, flex: 1, minWidth: 0 },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 12,
+  },
+  stat: { flex: 1, alignItems: 'center' },
+  statValue: { fontSize: 18, fontWeight: '800' },
+  statLabel: { fontSize: 11, marginTop: 2 },
+  statTitle: { fontSize: 12, fontWeight: '600' },
+  statDivider: { width: 1, height: 24, opacity: 0.3, marginHorizontal: spacing.xs },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: spacing.md,
+    textTransform: 'uppercase',
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
+  },
+  cardWrap: {},
+  cardWrapFull: { width: '100%' },
+  card: {
+    borderRadius: 16,
+    minHeight: 112,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    shadowOpacity: 0.06,
+    elevation: 3,
+  },
+  cardFull: { width: '100%' },
+  cardFeedWithThumbs: { minHeight: 150 },
+  cardContent: {
+    flex: 1,
+    padding: spacing.md,
+    justifyContent: 'flex-end',
+  },
+  badge: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  badgeText: { fontSize: 12, fontWeight: '700' },
+  iconWrap: {
+    position: 'absolute',
+    top: spacing.md,
+    left: spacing.md,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(13, 148, 136, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconWrapLight: { backgroundColor: 'rgba(255,255,255,0.25)' },
+  cardTitle: { fontSize: 15, fontWeight: '700', marginTop: 28 },
+  cardSubtitle: { fontSize: 12, marginTop: 2 },
+  feedCardContent: { flex: 1, padding: spacing.md, justifyContent: 'space-between' },
+  feedCardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm },
+  feedCardIconWrap: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  feedCardText: { flex: 1, marginLeft: spacing.sm, minWidth: 0, justifyContent: 'center' },
+  feedCardTitle: { fontSize: 15, fontWeight: '700' },
+  feedCardSubtitle: { fontSize: 12, marginTop: 2 },
+  feedThumbsRow: { flexDirection: 'row', gap: 6, marginTop: spacing.xs },
+  feedThumb: { width: 48, height: 48, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.15)' },
+  feedCardMapButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: spacing.sm,
+    paddingVertical: 10,
+    paddingHorizontal: spacing.md,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  feedCardMapButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  ctaButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: spacing.xl,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    shadowOpacity: 0.12,
+    elevation: 4,
+  },
+  ctaButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+});

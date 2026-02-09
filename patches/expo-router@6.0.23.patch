@@ -1,0 +1,13 @@
+diff --git a/build/getDevServer/index.native.js b/build/getDevServer/index.native.js
+index 0000000..1111111 100644
+--- a/build/getDevServer/index.native.js
++++ b/build/getDevServer/index.native.js
+@@ -1,5 +1,9 @@
+ "use strict";
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.getDevServer = void 0;
+-exports.getDevServer = require('react-native/Libraries/Core/Devtools/getDevServer').default;
++var rn = require('react-native/Libraries/Core/Devtools/getDevServer');
++var g = rn.default;
++exports.getDevServer = typeof g === 'function' ? g : function () { return (g && typeof g === 'object' ? g : { url: 'http://localhost:8081/', fullBundleUrl: null, bundleLoadedFromServer: true }); };
+ //# sourceMappingURL=index.native.js.map

@@ -1,0 +1,231 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String?
+  name         String
+  avatarUrl    String?
+  phone        String?
+  city         String?
+  bio          String?   // texto curto sobre o usuário (ex: "Amo animais, quero adotar")
+  housingType  String?   // CASA | APARTAMENTO — para o anunciante avaliar
+  hasYard      Boolean?  // tem quintal
+  hasOtherPets Boolean?  // tem outros pets
+  hasChildren  Boolean?  // tem crianças em casa
+  timeAtHome   String?   // MOST_DAY | HALF_DAY | LITTLE — quanto tempo passa em casa
+  pushToken    String?   // Expo push token para notificações
+  deactivatedAt DateTime? // soft delete: conta desativada
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  pets         Pet[]
+  swipes       Swipe[]
+  favorites    Favorite[]
+  messages     Message[]
+  conversations ConversationParticipant[]
+  preferences  UserPreferences?
+  refreshTokens RefreshToken[]
+  reportsCreated Report[]
+  blocksGiven   Block[]    @relation("BlockBlocker")
+  blocksReceived Block[]    @relation("BlockBlocked")
+  verifications Verification[]
+  savedSearches SavedSearch[]
+  adoptionsAsTutor   Adoption[] @relation("AdoptionsAsTutor")
+  adoptionsAsAdopter Adoption[] @relation("AdoptionsAsAdopter")
+}
+
+model UserPreferences {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  species          String   @default("BOTH") // DOG | CAT | BOTH
+  radiusKm         Int      @default(50)
+  sizePref         String?  // BOTH | small | medium | large | xlarge (para recomendação)
+  latitude         Float?   // última localização (para notificação "novos pets na região")
+  longitude        Float?
+  notifyNewPets    Boolean  @default(true)
+  notifyMessages   Boolean  @default(true)
+  notifyReminders  Boolean  @default(true)
+  updatedAt        DateTime @updatedAt
+}
+
+model SavedSearch {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  species    String?  // DOG | CAT | BOTH
+  size       String?  // small | medium | large | xlarge
+  breed      String?
+  latitude   Float?
+  longitude  Float?
+  radiusKm   Int      @default(50)
+  lastCheckedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@index([userId])
+  @@index([tokenHash])
+}
+
+model Pet {
+  id              String    @id @default(uuid())
+  name            String
+  species         String
+  breed           String?   // raça opcional (ex: Golden, SRD, Persa)
+  age             Int
+  sex             String
+  size            String
+  vaccinated      Boolean
+  neutered        Boolean
+  description     String
+  adoptionReason  String?   // por que está doando (opcional)
+  status          String    @default("AVAILABLE") // AVAILABLE | IN_PROCESS | ADOPTED
+  markedAdoptedAt DateTime? // quando o tutor marcou como adotado; após 48h sem registro manual, sistema auto-valida
+  publicationStatus String  @default("PENDING")   // PENDING | APPROVED | REJECTED — feed só mostra APPROVED
+  latitude        Float?
+  longitude       Float?
+  ownerId         String
+  owner           User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  media           PetMedia[]
+  adoption        Adoption? // registro de adoção (tutor + adotante) quando preenchido
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  swipes          Swipe[]
+  favorites       Favorite[]
+  conversations   Conversation[]
+}
+
+model Adoption {
+  id         String   @id @default(uuid())
+  petId      String   @unique // um pet só pode ser adotado uma vez
+  pet        Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+  tutorId    String   // dono do pet no momento da adoção (ownerId)
+  tutor      User     @relation("AdoptionsAsTutor", fields: [tutorId], references: [id], onDelete: Cascade)
+  adopterId  String   // usuário que adotou
+  adopter    User     @relation("AdoptionsAsAdopter", fields: [adopterId], references: [id], onDelete: Cascade)
+  adoptedAt  DateTime @default(now())
+  createdAt  DateTime @default(now())
+  @@index([tutorId])
+  @@index([adopterId])
+  @@index([adoptedAt])
+}
+
+model PetMedia {
+  id        String  @id @default(uuid())
+  petId     String
+  pet       Pet     @relation(fields: [petId], references: [id], onDelete: Cascade)
+  url       String
+  sortOrder Int     @default(0)
+  isPrimary Boolean @default(false)
+}
+
+model Swipe {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  petId     String
+  pet       Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+  action    String   // LIKE | PASS
+  createdAt DateTime @default(now())
+  @@unique([userId, petId])
+}
+
+model Favorite {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  petId     String
+  pet       Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  @@unique([userId, petId])
+}
+
+model Conversation {
+  id              String    @id @default(uuid())
+  petId           String
+  pet             Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
+  adopterId       String?   // quem favoritou e iniciou a conversa (MVP: uma conversa por pet+adopter)
+  participants    ConversationParticipant[]
+  messages        Message[]
+  lastReminderAt  DateTime? // último envio de lembrete "conversa pendente"
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  @@unique([petId, adopterId])
+}
+
+model ConversationParticipant {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId      String
+  sender        User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  content       String       @default("")
+  imageUrl      String?      // foto enviada no chat
+  readAt        DateTime?
+  createdAt     DateTime     @default(now())
+}
+
+model Report {
+  id                  String    @id @default(uuid())
+  reporterId          String
+  reporter            User      @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  targetType          String    // USER | PET | MESSAGE
+  targetId            String
+  reason              String
+  description         String?
+  resolvedAt          DateTime? // preenchido quando admin resolve a denúncia
+  resolvedById        String?   // admin que resolveu
+  resolutionFeedback  String?   // feedback para o denunciador (opcional)
+  createdAt           DateTime  @default(now())
+  @@index([targetType, targetId])
+  @@index([reporterId])
+}
+
+model Block {
+  id           String   @id @default(uuid())
+  blockerId    String
+  blocker      User     @relation("BlockBlocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedUserId String
+  blockedUser   User     @relation("BlockBlocked", fields: [blockedUserId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  @@unique([blockerId, blockedUserId])
+  @@index([blockerId])
+  @@index([blockedUserId])
+}
+
+model Verification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // USER_VERIFIED | PET_VERIFIED
+  status    String   // PENDING | APPROVED | REJECTED
+  metadata  Json?    // para PET_VERIFIED: { "petId": "..." }
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([userId])
+  @@index([userId, type])
+}

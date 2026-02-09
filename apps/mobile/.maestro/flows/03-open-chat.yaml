@@ -1,0 +1,15 @@
+# Fluxo: Abrir conversa a partir de um pet
+# Pré-condição: usuário logado, pelo menos um pet favoritado
+---
+appId: br.com.adopet.app
+---
+- launchApp
+- tapOn:
+    text: "Favoritos"
+    optional: true
+- tapOn:
+    text: "Conversar"
+    optional: true
+- assertVisible:
+    text: "Mensagem"
+    optional: true

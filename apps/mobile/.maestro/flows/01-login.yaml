@@ -1,0 +1,26 @@
+# Fluxo: Login
+# Pré-condição: app na tela de login (ou welcome → Entrar)
+---
+appId: br.com.adopet.app
+---
+- launchApp
+- tapOn:
+    id: "tab-profile"
+    optional: true
+- tapOn:
+    text: "Entrar"
+    optional: true
+- tapOn:
+    text: "Email"
+    optional: true
+- inputText: "${TEST_USER_EMAIL}"
+- tapOn:
+    text: "Senha"
+    optional: true
+- inputText: "${TEST_USER_PASSWORD}"
+- tapOn:
+    text: "Entrar"
+    optional: true
+- assertVisible:
+    text: "Perfil"
+    optional: true

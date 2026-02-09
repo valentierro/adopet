@@ -1,0 +1,52 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: adopet-postgres
+    environment:
+      POSTGRES_USER: adopet
+      POSTGRES_PASSWORD: adopet
+      POSTGRES_DB: adopet
+    ports:
+      - "5432:5432"
+    volumes:
+      - adopet_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U adopet -d adopet"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: adopet-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - adopet_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    profiles:
+      - with-redis
+
+  minio:
+    image: minio/minio:latest
+    container_name: adopet-minio
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - adopet_minio_data:/data
+    profiles:
+      - with-minio
+
+volumes:
+  adopet_pgdata:
+  adopet_redis_data:
+  adopet_minio_data:

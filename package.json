@@ -1,0 +1,26 @@
+{
+  "name": "adopet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Adopet - Adoção de pets no Brasil",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "dev:mobile": "pnpm --filter mobile dev",
+    "dev:mobile:clear": "pnpm --filter mobile dev:clear",
+    "dev:api": "pnpm --filter api dev",
+    "lint": "pnpm -r run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "test": "pnpm -r run test",
+    "build": "pnpm -r run build",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down"
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "packageManager": "pnpm@9.0.0"
+}

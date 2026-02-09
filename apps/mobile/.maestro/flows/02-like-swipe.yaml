@@ -1,0 +1,19 @@
+# Fluxo: Like no feed (swipe ou botão)
+# Pré-condição: usuário logado, feed com pelo menos um pet
+---
+appId: br.com.adopet.app
+---
+- launchApp
+- tapOn:
+    text: "Feed"
+    optional: true
+- tapOn:
+    text: "paw"
+    optional: true
+# Swipe right ou tap no botão de like (ícone coração)
+- tapOn:
+    text: "Adicionar aos favoritos"
+    optional: true
+- assertVisible:
+    text: "Adicionado aos favoritos!"
+    optional: true

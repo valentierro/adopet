@@ -1,0 +1,8 @@
+# Maestro E2E – Adopet
+# Executar: maestro test .maestro
+# Requer app instalada (ex: npx expo run:ios) e Maestro CLI (brew install maestro)
+
+appId: br.com.adopet.app
+env:
+  TEST_USER_EMAIL: "test@adopet.app"
+  TEST_USER_PASSWORD: "test123456"
