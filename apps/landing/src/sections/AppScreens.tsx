@@ -4,6 +4,7 @@ const SCREENS = [
   { src: '/screens/mapa.jpeg', label: 'Mapa' },
   { src: '/screens/favoritos.png', label: 'Favoritos' },
   { src: '/screens/chat.jpeg', label: 'Chat' },
+  { src: '/screens/meus_anuncios.png', label: 'Meus anúncios' },
   { src: '/screens/minhas_adocoes.jpeg', label: 'Minhas adoções' },
   { src: '/screens/perfil.jpeg', label: 'Perfil' },
 ];

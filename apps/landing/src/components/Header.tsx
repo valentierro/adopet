@@ -3,7 +3,7 @@ export function Header() {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-adopet-background/95 backdrop-blur-sm border-b border-adopet-header/50">
       <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <a href="#" className="flex items-center gap-2">
-          <img src="/logo.png" alt="Adopet" className="h-8 w-auto" />
+          <img src="/logo.png" alt="Adopet" className="h-10 w-auto" />
         </a>
         <div className="flex items-center gap-4">
           <a
