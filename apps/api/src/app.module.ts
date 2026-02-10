@@ -17,6 +17,10 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { VerificationModule } from './verification/verification.module';
 import { SavedSearchModule } from './saved-search/saved-search.module';
 import { AdminModule } from './admin/admin.module';
+import { BugReportsModule } from './bug-reports/bug-reports.module';
+import { PartnersModule } from './partners/partners.module';
+import { PublicModule } from './public/public.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -26,6 +30,7 @@ import { AdminModule } from './admin/admin.module';
     FeedModule,
     AuthModule,
     MeModule,
+    PaymentsModule,
     UsersModule,
     PetsModule,
     UploadsModule,
@@ -38,6 +43,9 @@ import { AdminModule } from './admin/admin.module';
     VerificationModule,
     SavedSearchModule,
     AdminModule,
+    BugReportsModule,
+    PartnersModule,
+    PublicModule,
   ],
 })
 export class AppModule {}

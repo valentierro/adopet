@@ -52,9 +52,13 @@ export class AdminService {
     const pets = await this.prisma.pet.findMany({
       where: {
         status: 'ADOPTED',
+        adoptionRejectedAt: null,
         ...(adoptedPetIds.length > 0 ? { id: { notIn: adoptedPetIds } } : {}),
       },
-      include: { owner: { select: { id: true, name: true } } },
+      include: {
+        owner: { select: { id: true, name: true } },
+        pendingAdopter: { select: { id: true, name: true, username: true } },
+      },
       orderBy: { updatedAt: 'desc' },
     });
     return pets.map((p) => {
@@ -69,6 +73,9 @@ export class AdminService {
         tutorName: p.owner.name,
         markedAt: markedAt.toISOString(),
         autoApproveAt: autoApproveAt?.toISOString() ?? undefined,
+        pendingAdopterId: p.pendingAdopter?.id,
+        pendingAdopterName: p.pendingAdopter?.name,
+        pendingAdopterUsername: p.pendingAdopter?.username ?? undefined,
       };
     });
   }
@@ -94,16 +101,20 @@ export class AdminService {
     }));
   }
 
-  async createAdoption(petId: string, adopterUserId: string): Promise<AdoptionItemDto> {
+  async createAdoption(petId: string, adopterUserId?: string): Promise<AdoptionItemDto> {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
-      include: { owner: { select: { id: true, name: true } } },
+      include: { owner: { select: { id: true, name: true } }, pendingAdopter: { select: { id: true, name: true } } },
     });
     if (!pet) {
       throw new BadRequestException('Pet não encontrado');
     }
+    const resolvedAdopterId = adopterUserId ?? pet.pendingAdopterId ?? undefined;
+    if (!resolvedAdopterId) {
+      throw new BadRequestException('Informe o adotante ou peça para o tutor indicar quem adotou ao marcar o pet como adotado.');
+    }
     const adopter = await this.prisma.user.findUnique({
-      where: { id: adopterUserId },
+      where: { id: resolvedAdopterId },
       select: { id: true, name: true },
     });
     if (!adopter) {
@@ -115,7 +126,7 @@ export class AdminService {
     if (existing) {
       throw new BadRequestException('Este pet já possui um registro de adoção');
     }
-    if (pet.ownerId === adopterUserId) {
+    if (pet.ownerId === resolvedAdopterId) {
       throw new BadRequestException('O adotante não pode ser o próprio tutor do pet');
     }
 
@@ -124,7 +135,7 @@ export class AdminService {
         data: {
           petId,
           tutorId: pet.ownerId,
-          adopterId: adopterUserId,
+          adopterId: resolvedAdopterId,
         },
         include: {
           pet: { select: { name: true } },
@@ -134,8 +145,9 @@ export class AdminService {
       });
       await tx.pet.update({
         where: { id: petId },
-        data: { status: 'ADOPTED' },
+        data: { status: 'ADOPTED', pendingAdopterId: null },
       });
+      await tx.favorite.deleteMany({ where: { petId } });
       return created;
     });
 
@@ -202,6 +214,7 @@ export class AdminService {
       where: {
         status: 'ADOPTED',
         adoption: null,
+        adoptionRejectedAt: null,
         OR: [
           { markedAdoptedAt: { lte: deadline } },
           { markedAdoptedAt: null },
@@ -227,6 +240,27 @@ export class AdminService {
       }
     }
     return { processed };
+  }
+
+  /** Rejeita a marcação de adoção pelo tutor: pet continua como ADOPTED (não volta ao feed), não cria registro de adoção (não computa pontos), exibe badge "Rejeitado pelo Adopet" para o tutor. */
+  async rejectPendingAdoptionByTutor(petId: string): Promise<void> {
+    const pet = await this.prisma.pet.findUnique({
+      where: { id: petId },
+      include: { adoption: true },
+    });
+    if (!pet) {
+      throw new BadRequestException('Pet não encontrado');
+    }
+    if (pet.adoption) {
+      throw new BadRequestException('Este pet já possui adoção registrada');
+    }
+    if (pet.status !== 'ADOPTED') {
+      throw new BadRequestException('Pet não está marcado como adotado pelo tutor');
+    }
+    await this.prisma.pet.update({
+      where: { id: petId },
+      data: { adoptionRejectedAt: new Date() },
+    });
   }
 
   async getPetsAvailable(): Promise<PetAvailableItemDto[]> {

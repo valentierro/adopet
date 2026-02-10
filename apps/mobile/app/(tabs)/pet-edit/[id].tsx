@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -10,6 +11,7 @@ import {
   Image,
   ScrollView,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -21,11 +23,14 @@ import {
   getPet,
   updatePet,
   patchPetStatus,
+  getConversationPartners,
   deletePet,
   deletePetMedia,
   reorderPetMedia,
   type PetStatus,
 } from '../../../src/api/pets';
+import { getPartners } from '../../../src/api/partners';
+import { lookupUsername } from '../../../src/api/me';
 import { presign, confirmUpload } from '../../../src/api/uploads';
 import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
 import { spacing } from '../../../src/theme';
@@ -51,12 +56,31 @@ export default function PetEditScreen() {
   const [adoptionReason, setAdoptionReason] = useState('');
   const [vaccinated, setVaccinated] = useState(false);
   const [neutered, setNeutered] = useState(false);
+  const [partnerId, setPartnerId] = useState('');
+  const [showAdopterModal, setShowAdopterModal] = useState(false);
+  const [selectedAdopter, setSelectedAdopter] = useState<
+    { type: 'id'; id: string; name: string } | { type: 'username'; username: string; name: string } | { type: 'other' } | null
+  >(null);
+  const [usernameSearch, setUsernameSearch] = useState('');
+  const [usernameSearching, setUsernameSearching] = useState(false);
 
-  const { data: pet, isLoading } = useQuery({
+  const { data: pet, isLoading, refetch: refetchPet } = useQuery({
     queryKey: ['pet', id],
     queryFn: () => getPet(id!),
     enabled: !!id,
   });
+
+  const { data: partners = [] } = useQuery({
+    queryKey: ['partners', 'ONG'],
+    queryFn: () => getPartners('ONG'),
+    staleTime: 5 * 60_000,
+  });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (id) refetchPet();
+    }, [id, refetchPet]),
+  );
 
   useEffect(() => {
     if (pet) {
@@ -70,6 +94,7 @@ export default function PetEditScreen() {
       setAdoptionReason(pet.adoptionReason ?? '');
       setVaccinated(pet.vaccinated);
       setNeutered(pet.neutered);
+      setPartnerId((pet as { partner?: { id: string } })?.partner?.id ?? '');
     }
   }, [pet]);
 
@@ -92,6 +117,7 @@ export default function PetEditScreen() {
         ...(adoptionReason.trim() && { adoptionReason: adoptionReason.trim() }),
         vaccinated,
         neutered,
+        partnerId: partnerId.trim() || null,
       }),
     onSuccess: () => {
       invalidate();
@@ -102,10 +128,21 @@ export default function PetEditScreen() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: (status: PetStatus) => patchPetStatus(id!, status),
-    onSuccess: (_data, status) => {
+    mutationFn: (args: {
+      status: PetStatus;
+      pendingAdopterId?: string;
+      pendingAdopterUsername?: string;
+    }) =>
+      patchPetStatus(id!, args.status, {
+        pendingAdopterId: args.pendingAdopterId,
+        pendingAdopterUsername: args.pendingAdopterUsername,
+      }),
+    onSuccess: (_data, args) => {
       invalidate();
-      if (status === 'ADOPTED') {
+      setShowAdopterModal(false);
+      setSelectedAdopter(null);
+      setUsernameSearch('');
+      if (args.status === 'ADOPTED') {
         Alert.alert('Informações atualizadas', 'As informações foram atualizadas. Um administrador será informado.');
       } else {
         Alert.alert('Status atualizado.', 'Sua pontuação de tutor foi atualizada.');
@@ -115,19 +152,57 @@ export default function PetEditScreen() {
       Alert.alert('Não foi possível atualizar', getFriendlyErrorMessage(e, 'Tente novamente.')),
   });
 
+  const { data: conversationPartners = [], isLoading: loadingPartners } = useQuery({
+    queryKey: ['pets', id, 'conversation-partners'],
+    queryFn: () => getConversationPartners(id!),
+    enabled: !!id && showAdopterModal,
+  });
+
   const handleStatusPress = (status: PetStatus) => {
     if (status === 'ADOPTED') {
       Alert.alert(
         'Marcar como adotado?',
-        'Esta ação é irreversível. O pet sairá da lista de disponíveis (feed e mapa). Você continua vendo o pet em Meus anúncios e um administrador será informado para confirmar a adoção.',
+        'O pet sairá da lista de disponíveis (feed e mapa). Em seguida, indique quem adotou (quem conversou com você no app ou pelo @nome de usuário). Um administrador confirmará a adoção.',
         [
           { text: 'Cancelar', style: 'cancel' },
-          { text: 'Sim, foi adotado', onPress: () => statusMutation.mutate(status) },
+          { text: 'Continuar', onPress: () => { setSelectedAdopter(null); setShowAdopterModal(true); } },
         ]
       );
       return;
     }
-    statusMutation.mutate(status);
+    statusMutation.mutate({ status });
+  };
+
+  const handleConfirmAdopter = () => {
+    if (!selectedAdopter) {
+      Alert.alert('Selecione quem adotou', 'Escolha uma pessoa da lista, busque por @usuário ou toque em "Outra pessoa".');
+      return;
+    }
+    if (selectedAdopter.type === 'id') {
+      statusMutation.mutate({ status: 'ADOPTED', pendingAdopterId: selectedAdopter.id });
+    } else if (selectedAdopter.type === 'username') {
+      statusMutation.mutate({ status: 'ADOPTED', pendingAdopterUsername: selectedAdopter.username });
+    } else {
+      statusMutation.mutate({ status: 'ADOPTED' });
+    }
+  };
+
+  const handleSearchUsername = async () => {
+    const q = usernameSearch.trim().replace(/^@/, '');
+    if (q.length < 2) return;
+    setUsernameSearching(true);
+    try {
+      const result = await lookupUsername(q);
+      if (result) {
+        setSelectedAdopter({ type: 'username', username: result.username, name: result.name });
+      } else {
+        Alert.alert('Não encontrado', `Nenhum usuário com @${q}. A pessoa precisa ter conta no Adopet e definir um nome de usuário no perfil.`);
+      }
+    } catch {
+      Alert.alert('Erro', 'Não foi possível buscar.');
+    } finally {
+      setUsernameSearching(false);
+    }
   };
 
   const deleteMediaMutation = useMutation({
@@ -402,6 +477,32 @@ export default function PetEditScreen() {
           <Text style={[styles.switchLabel, { color: colors.textPrimary }]}>Castrado</Text>
           <Switch value={neutered} onValueChange={setNeutered} trackColor={{ false: colors.textSecondary, true: colors.primary }} disabled={isAdopted} />
         </View>
+        {partners.length > 0 && (
+          <>
+            <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.md }]}>Em parceria com (opcional)</Text>
+            <View style={styles.rowWrap}>
+              <TouchableOpacity
+                style={[styles.chip, { backgroundColor: !partnerId ? colors.primary : colors.surface }]}
+                onPress={() => setPartnerId('')}
+                disabled={isAdopted}
+              >
+                <Text style={{ color: !partnerId ? '#fff' : colors.textPrimary, fontSize: 13 }}>Nenhum</Text>
+              </TouchableOpacity>
+              {partners.map((p) => (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[styles.chip, { backgroundColor: partnerId === p.id ? colors.primary : colors.surface }]}
+                  onPress={() => setPartnerId(p.id)}
+                  disabled={isAdopted}
+                >
+                  <Text style={{ color: partnerId === p.id ? '#fff' : colors.textPrimary, fontSize: 13 }} numberOfLines={1}>
+                    {p.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
         <PrimaryButton
           title={updateMutation.isPending ? 'Salvando...' : 'Salvar alterações'}
           onPress={handleSave}
@@ -447,6 +548,88 @@ export default function PetEditScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      <Modal visible={showAdopterModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Quem adotou?</Text>
+            <Text style={[styles.modalSub, { color: colors.textSecondary }]}>
+              Quem conversou com você no app ou informe o @nome de usuário. O admin poderá confirmar a adoção sem precisar buscar.
+            </Text>
+            {loadingPartners ? (
+              <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: spacing.md }} />
+            ) : conversationPartners.length > 0 ? (
+              <>
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Quem conversou com você sobre este pet</Text>
+                <ScrollView style={styles.modalList} nestedScrollEnabled>
+                  {conversationPartners.map((p) => (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={[
+                        styles.modalItem,
+                        { backgroundColor: colors.background },
+                        selectedAdopter?.type === 'id' && selectedAdopter.id === p.id && { backgroundColor: colors.primary + '25' },
+                      ]}
+                      onPress={() => setSelectedAdopter({ type: 'id', id: p.id, name: p.name })}
+                    >
+                      <Text style={[styles.modalItemText, { color: colors.textPrimary }]}>{p.name}</Text>
+                      {p.username ? <Text style={[styles.modalItemSub, { color: colors.textSecondary }]}>@{p.username}</Text> : null}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            ) : null}
+            <Text style={[styles.modalLabel, { color: colors.textSecondary, marginTop: spacing.md }]}>Buscar por @nome de usuário</Text>
+            <View style={styles.modalSearchRow}>
+              <TextInput
+                style={[styles.modalInput, { backgroundColor: colors.background, color: colors.textPrimary }]}
+                placeholder="@usuário"
+                placeholderTextColor={colors.textSecondary}
+                value={usernameSearch}
+                onChangeText={setUsernameSearch}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <TouchableOpacity
+                style={[styles.modalSearchBtn, { backgroundColor: colors.primary }]}
+                onPress={handleSearchUsername}
+                disabled={usernameSearching || usernameSearch.trim().replace(/^@/, '').length < 2}
+              >
+                {usernameSearching ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.modalSearchBtnText}>Buscar</Text>}
+              </TouchableOpacity>
+            </View>
+            {selectedAdopter?.type === 'username' && (
+              <View style={[styles.modalItem, { backgroundColor: colors.primary + '25', marginTop: spacing.sm }]}>
+                <Text style={[styles.modalItemText, { color: colors.textPrimary }]}>{selectedAdopter.name}</Text>
+                <Text style={[styles.modalItemSub, { color: colors.textSecondary }]}>@{selectedAdopter.username}</Text>
+              </View>
+            )}
+            <TouchableOpacity
+              style={[styles.modalItem, { backgroundColor: colors.background, marginTop: spacing.sm }]}
+              onPress={() => setSelectedAdopter({ type: 'other' })}
+            >
+              <Text style={[styles.modalItemText, { color: colors.textPrimary }]}>Outra pessoa (admin definirá depois)</Text>
+            </TouchableOpacity>
+            {selectedAdopter?.type === 'other' && (
+              <View style={[styles.modalItem, { backgroundColor: colors.primary + '25', marginTop: spacing.xs }]}>
+                <Text style={[styles.modalItemText, { color: colors.textPrimary }]}>Admin buscará o adotante</Text>
+              </View>
+            )}
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.background }]} onPress={() => { setShowAdopterModal(false); setSelectedAdopter(null); setUsernameSearch(''); }}>
+                <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.primary }, (!selectedAdopter || statusMutation.isPending) && styles.modalBtnDisabled]}
+                onPress={handleConfirmAdopter}
+                disabled={!selectedAdopter || statusMutation.isPending}
+              >
+                <Text style={styles.modalBtnTextWhite}>{statusMutation.isPending ? 'Salvando...' : 'Marcar como adotado'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -494,4 +677,22 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   removeAnnouncementBtnText: { fontSize: 16, fontWeight: '600' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: spacing.lg },
+  modalContent: { borderRadius: 16, padding: spacing.lg, maxHeight: '85%' },
+  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.sm },
+  modalSub: { fontSize: 13, marginBottom: spacing.md },
+  modalLabel: { fontSize: 12, fontWeight: '600', marginBottom: spacing.xs },
+  modalList: { maxHeight: 140, marginBottom: spacing.sm },
+  modalItem: { padding: spacing.md, borderRadius: 10, marginBottom: spacing.xs },
+  modalItemText: { fontSize: 15, fontWeight: '500' },
+  modalItemSub: { fontSize: 12, marginTop: 2 },
+  modalSearchRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
+  modalInput: { flex: 1, padding: spacing.md, borderRadius: 10, fontSize: 16 },
+  modalSearchBtn: { paddingHorizontal: spacing.lg, justifyContent: 'center', borderRadius: 10 },
+  modalSearchBtnText: { color: '#fff', fontWeight: '600' },
+  modalActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
+  modalBtn: { flex: 1, padding: spacing.md, borderRadius: 10, alignItems: 'center' },
+  modalBtnText: { fontWeight: '600' },
+  modalBtnTextWhite: { color: '#fff', fontWeight: '600' },
+  modalBtnDisabled: { opacity: 0.6 },
 });

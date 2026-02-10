@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../../../src/hooks/useTheme';
 import { useAuthStore } from '../../../src/stores/authStore';
@@ -46,7 +47,7 @@ export default function ChatRoomScreen() {
   const userId = useAuthStore((s) => s.user?.id);
   const [text, setText] = useState('');
 
-  const { data: conversation } = useQuery({
+  const { data: conversation, refetch: refetchConversation } = useQuery({
     queryKey: ['conversation', id],
     queryFn: () => getConversation(id!),
     enabled: !!id,
@@ -62,6 +63,7 @@ export default function ChatRoomScreen() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    refetch: refetchMessages,
   } = useInfiniteQuery({
     queryKey: ['messages', id],
     queryFn: ({ pageParam }) => getMessages(id!, pageParam),
@@ -69,6 +71,15 @@ export default function ChatRoomScreen() {
     initialPageParam: undefined as string | undefined,
     enabled: !!id,
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (id) {
+        refetchConversation();
+        refetchMessages();
+      }
+    }, [id, refetchConversation, refetchMessages]),
+  );
 
   // Atualiza contador de não lidas após carregar mensagens (API marca como lidas no getMessages)
   useEffect(() => {

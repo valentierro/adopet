@@ -23,3 +23,7 @@ export async function confirmUpload(body: ConfirmUploadBody): Promise<{ id: stri
 export async function confirmAvatarUpload(key: string): Promise<{ avatarUrl: string }> {
   return api.post<{ avatarUrl: string }>('/uploads/confirm-avatar', { key });
 }
+
+export async function confirmPartnerLogoUpload(key: string): Promise<{ logoUrl: string }> {
+  return api.post<{ logoUrl: string }>('/uploads/confirm-partner-logo', { key });
+}

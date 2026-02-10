@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -14,9 +15,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { ScreenContainer, LoadingLogo, VerifiedBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
-import { getMe, getTutorStats } from '../../src/api/me';
+import { useAuthStore } from '../../src/stores/authStore';
+import { getMe, getTutorStats, getMyAdoptions } from '../../src/api/me';
 import { getMinePets } from '../../src/api/pets';
 import { getFavorites } from '../../src/api/favorites';
 import { getConversations } from '../../src/api/conversations';
@@ -53,27 +56,36 @@ function useDashboardData() {
     queryFn: () => fetchFeed({}),
     staleTime: 2 * 60_000,
   });
+  const { data: adoptionsData, refetch: refetchAdoptions } = useQuery({
+    queryKey: ['me', 'adoptions'],
+    queryFn: getMyAdoptions,
+    staleTime: 60_000,
+  });
 
   const myPets = minePage?.items ?? [];
+  const myAdoptionsCount = adoptionsData?.items?.length ?? 0;
   const favoritesCount = Array.isArray(favoritesPage?.items) ? favoritesPage.items.length : 0;
   const unreadTotal = conversations.reduce((s, c) => s + (c.unreadCount ?? 0), 0);
   const feedPreviewItems = feedData?.items ?? [];
+  const feedTotalCount = feedData?.totalCount;
 
   const [refreshing, setRefreshing] = useState(false);
   const refetchAll = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refetchMine(), refetchFav(), refetchConv(), refetchFeed()]);
+    await Promise.all([refetchMine(), refetchFav(), refetchConv(), refetchFeed(), refetchAdoptions()]);
     setRefreshing(false);
-  }, [refetchMine, refetchFav, refetchConv, refetchFeed]);
+  }, [refetchMine, refetchFav, refetchConv, refetchFeed, refetchAdoptions]);
 
   return {
     user,
     tutorStats,
     myPetsCount: myPets.length,
+    myAdoptionsCount,
     favoritesCount,
     conversationsCount: conversations.length,
     unreadTotal,
     feedPreviewItems,
+    feedTotalCount,
     refetchAll,
     refreshing,
   };
@@ -91,21 +103,48 @@ export default function DashboardScreen() {
     user,
     tutorStats,
     myPetsCount,
+    myAdoptionsCount,
     favoritesCount,
     conversationsCount,
     unreadTotal,
     feedPreviewItems,
+    feedTotalCount,
     refetchAll,
     refreshing,
   } = useDashboardData();
 
-  const { data: _u, isLoading } = useQuery({ queryKey: ['me'], queryFn: getMe });
+  useFocusEffect(
+    useCallback(() => {
+      refetchAll();
+    }, [refetchAll]),
+  );
+
+  const setUser = useAuthStore((s) => s.setUser);
+  const { data: _u, isLoading, isError, refetch: refetchMe } = useQuery({ queryKey: ['me'], queryFn: getMe, retry: 1 });
   const firstName = user?.name?.trim().split(/\s+/)[0] || '';
+
+  useEffect(() => {
+    if (user) setUser(user);
+  }, [user, setUser]);
 
   if (isLoading && !user) {
     return (
       <ScreenContainer>
         <LoadingLogo size={160} />
+      </ScreenContainer>
+    );
+  }
+
+  if (!user && !isLoading && isError) {
+    return (
+      <ScreenContainer>
+        <View style={[styles.errorWrap, { paddingHorizontal: spacing.lg }]}>
+          <Text style={[styles.errorTitle, { color: colors.textPrimary }]}>Não foi possível carregar seus dados</Text>
+          <Text style={[styles.errorSub, { color: colors.textSecondary }]}>Verifique sua conexão e tente novamente.</Text>
+          <TouchableOpacity style={[styles.retryBtn, { backgroundColor: colors.primary }]} onPress={() => refetchMe()} activeOpacity={0.8}>
+            <Text style={styles.retryBtnText}>Tentar novamente</Text>
+          </TouchableOpacity>
+        </View>
       </ScreenContainer>
     );
   }
@@ -139,11 +178,11 @@ export default function DashboardScreen() {
     },
     {
       id: 'adopted',
-      title: 'Pets adotados',
-      subtitle: (tutorStats?.adoptedCount ?? 0) === 0 ? 'Nenhuma adoção' : `${tutorStats?.adoptedCount ?? 0} adoção${(tutorStats?.adoptedCount ?? 0) !== 1 ? 'ões' : ''}`,
+      title: 'Minhas adoções',
+      subtitle: myAdoptionsCount === 0 ? 'Nenhuma adoção' : `${myAdoptionsCount} adoção${myAdoptionsCount !== 1 ? 'ões' : ''}`,
       icon: 'heart-circle',
-      route: '/my-pets?status=ADOPTED',
-      badge: (tutorStats?.adoptedCount ?? 0) > 0 ? (tutorStats?.adoptedCount ?? 0) : undefined,
+      route: '/my-adoptions',
+      badge: myAdoptionsCount > 0 ? myAdoptionsCount : undefined,
     },
     {
       id: 'favorites',
@@ -175,7 +214,39 @@ export default function DashboardScreen() {
       icon: 'map',
       route: '/map',
     },
+    {
+      id: 'partnersArea',
+      title: 'Ofertas dos parceiros',
+      subtitle: 'Cupons de desconto por clínicas e lojas',
+      icon: 'pricetag',
+      route: '/partners-area',
+      gradient: ['#d97706', '#b45309'],
+      fullWidth: true,
+    },
+    {
+      id: 'partnerOng',
+      title: 'Sou ONG ou instituição',
+      subtitle: 'Parceria gratuita para abrigos e instituições',
+      icon: 'heart',
+      route: '/seja-parceiro-ong',
+      gradient: ['#d97706', '#b45309'],
+      fullWidth: true,
+    },
+    {
+      id: 'partnerComercial',
+      title: 'Clínicas, veterinários, lojas',
+      subtitle: 'Planos com destaque e preços no app',
+      icon: 'storefront',
+      route: '/seja-parceiro-comercial',
+      gradient: ['#d97706', '#b45309'],
+      fullWidth: true,
+    },
   ];
+
+  // Quem já é parceiro não vê os CTAs "Sou ONG" e "Clínicas, lojas" na tela inicial
+  const cardsToShow = user?.partner
+    ? cards.filter((c) => c.id !== 'partnerOng' && c.id !== 'partnerComercial')
+    : cards;
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -201,7 +272,7 @@ export default function DashboardScreen() {
             <Text style={[styles.hello, { color: colors.textSecondary }]}>Olá,</Text>
             <View style={styles.heroNameRow}>
               <View style={styles.heroNameWithBadge}>
-                {user?.verified && <VerifiedBadge size={26} />}
+                {user?.verified && <VerifiedBadge size={26} iconBackgroundColor={colors.primary} />}
                 <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={1}>
                   {firstName || 'Visitante'}
                 </Text>
@@ -238,7 +309,7 @@ export default function DashboardScreen() {
 
         <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Atalhos</Text>
         <View style={styles.grid}>
-          {cards.map((card) => {
+          {cardsToShow.map((card) => {
             const isFull = card.fullWidth;
             const isFeedCard = card.id === 'feed';
             const feedThumbs = isFeedCard ? feedPreviewItems.slice(0, 5).map((p) => p.photos?.[0]).filter(Boolean) as string[] : [];
@@ -266,6 +337,17 @@ export default function DashboardScreen() {
                       style={styles.feedThumb}
                     />
                   ))}
+                  {(() => {
+                  const total = feedTotalCount ?? feedPreviewItems.length;
+                  const more = total > 5 ? total - 5 : 0;
+                  return more > 0 ? (
+                    <View style={[styles.feedThumb, styles.feedThumbMore]}>
+                      <Text style={styles.feedThumbMoreText}>
+                        +{more > 99 ? '99' : more}
+                      </Text>
+                    </View>
+                  ) : null;
+                })()}
                 </View>
               </View>
             ) : isFeedCard && feedPreviewItems.length === 0 ? (
@@ -294,6 +376,20 @@ export default function DashboardScreen() {
                   <Ionicons name="map" size={18} color="#fff" />
                   <Text style={styles.feedCardMapButtonText}>Explorar no mapa</Text>
                 </TouchableOpacity>
+              </View>
+            ) : card.id === 'partnerOng' || card.id === 'partnerComercial' || card.id === 'partnersArea' ? (
+              <View style={styles.partnersCardRow}>
+                <View style={[styles.partnersCardIconWrap, styles.iconWrapLight]}>
+                  <Ionicons name={card.icon as any} size={28} color="#fff" />
+                </View>
+                <View style={styles.partnersCardText}>
+                  <Text style={[styles.cardTitle, { color: '#fff', marginTop: 0 }]} numberOfLines={1}>
+                    {card.title}
+                  </Text>
+                  <Text style={[styles.cardSubtitle, { color: 'rgba(255,255,255,0.9)' }]} numberOfLines={2}>
+                    {card.subtitle}
+                  </Text>
+                </View>
               </View>
             ) : (
               <View style={styles.cardContent}>
@@ -426,6 +522,25 @@ const styles = StyleSheet.create({
   },
   cardFull: { width: '100%' },
   cardFeedWithThumbs: { minHeight: 150 },
+  partnersCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    gap: spacing.md,
+    flex: 1,
+  },
+  partnersCardIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  partnersCardText: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
   cardContent: {
     flex: 1,
     padding: spacing.md,
@@ -462,6 +577,8 @@ const styles = StyleSheet.create({
   feedCardSubtitle: { fontSize: 12, marginTop: 2 },
   feedThumbsRow: { flexDirection: 'row', gap: 6, marginTop: spacing.xs },
   feedThumb: { width: 48, height: 48, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.15)' },
+  feedThumbMore: { alignItems: 'center', justifyContent: 'center' },
+  feedThumbMoreText: { color: 'rgba(255,255,255,0.95)', fontSize: 14, fontWeight: '700' },
   feedCardMapButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -475,6 +592,11 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   feedCardMapButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  errorWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: spacing.xl },
+  errorTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.sm, textAlign: 'center' },
+  errorSub: { fontSize: 15, textAlign: 'center', marginBottom: spacing.lg },
+  retryBtn: { paddingVertical: spacing.md, paddingHorizontal: spacing.xl, borderRadius: 12 },
+  retryBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   ctaButton: {
     flexDirection: 'row',
     alignItems: 'center',

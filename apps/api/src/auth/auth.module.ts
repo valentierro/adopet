@@ -6,12 +6,15 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { AdminGuard } from './admin.guard';
+import { OptionalJwtAuthGuard } from './optional-jwt.guard';
 import { PrismaModule } from '../prisma/prisma.module';
+import { PartnersModule } from '../partners/partners.module';
 
 @Global()
 @Module({
   imports: [
     PrismaModule,
+    PartnersModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -23,7 +26,7 @@ import { PrismaModule } from '../prisma/prisma.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, AdminGuard],
-  exports: [AuthService, JwtModule, AdminGuard],
+  providers: [AuthService, JwtStrategy, AdminGuard, OptionalJwtAuthGuard],
+  exports: [AuthService, JwtModule, AdminGuard, OptionalJwtAuthGuard],
 })
 export class AuthModule {}

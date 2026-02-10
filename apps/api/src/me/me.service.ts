@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { VerificationService } from '../verification/verification.service';
@@ -19,7 +19,7 @@ export class MeService {
     const [user, verified] = await Promise.all([
       this.prisma.user.findUniqueOrThrow({
         where: { id: userId },
-        include: { preferences: true },
+        include: { preferences: true, partner: true },
       }),
       this.verificationService.isUserVerified(userId),
     ]);
@@ -39,6 +39,15 @@ export class MeService {
   }
 
   async updateMe(userId: string, dto: UpdateMeDto): Promise<MeResponseDto> {
+    if (dto.username !== undefined) {
+      const normalized = dto.username.trim().toLowerCase().replace(/^@/, '');
+      if (normalized.length < 2) throw new BadRequestException('Nome de usuário deve ter pelo menos 2 caracteres.');
+      const existing = await this.prisma.user.findFirst({
+        where: { username: normalized, id: { not: userId }, deactivatedAt: null },
+      });
+      if (existing) throw new BadRequestException('Este nome de usuário já está em uso.');
+      dto.username = normalized;
+    }
     const [user, verified] = await Promise.all([
       this.prisma.user.update({
         where: { id: userId },
@@ -53,6 +62,7 @@ export class MeService {
           ...(dto.hasOtherPets !== undefined && { hasOtherPets: dto.hasOtherPets }),
           ...(dto.hasChildren !== undefined && { hasChildren: dto.hasChildren }),
           ...(dto.timeAtHome !== undefined && { timeAtHome: dto.timeAtHome }),
+          ...(dto.username !== undefined && { username: dto.username || null }),
         },
         include: { preferences: true },
       }),
@@ -60,6 +70,50 @@ export class MeService {
     ]);
     const isAdmin = this.isAdminUserId(userId);
     return this.toMeDto(user, verified, isAdmin);
+  }
+
+  async lookupByUsername(username: string): Promise<{ id: string; name: string; username: string } | null> {
+    const normalized = username.trim().toLowerCase().replace(/^@/, '');
+    if (normalized.length < 2) return null;
+    const user = await this.prisma.user.findFirst({
+      where: { username: normalized, deactivatedAt: null },
+      select: { id: true, name: true, username: true },
+    });
+    if (!user?.username) return null;
+    return { id: user.id, name: user.name, username: user.username };
+  }
+
+  async getMyAdoptions(userId: string, species?: 'BOTH' | 'DOG' | 'CAT'): Promise<{ items: Array<{ adoptionId: string; petId: string; petName: string; species: string; photos: string[]; adoptedAt: string; tutorName: string; confirmedByAdopet: boolean; adoptionRejectedAt?: string }> }> {
+    const adoptions = await this.prisma.adoption.findMany({
+      where: {
+        adopterId: userId,
+        ...(species && species !== 'BOTH' && { pet: { species: species.toUpperCase() } }),
+      },
+      orderBy: { adoptedAt: 'desc' },
+      include: {
+        tutor: { select: { name: true } },
+        pet: {
+          include: {
+            media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+          },
+        },
+      },
+    });
+    const items = adoptions.map((a) => {
+      const pet = a.pet as { adoptionRejectedAt?: Date | null };
+      return {
+        adoptionId: a.id,
+        petId: a.petId,
+        petName: a.pet.name,
+        species: a.pet.species.toLowerCase(),
+        photos: (a.pet.media ?? []).map((m) => m.url),
+        adoptedAt: a.adoptedAt.toISOString(),
+        tutorName: a.tutor.name,
+        confirmedByAdopet: !pet.adoptionRejectedAt,
+        ...(pet.adoptionRejectedAt && { adoptionRejectedAt: pet.adoptionRejectedAt.toISOString() }),
+      };
+    });
+    return { items };
   }
 
   async getPreferences(userId: string): Promise<PreferencesResponseDto> {
@@ -202,6 +256,7 @@ export class MeService {
       id: string;
       email: string;
       name: string;
+      username: string | null;
       avatarUrl: string | null;
       phone: string | null;
       city: string | null;
@@ -216,10 +271,12 @@ export class MeService {
     verified?: boolean,
     isAdmin?: boolean,
   ): MeResponseDto {
+    const u = user as typeof user & { partner?: { id: string; name: string; slug: string; subscriptionStatus: string | null; planId: string | null; isPaidPartner: boolean } | null };
     return {
       id: user.id,
       email: user.email,
       name: user.name,
+      username: user.username ?? undefined,
       avatarUrl: user.avatarUrl ?? undefined,
       phone: user.phone ?? undefined,
       createdAt: user.createdAt.toISOString(),
@@ -232,6 +289,16 @@ export class MeService {
       timeAtHome: user.timeAtHome ?? undefined,
       verified,
       isAdmin,
+      partner: u.partner
+        ? {
+            id: u.partner.id,
+            name: u.partner.name,
+            slug: u.partner.slug,
+            subscriptionStatus: u.partner.subscriptionStatus ?? undefined,
+            planId: u.partner.planId ?? undefined,
+            isPaidPartner: !!u.partner.isPaidPartner,
+          }
+        : undefined,
     };
   }
 }

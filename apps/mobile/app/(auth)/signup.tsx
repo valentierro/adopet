@@ -10,7 +10,9 @@ import {
   Platform,
   ScrollView,
   TouchableOpacity,
+  Pressable,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
@@ -18,12 +20,15 @@ import { PrimaryButton } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuthStore } from '../../src/stores/authStore';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
+import { clearOnboardingSeen } from '../../src/storage/onboarding';
 import { spacing } from '../../src/theme';
 
 const LogoSplash = require('../../assets/brand/logo/logo_splash.png');
 
 /** Mín. 6 caracteres, pelo menos uma letra e um número */
 const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d).{6,}$/;
+/** Nome de usuário: 2–30 caracteres, apenas a-z 0-9 . _ */
+const USERNAME_RULE = /^[a-z0-9._]{2,30}$/;
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -37,10 +42,25 @@ export default function SignupScreen() {
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [phone, setPhone] = useState('');
+  const [username, setUsername] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   const handleSubmit = async () => {
     if (!name.trim() || !email.trim() || !password || !passwordConfirm || !phone.trim()) {
       Alert.alert('Erro', 'Preencha nome, email, telefone, senha e confirmação da senha.');
+      return;
+    }
+    const userInput = username.trim().toLowerCase().replace(/^@/, '');
+    if (!userInput) {
+      Alert.alert('Erro', 'Informe um nome de usuário. Ele será usado para outros usuários te encontrarem (@nome).');
+      return;
+    }
+    if (userInput.length < 2 || userInput.length > 30) {
+      Alert.alert('Erro', 'O nome de usuário deve ter entre 2 e 30 caracteres.');
+      return;
+    }
+    if (!USERNAME_RULE.test(userInput)) {
+      Alert.alert('Erro', 'Use apenas letras minúsculas, números, ponto e underscore no nome de usuário.');
       return;
     }
     const phoneDigits = phone.replace(/\D/g, '');
@@ -60,18 +80,38 @@ export default function SignupScreen() {
       Alert.alert('Erro', 'A senha deve ter pelo menos uma letra e um número.');
       return;
     }
+    if (!acceptedTerms) {
+      Alert.alert('Aceite os termos', 'Para criar sua conta, você precisa aceitar os Termos de Uso e a Política de Privacidade.');
+      return;
+    }
     try {
-      await signup(email.trim(), password, name.trim(), phoneDigits);
-      await queryClient.invalidateQueries({ queryKey: ['me'] });
-      const { trackEvent } = await import('../../src/analytics');
-      trackEvent({ name: 'signup_complete', properties: {} });
-      router.replace('/');
+      await signup(email.trim(), password, name.trim(), phoneDigits, userInput);
+      Alert.alert(
+        'Conta criada!',
+        'Sua conta foi criada com sucesso. Bem-vindo(a)!',
+        [
+          {
+            text: 'Continuar',
+            onPress: async () => {
+              try {
+                await clearOnboardingSeen();
+                await queryClient.invalidateQueries({ queryKey: ['me'] });
+                const { trackEvent } = await import('../../src/analytics');
+                trackEvent({ name: 'signup_complete', properties: {} });
+                router.replace('/');
+              } catch {
+                router.replace('/');
+              }
+            },
+          },
+        ]
+      );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e ?? '');
       const isConnectionError = /network|fetch|connection|timeout|ECONNREFUSED|failed to fetch|could not connect/i.test(msg);
       const title = 'Não foi possível completar';
       const body = isConnectionError
-        ? 'Sua conta pode ter sido criada. Tente fazer login com seu email e senha. Se não conseguir, tente criar a conta novamente.'
+        ? 'Não foi possível conectar. Sua conta pode ter sido criada. Tente fazer login com seu email e senha. Se não conseguir, tente criar a conta novamente.'
         : getFriendlyErrorMessage(e, 'Tente outro email ou mais tarde.');
       Alert.alert(title, body);
     }
@@ -122,6 +162,18 @@ export default function SignupScreen() {
           />
           <TextInput
             style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+            placeholder="Nome de usuário (ex: maria.silva)"
+            placeholderTextColor={colors.textSecondary}
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: -4, marginBottom: 4 }}>
+            Outros usuários poderão te encontrar por @nome. Use letras minúsculas, números, ponto ou underscore (2 a 30 caracteres).
+          </Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
             placeholder="Senha (mín. 6 caracteres, letra e número)"
             placeholderTextColor={colors.textSecondary}
             value={password}
@@ -144,24 +196,32 @@ export default function SignupScreen() {
               Nome, email e telefone não são compartilhados com outros usuários. Usamos o telefone apenas para o administrador confirmar adoções com você quando necessário.
             </Text>
           </View>
-          <PrimaryButton
-            title={isLoading ? 'Cadastrando...' : 'Criar conta'}
-            onPress={handleSubmit}
-            disabled={isLoading}
-          />
-          <View style={styles.legalRow}>
-            <Text style={[styles.legalText, { color: colors.textSecondary }]}>
-              Ao criar conta você aceita os{' '}
-            </Text>
+          <View style={[styles.termsRow, { marginTop: spacing.sm }]}>
+            <Pressable
+              style={styles.termsCheckWrap}
+              onPress={() => setAcceptedTerms((v) => !v)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: acceptedTerms }}
+              accessibilityLabel="Concordo com os Termos de Uso e a Política de Privacidade"
+            >
+              <View style={[styles.checkbox, { borderColor: acceptedTerms ? colors.primary : colors.textSecondary, backgroundColor: acceptedTerms ? colors.primary : 'transparent' }]}>
+                {acceptedTerms ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}
+              </View>
+              <Text style={[styles.termsLabel, { color: colors.textPrimary }]}>Concordo com os </Text>
+            </Pressable>
             <TouchableOpacity onPress={() => router.push('/terms')}>
               <Text style={[styles.legalLink, { color: colors.primary }]}>Termos de Uso</Text>
             </TouchableOpacity>
-            <Text style={[styles.legalText, { color: colors.textSecondary }]}> e a </Text>
+            <Text style={[styles.termsLabel, { color: colors.textPrimary }]}> e a </Text>
             <TouchableOpacity onPress={() => router.push('/privacy')}>
               <Text style={[styles.legalLink, { color: colors.primary }]}>Política de Privacidade</Text>
             </TouchableOpacity>
-            <Text style={[styles.legalText, { color: colors.textSecondary }]}>.</Text>
           </View>
+          <PrimaryButton
+            title={isLoading ? 'Cadastrando...' : 'Criar conta'}
+            onPress={handleSubmit}
+            disabled={isLoading || !acceptedTerms}
+          />
         </KeyboardAvoidingView>
       </ScrollView>
     </View>
@@ -178,15 +238,22 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   form: { gap: spacing.md },
-  legalRow: {
+  termsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: spacing.lg,
-    paddingHorizontal: spacing.sm,
   },
-  legalText: { fontSize: 13 },
+  termsCheckWrap: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  termsLabel: { fontSize: 13 },
   legalLink: { fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
   privacyBox: {
     padding: spacing.md,

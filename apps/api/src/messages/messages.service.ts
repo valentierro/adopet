@@ -76,7 +76,7 @@ export class MessagesService {
           const body = imageUrl
             ? `${conv.pet.name}: Foto`
             : `${conv.pet.name}: ${content.slice(0, 80)}${content.length > 80 ? '...' : ''}`;
-          await this.push.sendToUser(other.userId, 'Nova mensagem', body, { conversationId });
+          await this.push.sendToUser(other.userId, `Tutor de ${conv.pet.name}`, body, { conversationId });
         }
       }
     }

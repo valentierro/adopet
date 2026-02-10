@@ -99,6 +99,21 @@ export class UploadsService {
     return { avatarUrl };
   }
 
+  /** Confirma upload de logo do parceiro: atualiza logoUrl do estabelecimento (key de uploads/{userId}/...). */
+  async confirmPartnerLogo(userId: string, key: string): Promise<{ logoUrl: string }> {
+    if (!key.startsWith(`uploads/${userId}/`)) {
+      throw new ForbiddenException('Chave de upload inválida para logo do parceiro');
+    }
+    const partner = await this.prisma.partner.findUnique({ where: { userId } });
+    if (!partner) throw new ForbiddenException('Parceiro não encontrado');
+    const logoUrl = this.buildPublicUrl(key);
+    await this.prisma.partner.update({
+      where: { id: partner.id },
+      data: { logoUrl },
+    });
+    return { logoUrl };
+  }
+
   private buildPublicUrl(key: string): string {
     if (this.publicBase) return `${this.publicBase.replace(/\/$/, '')}/${key}`;
     const endpoint = this.config.get<string>('S3_ENDPOINT');

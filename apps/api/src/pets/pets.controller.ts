@@ -88,6 +88,17 @@ export class PetsController {
     return profile;
   }
 
+  @Get(':id/conversation-partners')
+  @UseGuards(JwtAuthGuard, PetOwnerGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Listar usuários que conversaram com o tutor sobre este pet (para indicar adotante)' })
+  async getConversationPartners(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ): Promise<{ id: string; name: string; username?: string }[]> {
+    return this.petsService.getConversationPartners(id, user.id);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Buscar pet por ID' })
   async findOne(@Param('id') id: string): Promise<PetResponseDto> {
@@ -128,7 +139,7 @@ export class PetsController {
     @CurrentUser() user: { id: string },
     @Body() dto: PatchStatusDto,
   ): Promise<PetResponseDto> {
-    return this.petsService.patchStatus(id, user.id, dto.status);
+    return this.petsService.patchStatus(id, user.id, dto.status, dto.pendingAdopterId, dto.pendingAdopterUsername);
   }
 
   @Delete(':id/media/:mediaId')

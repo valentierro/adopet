@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from './push.service';
+import { FeedService } from '../feed/feed.service';
 
 const NEW_PETS_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
 const REMINDERS_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12h
@@ -13,6 +14,7 @@ export class NotificationsJobsService implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly push: PushService,
+    private readonly feedService: FeedService,
   ) {}
 
   onModuleInit() {
@@ -24,7 +26,7 @@ export class NotificationsJobsService implements OnModuleInit {
     setInterval(() => this.runSavedSearchAlertsJob(), NEW_PETS_INTERVAL_MS);
   }
 
-  /** Push "X novos pets disponíveis" para usuários com notifyNewPets e pushToken. */
+  /** Push "X novos pets na sua região" para usuários com notifyNewPets, pushToken e localização. */
   private async runNewPetsJob(): Promise<void> {
     try {
       const users = await this.prisma.user.findMany({
@@ -35,30 +37,27 @@ export class NotificationsJobsService implements OnModuleInit {
         where: {
           userId: { in: users.map((u) => u.id) },
           notifyNewPets: true,
+          latitude: { not: null },
+          longitude: { not: null },
         },
         select: { userId: true, species: true, latitude: true, longitude: true, radiusKm: true },
       });
       const since = new Date(Date.now() - NEW_PETS_LOOKBACK_MS);
       for (const prefs of prefsList) {
-        const speciesFilter =
-          prefs.species === 'BOTH' ? undefined : (prefs.species.toLowerCase() as 'dog' | 'cat');
-        const where: {
-          status: string;
-          createdAt: { gte: Date };
-          ownerId: { not: string };
-          species?: string;
-        } = {
-          status: 'AVAILABLE',
-          createdAt: { gte: since },
-          ownerId: { not: prefs.userId },
-        };
-        if (speciesFilter) where.species = speciesFilter;
-        const count = await this.prisma.pet.count({ where });
+        if (prefs.latitude == null || prefs.longitude == null) continue;
+        const count = await this.feedService.countNewPetsInRadius(
+          prefs.userId,
+          prefs.latitude,
+          prefs.longitude,
+          prefs.radiusKm ?? 50,
+          since,
+          prefs.species ?? undefined,
+        );
         if (count > 0) {
           const msg =
             count === 1
-              ? '1 novo pet disponível para adoção'
-              : `${count} novos pets disponíveis para adoção`;
+              ? '1 novo pet na sua região'
+              : `${count} novos pets na sua região`;
           await this.push.sendToUser(prefs.userId, 'Novos pets', msg);
         }
       }

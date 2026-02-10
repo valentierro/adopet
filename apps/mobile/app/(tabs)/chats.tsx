@@ -1,20 +1,53 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useCallback, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
-import { ScreenContainer, EmptyState, LoadingLogo, PageIntro } from '../../src/components';
+import { useFocusEffect } from '@react-navigation/native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ScreenContainer, EmptyState, LoadingLogo, PageIntro, Toast } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
-import { getConversations } from '../../src/api/conversations';
+import { getConversations, deleteConversation } from '../../src/api/conversations';
 import { Ionicons } from '@expo/vector-icons';
 import { spacing } from '../../src/theme';
 
 export default function ChatsScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { colors } = useTheme();
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const { data: conversations = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['conversations'],
     queryFn: getConversations,
   });
+
+  const handleDeleteConversation = (conversationId: string, petName: string) => {
+    Alert.alert(
+      'Apagar conversa',
+      `Deseja apagar a conversa sobre ${petName}? Esta ação não pode ser desfeita.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Apagar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteConversation(conversationId);
+              await queryClient.invalidateQueries({ queryKey: ['conversations'] });
+              setToastMessage('Conversa apagada.');
+            } catch {
+              setToastMessage('Não foi possível apagar a conversa.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch]),
+  );
 
   if (isLoading && conversations.length === 0) {
     return (
@@ -46,12 +79,17 @@ export default function ChatsScreen() {
       onRefresh={() => refetch()}
       refreshing={isRefetching}
     >
+      <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
       <PageIntro title="Conversas" subtitle="Suas conversas com tutores dos pets favoritados." />
+      <Text style={[styles.hint, { color: colors.textSecondary }]}>
+        Toque e segure em uma conversa para apagá-la.
+      </Text>
       {conversations.map((c) => (
         <TouchableOpacity
           key={c.id}
           style={[styles.row, { backgroundColor: colors.surface }]}
           onPress={() => router.push(`/chat/${c.id}`)}
+          onLongPress={() => handleDeleteConversation(c.id, c.pet.name)}
           activeOpacity={0.7}
         >
           <Image
@@ -88,6 +126,10 @@ export default function ChatsScreen() {
 const styles = StyleSheet.create({
   skeletonWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 160 },
+  hint: {
+    fontSize: 12,
+    marginBottom: spacing.md,
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -22,6 +22,7 @@ import { getMe } from '../../src/api/me';
 import { spacing } from '../../src/theme';
 import { presign, confirmUpload } from '../../src/api/uploads';
 import { createPet } from '../../src/api/pets';
+import { getPartners } from '../../src/api/partners';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 
 const STEPS = ['Fotos', 'Detalhes', 'Saúde', 'Descrição', 'Publicar'];
@@ -81,6 +82,7 @@ type FormData = {
   description: string;
   adoptionReason: string;
   adoptionReasonPreset: string;
+  partnerId: string;
 };
 
 const INITIAL_FORM: FormData = {
@@ -96,6 +98,7 @@ const INITIAL_FORM: FormData = {
   description: '',
   adoptionReason: '',
   adoptionReasonPreset: '',
+  partnerId: '',
 };
 
 export default function AddPetWizardScreen() {
@@ -103,6 +106,11 @@ export default function AddPetWizardScreen() {
   const queryClient = useQueryClient();
   const { colors } = useTheme();
   const { data: user } = useQuery({ queryKey: ['me'], queryFn: getMe });
+  const { data: partners = [] } = useQuery({
+    queryKey: ['partners', 'ONG'],
+    queryFn: () => getPartners('ONG'),
+    staleTime: 5 * 60_000,
+  });
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<FormData>(INITIAL_FORM);
   const [uploadedKeys, setUploadedKeys] = useState<{ key: string; isPrimary: boolean }[]>([]);
@@ -232,6 +240,7 @@ export default function AddPetWizardScreen() {
         neutered: form.neutered,
         description: form.description.trim(),
         ...(form.adoptionReason.trim() && { adoptionReason: form.adoptionReason.trim() }),
+        ...(form.partnerId.trim() && { partnerId: form.partnerId }),
       });
       for (let i = 0; i < uploadedKeys.length; i++) {
         await confirmUpload({
@@ -242,10 +251,14 @@ export default function AddPetWizardScreen() {
       }
       queryClient.invalidateQueries({ queryKey: ['pets', 'mine'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'tutor-stats'] });
+      setForm(INITIAL_FORM);
+      setStep(0);
+      setUploadedKeys([]);
+      setImageUris([]);
       Alert.alert(
         'Anúncio enviado para moderação',
         'Seu anúncio será analisado pela nossa equipe. Pode levar até 48 horas para ser aprovado e aparecer no feed. Você pode acompanhar em "Meus anúncios".',
-        [{ text: 'OK', onPress: () => router.replace('/(tabs)') }],
+        [{ text: 'OK', onPress: () => router.replace('/(tabs)/add-pet') }],
       );
     } catch (e: unknown) {
       Alert.alert('Não foi possível cadastrar o pet', getFriendlyErrorMessage(e, 'Tente novamente em instantes.'));
@@ -574,6 +587,43 @@ export default function AddPetWizardScreen() {
             <Text style={[styles.summaryPhotos, { color: colors.textSecondary }]}>
               {uploadedKeys.length > 0 ? `${uploadedKeys.length} foto(s)` : 'Imagem automática (sem fotos)'}
             </Text>
+            {partners.length > 0 && (
+              <>
+                <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.md }]}>
+                  Em parceria com (opcional)
+                </Text>
+                <View style={styles.rowWrap}>
+                  <TouchableOpacity
+                    style={[
+                      styles.chip,
+                      { backgroundColor: !form.partnerId ? colors.primary : colors.surface },
+                    ]}
+                    onPress={() => setForm((f) => ({ ...f, partnerId: '' }))}
+                  >
+                    <Text style={{ color: !form.partnerId ? '#fff' : colors.textPrimary, fontSize: 13 }}>
+                      Nenhum
+                    </Text>
+                  </TouchableOpacity>
+                  {partners.map((p) => (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={[
+                        styles.chip,
+                        { backgroundColor: form.partnerId === p.id ? colors.primary : colors.surface },
+                      ]}
+                      onPress={() => setForm((f) => ({ ...f, partnerId: p.id }))}
+                    >
+                      <Text
+                        style={{ color: form.partnerId === p.id ? '#fff' : colors.textPrimary, fontSize: 13 }}
+                        numberOfLines={1}
+                      >
+                        {p.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
           </View>
         )}
 

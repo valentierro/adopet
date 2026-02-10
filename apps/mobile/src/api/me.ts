@@ -5,6 +5,7 @@ export type MeResponse = User;
 
 export type UpdateMeBody = {
   name?: string;
+  username?: string;
   avatarUrl?: string;
   phone?: string;
   city?: string;
@@ -15,6 +16,12 @@ export type UpdateMeBody = {
   hasChildren?: boolean;
   timeAtHome?: string;
 };
+
+export type LookupUsernameResult = { id: string; name: string; username: string } | null;
+
+export async function lookupUsername(username: string): Promise<LookupUsernameResult> {
+  return api.get<LookupUsernameResult>(`/me/lookup-username/${encodeURIComponent(username)}`);
+}
 
 export type SizePref = 'BOTH' | 'small' | 'medium' | 'large' | 'xlarge';
 
@@ -58,6 +65,28 @@ export type TutorStatsResponse = {
 
 export async function getTutorStats(): Promise<TutorStatsResponse> {
   return api.get<TutorStatsResponse>('/me/tutor-stats');
+}
+
+export type MyAdoptionItem = {
+  adoptionId: string;
+  petId: string;
+  petName: string;
+  species: string;
+  photos: string[];
+  adoptedAt: string;
+  tutorName: string;
+  confirmedByAdopet: boolean;
+  adoptionRejectedAt?: string;
+};
+
+export type MyAdoptionsResponse = { items: MyAdoptionItem[] };
+
+export type MyAdoptionsFilters = { species?: 'BOTH' | 'DOG' | 'CAT' };
+
+export async function getMyAdoptions(filters?: MyAdoptionsFilters): Promise<MyAdoptionsResponse> {
+  const params: Record<string, string> = {};
+  if (filters?.species && filters.species !== 'BOTH') params.species = filters.species;
+  return api.get<MyAdoptionsResponse>('/me/adoptions', params);
 }
 
 export async function getPreferences(): Promise<PreferencesResponse> {

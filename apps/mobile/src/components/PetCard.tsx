@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import { spacing, radius } from '../theme';
 import { StatusBadge } from './StatusBadge';
@@ -17,6 +18,17 @@ type Props = {
 
 const speciesLabel = { dog: 'Cachorro', cat: 'Gato' };
 const sizeLabel = { small: 'P', medium: 'M', large: 'G', xlarge: 'GG' };
+const sexLabel = { male: 'M', female: 'F' };
+
+function formatListingDate(iso: string | undefined): string {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  } catch {
+    return '';
+  }
+}
 
 export function PetCard({
   pet,
@@ -39,12 +51,24 @@ export function PetCard({
         <Image source={{ uri: photo }} style={styles.image} contentFit="cover" />
         {pet.verified && (
           <View style={styles.verifiedWrap}>
-            <VerifiedBadge size={32} />
+            <VerifiedBadge size={32} iconBackgroundColor={colors.primary} />
+          </View>
+        )}
+        {pet.partner && (
+          <View style={[styles.partnerBadge, { backgroundColor: 'rgba(217, 119, 6, 0.92)' }]}>
+            <Ionicons name="heart" size={12} color="#fff" />
+            <Text style={styles.partnerBadgeText}>Parceiro</Text>
           </View>
         )}
         <View style={styles.badges}>
           <StatusBadge
-            label={pet.distanceKm != null ? `${pet.distanceKm.toFixed(1)} km` : '—'}
+            label={
+              pet.distanceKm != null
+                ? `${pet.distanceKm.toFixed(1)} km`
+                : pet.city
+                  ? pet.city
+                  : '—'
+            }
             variant="neutral"
           />
           <StatusBadge
@@ -58,8 +82,33 @@ export function PetCard({
           {pet.name}
         </Text>
         <Text style={[styles.meta, { color: colors.textSecondary }]}>
-          {speciesLabel[pet.species]} • {pet.age} ano(s) • {sizeLabel[pet.size]}
+          {speciesLabel[pet.species]} • {pet.age} ano(s) • {sizeLabel[pet.size]} • {sexLabel[pet.sex]}
         </Text>
+        {(pet.createdAt || pet.city || typeof pet.neutered === 'boolean') && (
+          <View style={styles.summaryRow}>
+            {pet.createdAt ? (
+              <View style={styles.summaryItem}>
+                <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
+                <Text style={[styles.summaryText, { color: colors.textSecondary }]}>
+                  Publicado em {formatListingDate(pet.createdAt)}
+                </Text>
+              </View>
+            ) : null}
+            {pet.city ? (
+              <View style={styles.summaryItem}>
+                <Ionicons name="location-outline" size={12} color={colors.textSecondary} />
+                <Text style={[styles.summaryText, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {pet.city}
+                </Text>
+              </View>
+            ) : null}
+            {typeof pet.neutered === 'boolean' && (
+              <Text style={[styles.summaryText, { color: colors.textSecondary }]}>
+                {pet.neutered ? 'Castrado' : 'Não castrado'}
+              </Text>
+            )}
+          </View>
+        )}
         {pet.description ? (
           <Text
             style={[styles.description, { color: colors.textSecondary }]}
@@ -106,6 +155,23 @@ const styles = StyleSheet.create({
     right: spacing.sm,
     zIndex: 1,
   },
+  partnerBadge: {
+    position: 'absolute',
+    bottom: spacing.sm,
+    left: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    zIndex: 1,
+  },
+  partnerBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
+  },
   image: {
     width: '100%',
     height: '100%',
@@ -131,6 +197,21 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: 13,
     marginBottom: spacing.xs,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  summaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  summaryText: {
+    fontSize: 12,
   },
   description: {
     fontSize: 13,

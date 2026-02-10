@@ -8,8 +8,10 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import type { SignupDto } from './dto/signup.dto';
+import type { PartnerSignupDto } from './dto/partner-signup.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { AuthResponseDto } from './dto/auth-response.dto';
+import { PartnersService } from '../partners/partners.service';
 
 const ACCESS_TOKEN_EXPIRES = '15m';
 const REFRESH_TOKEN_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -20,11 +22,22 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly partnersService: PartnersService,
   ) {}
 
   async signup(dto: SignupDto): Promise<AuthResponseDto> {
-    const emailLower = dto.email.toLowerCase();
+    const emailLower = dto.email.trim().toLowerCase();
     const phoneNormalized = String(dto.phone).replace(/\D/g, '').slice(-11);
+    const usernameNormalized = dto.username?.trim().toLowerCase().replace(/^@/, '') ?? '';
+    if (usernameNormalized.length < 2) {
+      throw new BadRequestException('Informe um nome de usuário com pelo menos 2 caracteres (letras minúsculas, números, ponto ou underscore).');
+    }
+    const existingByUsername = await this.prisma.user.findUnique({
+      where: { username: usernameNormalized },
+    });
+    if (existingByUsername) {
+      throw new ConflictException('Este nome de usuário já está em uso. Escolha outro.');
+    }
     const [existingByEmail, existingByPhone] = await Promise.all([
       this.prisma.user.findUnique({ where: { email: emailLower } }),
       phoneNormalized.length >= 10
@@ -44,9 +57,46 @@ export class AuthService {
         passwordHash,
         name: dto.name.trim(),
         phone: phoneNormalized.length >= 10 ? phoneNormalized : dto.phone,
+        username: usernameNormalized,
       },
     });
     return this.issueTokens(user.id, user.email);
+  }
+
+  /** Cadastro de parceiro comercial: cria usuário + parceiro (STORE). Após pagamento, assinatura é ativada. */
+  async partnerSignup(dto: PartnerSignupDto): Promise<AuthResponseDto> {
+    let documentType: 'CPF' | 'CNPJ' | null = null;
+    let document: string | null = null;
+    if (dto.personType === 'PF' && dto.cpf) {
+      const digits = dto.cpf.replace(/\D/g, '');
+      if (digits.length !== 11) throw new BadRequestException('CPF deve ter 11 dígitos.');
+      documentType = 'CPF';
+      document = digits;
+    } else if (dto.personType === 'CNPJ' && dto.cnpj) {
+      const digits = dto.cnpj.replace(/\D/g, '');
+      if (digits.length !== 14) throw new BadRequestException('CNPJ deve ter 14 dígitos.');
+      documentType = 'CNPJ';
+      document = digits;
+    }
+    const signupData: SignupDto = {
+      email: dto.email,
+      password: dto.password,
+      name: dto.name,
+      phone: dto.phone,
+      username: dto.username,
+    };
+    const tokens = await this.signup(signupData);
+    const payload = this.jwtService.decode(tokens.accessToken) as { sub: string } | null;
+    if (!payload?.sub) throw new BadRequestException('Falha ao obter usuário criado');
+    await this.partnersService.createForUser(
+      payload.sub,
+      dto.establishmentName,
+      dto.planId,
+      dto.address?.trim() || null,
+      documentType,
+      document,
+    );
+    return tokens;
   }
 
   async login(dto: LoginDto): Promise<AuthResponseDto> {

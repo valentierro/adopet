@@ -2,6 +2,7 @@ import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
+import { PartnerSignupDto } from './dto/partner-signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
@@ -15,6 +16,12 @@ export class AuthController {
   @ApiOperation({ summary: 'Cadastrar novo usuário' })
   async signup(@Body() dto: SignupDto): Promise<AuthResponseDto> {
     return this.authService.signup(dto);
+  }
+
+  @Post('partner-signup')
+  @ApiOperation({ summary: 'Cadastro parceiro comercial: cria conta + estabelecimento. Após pagamento, acesso ao portal.' })
+  async partnerSignup(@Body() dto: PartnerSignupDto): Promise<AuthResponseDto> {
+    return this.authService.partnerSignup(dto);
   }
 
   @Post('login')

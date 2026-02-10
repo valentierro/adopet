@@ -7,4 +7,7 @@ export class FeedResponseDto {
 
   @ApiProperty({ nullable: true, description: 'Cursor para próxima página' })
   nextCursor: string | null;
+
+  @ApiProperty({ description: 'Total de pets no feed (sem paginação)' })
+  totalCount: number;
 }

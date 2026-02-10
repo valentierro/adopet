@@ -8,5 +8,6 @@ import { VerificationModule } from '../verification/verification.module';
   imports: [ModerationModule, VerificationModule],
   controllers: [FeedController],
   providers: [FeedService],
+  exports: [FeedService],
 })
 export class FeedModule {}

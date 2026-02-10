@@ -24,7 +24,8 @@
         "foregroundImage": "./assets/brand/icon/app_icon_light.png",
         "backgroundColor": "#FFFFFF"
       },
-      "package": "br.com.adopet.app"
+      "package": "br.com.adopet.app",
+      "versionCode": 1
     },
     "plugins": [
       "expo-router",

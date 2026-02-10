@@ -27,6 +27,7 @@ export default function ProfileEditScreen() {
   const { colors } = useTheme();
   const { data: user, isLoading } = useQuery({ queryKey: ['me'], queryFn: getMe });
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('');
   const [bio, setBio] = useState('');
@@ -39,6 +40,7 @@ export default function ProfileEditScreen() {
   useEffect(() => {
     if (user) {
       setName(user.name ?? '');
+      setUsername((user as { username?: string }).username ?? '');
       setPhone(user.phone ?? '');
       setCity(user.city ?? '');
       setBio(user.bio ?? '');
@@ -76,8 +78,10 @@ export default function ProfileEditScreen() {
       Alert.alert('Erro', 'Informe seu nome.');
       return;
     }
+    const userInput = username.trim().toLowerCase().replace(/^@/, '');
     updateMutation.mutate({
       name: name.trim(),
+      username: userInput.length >= 2 ? userInput : undefined,
       phone: phone.trim() || undefined,
       city: city.trim() || undefined,
       bio: bio.trim() || undefined,
@@ -101,6 +105,18 @@ export default function ProfileEditScreen() {
           onChangeText={setName}
           autoCapitalize="words"
         />
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+          placeholder="Nome de usuário (ex: maria.silva)"
+          placeholderTextColor={colors.textSecondary}
+          value={username}
+          onChangeText={setUsername}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Text style={[styles.hint, { color: colors.textSecondary }]}>
+          Quem for indicar você como adotante poderá buscar por @nome. Apenas letras minúsculas, números, ponto ou underscore.
+        </Text>
         <TextInput
           style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
           placeholder="Telefone"
@@ -244,6 +260,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   chipText: { fontSize: 14 },
+  hint: { fontSize: 12, marginTop: -4, marginBottom: 4 },
   input: {
     padding: spacing.md,
     borderRadius: 12,

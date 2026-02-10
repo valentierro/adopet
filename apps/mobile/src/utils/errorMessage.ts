@@ -13,6 +13,7 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string): strin
       const parsed = JSON.parse(body);
       const m = parsed?.message ?? parsed?.error;
       if (typeof m === 'string' && m.length < 100) return getFriendlyErrorMessage(new Error(m), fallback);
+      if (Array.isArray(m) && m.length > 0 && typeof m[0] === 'string' && m[0].length < 120) return getFriendlyErrorMessage(new Error(m[0]), fallback);
     } catch {
       // body não é JSON, seguir com a msg inteira para os regex abaixo
     }
@@ -23,10 +24,16 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string): strin
     return 'Email ou senha incorretos. Tente novamente.';
   }
   if (/conflict|já existe|already exists|cadastrado/i.test(msg)) {
+    if (/nome de usuário|username.*em uso|em uso.*username/i.test(msg)) {
+      return 'Este nome de usuário já está em uso. Escolha outro.';
+    }
     if (/telefone.*cadastrado|cadastrado.*telefone|phone.*already/i.test(msg)) {
       return 'Este telefone já está em uso. Tente fazer login ou use outro número.';
     }
     return 'Este email já está em uso. Tente fazer login ou use outro email.';
+  }
+  if (/bad request|informe.*nome de usuário|nome de usuário.*mínimo|use apenas letras/i.test(msg)) {
+    return 'Nome de usuário inválido. Use 2 a 30 caracteres: letras minúsculas, números, ponto ou underscore.';
   }
   if (/forbidden|não permitido|não participa|favoritou|403/i.test(msg)) {
     return 'Adicione o pet aos favoritos para iniciar a conversa.';
@@ -42,6 +49,9 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string): strin
   }
   if (/upload.*não configurado|credentials|S3_ACCESS|Could not load credentials/i.test(msg)) {
     return 'Envio de fotos temporariamente indisponível. Se você é o responsável pelo app, configure o armazenamento de arquivos no servidor.';
+  }
+  if (/pagamentos?\s*não\s*configurados?|payments?\s*not\s*configured/i.test(msg)) {
+    return 'Pagamentos não configurados. Entre em contato com o suporte.';
   }
   if (/pushToken|column.*does not exist|API\s*5\d{2}|ECONNREFUSED/i.test(msg)) {
     return 'Ocorreu um erro. Tente novamente em instantes.';

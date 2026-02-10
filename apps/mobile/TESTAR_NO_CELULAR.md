@@ -111,3 +111,33 @@ Para instalar como app “de verdade” e compartilhar com testadores. **iOS**: 
 | Instalar no Android   | APK do EAS       | `eas build --platform android` + link   |
 
 Se a API estiver em um servidor acessível pela internet, configure `EXPO_PUBLIC_API_URL` no `.env` do mobile com essa URL antes de gerar o build para TestFlight/APK.
+
+---
+
+## Verificação: Parceria e cache de login
+
+### 1. Welcome → formulário de parceria (sem abrir as tabs)
+
+- Abra o app **sem estar logado** (ou toque em **Perfil** → **Sair**).
+- Na tela de boas-vindas, toque em **"Clínicas, veterinários, lojas"**.
+- **Esperado:** abre a tela **Solicitar parceria** com o formulário comercial (campos de cadastro + plano + botão "Criar conta e ir para pagamento"). **Não** deve aparecer a barra de abas (Início, Favoritos, etc.).
+- Toque em **Voltar** e depois em **"Sou ONG ou instituição"**.
+- **Esperado:** abre o mesmo formulário no modo ONG (campos de instituição, CEP, etc. e botão "Enviar solicitação").
+
+### 2. Token em cache (reabrir app com sessão expirada)
+
+- Faça login no app e use normalmente.
+- **Simule token expirado:** desligue a API ou espere o access token expirar (~15 min), ou no código altere temporariamente o `JWT_SECRET` da API e reinicie-a (o token antigo deixa de ser válido).
+- Feche o app por completo (remova do multitarefa) e abra de novo.
+- **Esperado:** o app pode mostrar uma tela em branco por 1–2 segundos (validação), depois redireciona para a **tela de boas-vindas** (Welcome), como se não estivesse logado. Não deve entrar direto nas tabs com sessão “fantasma”.
+
+### Teste automatizado (Maestro)
+
+Com o app instalado e o [Maestro CLI](https://maestro.mobile.dev/) instalado:
+
+```bash
+cd apps/mobile
+maestro test .maestro/flows/04-parceria-welcome-to-form.yaml
+```
+
+O fluxo abre o app, toca nos CTAs de parceria e verifica se o formulário correto aparece.

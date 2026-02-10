@@ -1,14 +1,24 @@
-import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { MeService } from './me.service';
 import { TutorStatsService } from './tutor-stats.service';
+import { PartnersService } from '../partners/partners.service';
+import { StripeService } from '../payments/stripe.service';
 import { UpdateMeDto } from './dto/update-me.dto';
 import { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import { PushTokenDto } from './dto/push-token.dto';
+import { UpdateMyPartnerDto } from '../partners/dto/update-my-partner.dto';
+import { CreatePartnerCouponDto } from '../partners/dto/create-partner-coupon.dto';
+import { UpdatePartnerCouponDto } from '../partners/dto/update-partner-coupon.dto';
+import { CreateCheckoutSessionDto } from './dto/checkout-session.dto';
+import { CreateBillingPortalSessionDto } from './dto/billing-portal.dto';
 import type { MeResponseDto } from './dto/me-response.dto';
 import type { PreferencesResponseDto } from './dto/preferences-response.dto';
+import type { MyAdoptionsResponseDto } from './dto/my-adoption-item.dto';
+import type { PartnerMeDto } from '../partners/dto/partner-response.dto';
+import type { PartnerCouponResponseDto } from '../partners/dto/partner-coupon-response.dto';
 import { TutorStatsResponseDto } from './dto/tutor-stats-response.dto';
 
 @ApiTags('me')
@@ -19,6 +29,8 @@ export class MeController {
   constructor(
     private readonly meService: MeService,
     private readonly tutorStatsService: TutorStatsService,
+    private readonly partnersService: PartnersService,
+    private readonly stripeService: StripeService,
   ) {}
 
   @Get('tutor-stats')
@@ -31,6 +43,96 @@ export class MeController {
   @ApiOperation({ summary: 'Dados do usuário logado' })
   async getMe(@CurrentUser() user: { id: string }): Promise<MeResponseDto> {
     return this.meService.getMe(user.id);
+  }
+
+  @Get('partner')
+  @ApiOperation({ summary: 'Dados do estabelecimento parceiro (portal do parceiro)' })
+  async getMyPartner(@CurrentUser() user: { id: string }): Promise<PartnerMeDto | null> {
+    return this.partnersService.getByUserId(user.id);
+  }
+
+  @Get('partner/analytics')
+  @ApiOperation({ summary: 'Analytics do parceiro (visualizações, cópias de cupom)' })
+  async getMyPartnerAnalytics(
+    @CurrentUser() user: { id: string },
+  ): Promise<{ profileViews: number; couponCopies: number; byCoupon: Array<{ couponId: string; code: string; copies: number }> }> {
+    return this.partnersService.getAnalyticsByUserId(user.id);
+  }
+
+  @Post('partner/checkout-session')
+  @ApiOperation({ summary: 'Gerar link de pagamento Stripe para assinatura do plano' })
+  async createPartnerCheckoutSession(
+    @CurrentUser() user: { id: string },
+    @Body() dto: CreateCheckoutSessionDto,
+  ): Promise<{ url: string }> {
+    return this.stripeService.createCheckoutSession(user.id, dto.planId, dto.successUrl, dto.cancelUrl);
+  }
+
+  @Post('partner/billing-portal')
+  @ApiOperation({ summary: 'Gerar link do portal Stripe para gerenciar assinatura e cancelar' })
+  async createPartnerBillingPortalSession(
+    @CurrentUser() user: { id: string },
+    @Body() dto: CreateBillingPortalSessionDto,
+  ): Promise<{ url: string }> {
+    return this.stripeService.createBillingPortalSession(user.id, dto.returnUrl);
+  }
+
+  @Put('partner')
+  @ApiOperation({ summary: 'Atualizar dados do estabelecimento (portal do parceiro)' })
+  async updateMyPartner(
+    @CurrentUser() user: { id: string },
+    @Body() dto: UpdateMyPartnerDto,
+  ): Promise<PartnerMeDto> {
+    return this.partnersService.updateByUserId(user.id, dto);
+  }
+
+  @Get('partner/coupons')
+  @ApiOperation({ summary: 'Listar cupons do estabelecimento parceiro' })
+  async getMyPartnerCoupons(@CurrentUser() user: { id: string }): Promise<PartnerCouponResponseDto[]> {
+    return this.partnersService.getCouponsByUserId(user.id);
+  }
+
+  @Post('partner/coupons')
+  @ApiOperation({ summary: 'Criar cupom de desconto' })
+  async createMyPartnerCoupon(
+    @CurrentUser() user: { id: string },
+    @Body() dto: CreatePartnerCouponDto,
+  ): Promise<PartnerCouponResponseDto> {
+    return this.partnersService.createCoupon(user.id, dto);
+  }
+
+  @Put('partner/coupons/:id')
+  @ApiOperation({ summary: 'Atualizar cupom' })
+  async updateMyPartnerCoupon(
+    @CurrentUser() user: { id: string },
+    @Param('id') couponId: string,
+    @Body() dto: UpdatePartnerCouponDto,
+  ): Promise<PartnerCouponResponseDto> {
+    return this.partnersService.updateCoupon(user.id, couponId, dto);
+  }
+
+  @Delete('partner/coupons/:id')
+  @ApiOperation({ summary: 'Excluir cupom' })
+  async deleteMyPartnerCoupon(
+    @CurrentUser() user: { id: string },
+    @Param('id') couponId: string,
+  ): Promise<{ message: string }> {
+    return this.partnersService.deleteCoupon(user.id, couponId);
+  }
+
+  @Get('adoptions')
+  @ApiOperation({ summary: 'Listar pets que o usuário adotou (como adotante)' })
+  async getMyAdoptions(
+    @CurrentUser() user: { id: string },
+    @Query('species') species?: 'BOTH' | 'DOG' | 'CAT',
+  ): Promise<MyAdoptionsResponseDto> {
+    return this.meService.getMyAdoptions(user.id, species);
+  }
+
+  @Get('lookup-username/:username')
+  @ApiOperation({ summary: 'Buscar usuário por @nome (para indicar adotante ao marcar pet como adotado)' })
+  async lookupUsername(@Param('username') username: string): Promise<{ id: string; name: string; username: string } | null> {
+    return this.meService.lookupByUsername(username);
   }
 
   @Get('export')

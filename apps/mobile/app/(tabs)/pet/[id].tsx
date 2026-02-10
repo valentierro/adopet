@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   View,
@@ -86,11 +87,17 @@ export default function PetDetailsScreen() {
   const queryClient = useQueryClient();
   const { colors } = useTheme();
   const userId = useAuthStore((s) => s.user?.id);
-  const { data: pet, isLoading } = useQuery({
+  const { data: pet, isLoading, refetch: refetchPet } = useQuery({
     queryKey: ['pet', id],
     queryFn: () => getPetById(id!),
     enabled: !!id,
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (id) refetchPet();
+    }, [id, refetchPet]),
+  );
   const { data: favoritesData } = useQuery({
     queryKey: ['favorites'],
     queryFn: () => getFavorites(),
@@ -219,6 +226,19 @@ export default function PetDetailsScreen() {
           <StatusBadge label={`${pet.distanceKm.toFixed(1)} km`} variant="neutral" />
         )}
       </View>
+      {pet.partner && (
+        <TouchableOpacity
+          style={[styles.partnerBanner, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+          onPress={() => router.push('/partners')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={18} color={colors.primary} />
+          <Text style={[styles.partnerBannerText, { color: colors.textPrimary }]}>
+            Em parceria com {pet.partner.name}{(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? ' (destaque)' : ''}
+          </Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+        </TouchableOpacity>
+      )}
       {pet.status === 'ADOPTED' && (
         <View style={[styles.adoptedBanner, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}>
           <Ionicons name="checkmark-circle" size={22} color={colors.primary} />
@@ -413,6 +433,20 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.xs,
     marginBottom: spacing.sm,
+  },
+  partnerBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+  },
+  partnerBannerText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
   },
   adoptedBanner: {
     flexDirection: 'row',

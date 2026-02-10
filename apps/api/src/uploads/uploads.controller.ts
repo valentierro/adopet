@@ -6,6 +6,7 @@ import { UploadsService } from './uploads.service';
 import { PresignDto } from './dto/presign.dto';
 import { ConfirmUploadDto } from './dto/confirm.dto';
 import { ConfirmAvatarDto } from './dto/confirm-avatar.dto';
+import { ConfirmPartnerLogoDto } from './dto/confirm-partner-logo.dto';
 import { PresignResponseDto } from './dto/presign-response.dto';
 
 @ApiTags('uploads')
@@ -40,5 +41,14 @@ export class UploadsController {
     @Body() dto: ConfirmAvatarDto,
   ): Promise<{ avatarUrl: string }> {
     return this.uploadsService.confirmAvatar(user.id, dto.key);
+  }
+
+  @Post('confirm-partner-logo')
+  @ApiOperation({ summary: 'Confirmar upload de logo do estabelecimento parceiro' })
+  async confirmPartnerLogo(
+    @CurrentUser() user: { id: string },
+    @Body() dto: ConfirmPartnerLogoDto,
+  ): Promise<{ logoUrl: string }> {
+    return this.uploadsService.confirmPartnerLogo(user.id, dto.key);
   }
 }

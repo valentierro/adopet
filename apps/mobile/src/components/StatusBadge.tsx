@@ -13,14 +13,14 @@ export function StatusBadge({ label, variant = 'neutral' }: Props) {
 
   const bgColor =
     variant === 'success'
-      ? colors.primary + '20'
+      ? '#15803d' // verde sólido para "Vacinado"
       : variant === 'warning'
         ? colors.accent + '20'
         : colors.surface;
 
   const textColor =
     variant === 'success'
-      ? colors.primaryDark
+      ? '#fff'
       : variant === 'warning'
         ? colors.accent
         : colors.textSecondary;

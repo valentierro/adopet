@@ -13,6 +13,7 @@ export type SignupBody = {
   password: string;
   name: string;
   phone: string;
+  username: string;
 };
 
 export type LoginBody = {

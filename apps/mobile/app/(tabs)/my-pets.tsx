@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useState, useCallback } from 'react';
+import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, ActivityIndicator, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -49,15 +50,8 @@ const STATUS_OPTIONS: { value: '' | PetStatus; label: string }[] = [
 export default function MyPetsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
-  const params = useLocalSearchParams<{ status?: string }>();
   const [speciesFilter, setSpeciesFilter] = useState<'BOTH' | 'DOG' | 'CAT'>('BOTH');
-  const [statusFilter, setStatusFilter] = useState<'' | PetStatus>(() =>
-    params.status === 'ADOPTED' ? 'ADOPTED' : '',
-  );
-
-  useEffect(() => {
-    if (params.status === 'ADOPTED') setStatusFilter('ADOPTED');
-  }, [params.status]);
+  const [statusFilter, setStatusFilter] = useState<'' | PetStatus>('');
 
   const {
     data,
@@ -78,6 +72,12 @@ export default function MyPetsScreen() {
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     initialPageParam: undefined as string | undefined,
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch]),
+  );
   const pets = data?.pages.flatMap((p) => p.items) ?? [];
 
   if ((isLoading || isRefetching) && pets.length === 0) {
@@ -253,6 +253,22 @@ export default function MyPetsScreen() {
                     : (STATUS_LABEL[item.status as string] ?? item.status)}
                 </Text>
               </View>
+              {item.status === 'ADOPTED' && item.adoptedAt ? (
+                <View style={[styles.adminBadge, { backgroundColor: '#0D9488' + '25', marginTop: 6 }]}>
+                  <Text style={[styles.adminBadgeText, { color: '#0D9488' }]}>Confirmado pelo Adopet</Text>
+                </View>
+              ) : null}
+              {item.adoptionRejectedAt ? (
+                <View style={[styles.adminBadge, { backgroundColor: (colors.error || '#DC2626') + '25', marginTop: 6 }]}>
+                  <Text style={[styles.adminBadgeText, { color: colors.error || '#DC2626' }]}>Não Confirmado pelo Adopet</Text>
+                </View>
+              ) : null}
+              {item.status === 'ADOPTED' && item.adoptedAt ? (
+                <Text style={[styles.cardMeta, { color: colors.textSecondary, marginTop: 2 }]}>
+                  Adotado em {new Date(item.adoptedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  {item.adopterUsername ? ` • @${item.adopterUsername}` : ''}
+                </Text>
+              ) : null}
             </View>
             <Text style={[styles.arrow, { color: colors.textSecondary }]}>›</Text>
           </TouchableOpacity>
@@ -306,5 +322,7 @@ const styles = StyleSheet.create({
   statusBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 4 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 12, fontWeight: '600' },
+  adminBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  adminBadgeText: { fontSize: 11, fontWeight: '600' },
   arrow: { fontSize: 24 },
 });

@@ -1,6 +1,8 @@
+import { useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ScreenContainer, EmptyState, LoadingLogo } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -17,6 +19,12 @@ export default function PassedPetsScreen() {
     queryKey: ['swipes', 'passed'],
     queryFn: getPassedPets,
   });
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch]),
+  );
+
   const undoMutation = useMutation({
     mutationFn: undoPass,
     onSuccess: () => {

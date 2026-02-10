@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class PendingAdoptionByTutorDto {
   @ApiProperty()
@@ -22,4 +22,13 @@ export class PendingAdoptionByTutorDto {
     required: false,
   })
   autoApproveAt?: string;
+
+  @ApiPropertyOptional({ description: 'Adotante indicado pelo tutor ao marcar como adotado' })
+  pendingAdopterId?: string;
+
+  @ApiPropertyOptional({ description: 'Nome do adotante indicado pelo tutor' })
+  pendingAdopterName?: string;
+
+  @ApiPropertyOptional({ description: 'Username do adotante indicado (ex.: maria.silva)' })
+  pendingAdopterUsername?: string;
 }

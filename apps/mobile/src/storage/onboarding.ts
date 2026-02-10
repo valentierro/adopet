@@ -10,3 +10,8 @@ export async function getOnboardingSeen(): Promise<boolean> {
 export async function setOnboardingSeen(): Promise<void> {
   await SecureStore.setItemAsync(KEY_ONBOARDING_SEEN, 'true');
 }
+
+/** Remove a preferência para que as telas de boas-vindas voltem a aparecer (ex.: novo usuário). */
+export async function clearOnboardingSeen(): Promise<void> {
+  await SecureStore.deleteItemAsync(KEY_ONBOARDING_SEEN);
+}

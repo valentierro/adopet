@@ -3,6 +3,7 @@ import { TouchableOpacity } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '../../src/hooks/useTheme';
 import { usePushToken } from '../../src/hooks/usePushToken';
+import { useNotificationResponse } from '../../src/hooks/useNotificationResponse';
 import { getConversations } from '../../src/api/conversations';
 import { HeaderLogo } from '../../src/components';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,8 +23,10 @@ function HeaderBackButton() {
 }
 
 export default function TabsLayout() {
+  const router = useRouter();
   const { colors } = useTheme();
   usePushToken(true);
+  useNotificationResponse(router);
   const { data: conversationsData } = useQuery({
     queryKey: ['conversations'],
     queryFn: getConversations,
@@ -61,15 +64,7 @@ export default function TabsLayout() {
           headerShown: true,
           headerTitle: 'Descobrir pets',
           headerTitleAlign: 'center',
-          headerLeft: () => (
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={{ padding: 8, marginLeft: 4 }}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
-              <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-            </TouchableOpacity>
-          ),
+          headerLeft: () => <HeaderBackButton />,
         }}
       />
       <Tabs.Screen
@@ -126,6 +121,10 @@ export default function TabsLayout() {
         options={{ href: null, title: 'Meus anúncios', ...backScreenOptions }}
       />
       <Tabs.Screen
+        name="my-adoptions"
+        options={{ href: null, title: 'Minhas adoções', ...backScreenOptions }}
+      />
+      <Tabs.Screen
         name="pet-edit/[id]"
         options={{ href: null, title: 'Editar pet', ...backScreenOptions }}
       />
@@ -144,6 +143,42 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="admin"
         options={{ href: null, title: 'Administração', ...backScreenOptions }}
+      />
+      <Tabs.Screen
+        name="seja-parceiro"
+        options={{ href: null, title: 'Seja um parceiro', ...backScreenOptions }}
+      />
+      <Tabs.Screen
+        name="partners"
+        options={{ href: null, title: 'Parceiros Adopet', ...backScreenOptions }}
+      />
+      <Tabs.Screen
+        name="partners-area"
+        options={{
+          href: null,
+          title: 'Ofertas dos parceiros',
+          headerTitle: () => <HeaderLogo />,
+          headerTitleAlign: 'center',
+          ...backScreenOptions,
+        }}
+      />
+      <Tabs.Screen
+        name="partners/[id]"
+        options={{
+          href: null,
+          title: 'Parceiro',
+          headerTitle: () => <HeaderLogo />,
+          headerTitleAlign: 'center',
+          ...backScreenOptions,
+        }}
+      />
+      <Tabs.Screen
+        name="seja-parceiro-ong"
+        options={{ href: null, title: 'Parceria para ONGs', ...backScreenOptions }}
+      />
+      <Tabs.Screen
+        name="seja-parceiro-comercial"
+        options={{ href: null, title: 'Parceria comercial', ...backScreenOptions }}
       />
     </Tabs>
   );

@@ -151,3 +151,44 @@ S3_PUBLIC_BASE="http://localhost:9000/adopet"
 ```
 
 Em produção, use **AWS S3** (ou outro S3-compatível) e defina `S3_ENDPOINT` apenas se for um endpoint customizado; `S3_PUBLIC_BASE` pode ser uma CDN ou o domínio público do bucket.
+
+## Stripe — webhook em desenvolvimento (parceiro pago)
+
+O checkout do Stripe abre no navegador; quando o pagamento é concluído, o Stripe envia um **webhook** (`checkout.session.completed`) para a API. Só assim o backend marca o parceiro como pago (`isPaidPartner = true`) e o app libera o Portal do parceiro.
+
+Em **localhost** o Stripe não consegue acessar sua máquina. Use o **Stripe CLI** para encaminhar os eventos:
+
+### 1. Instalar o Stripe CLI
+
+- macOS: `brew install stripe/stripe-cli/stripe`
+- Ou baixe em: https://stripe.com/docs/stripe-cli
+
+### 2. Login e encaminhar webhooks
+
+```bash
+stripe login
+stripe listen --forward-to localhost:3000/v1/payments/stripe-webhook
+```
+
+O CLI exibe algo como: `Ready! Your webhook signing secret is whsec_xxxxxxxx`.
+
+### 3. Colocar o secret no `.env`
+
+No `apps/api/.env`:
+
+```env
+STRIPE_WEBHOOK_SECRET="whsec_xxxxxxxx"
+```
+
+Use o valor que o `stripe listen` mostrou (ele muda a cada vez que você inicia o listen).
+
+### 4. Fluxo de teste
+
+1. Deixe o `stripe listen` rodando em um terminal.
+2. API rodando (`pnpm dev`) com `STRIPE_SECRET_KEY` e `STRIPE_PRICE_BASIC` no `.env`.
+3. No app: criar conta parceiro e ir para pagamento (ou Perfil → Renovar assinatura do parceiro).
+4. Na tela do Stripe, use cartão de teste (ex.: `4242 4242 4242 4242`) e conclua o pagamento.
+5. O CLI encaminha o evento para a API; o backend atualiza o parceiro.
+6. No app, toque em **“Voltar ao comerciante”** / “Return to merchant” na página de sucesso do Stripe (ou feche e abra o app). O Perfil deve mostrar **Portal do parceiro** e o portal ficará acessível.
+
+Sem o `stripe listen` + `STRIPE_WEBHOOK_SECRET`, o pagamento acontece no Stripe mas a API nunca recebe o evento e o portal não é liberado.

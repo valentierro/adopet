@@ -10,9 +10,17 @@ export type FavoriteItem = {
     name: string;
     species: string;
     age: number;
+    sex: string;
+    size: string;
+    vaccinated: boolean;
+    neutered: boolean;
     photos: string[];
     status: string;
     verified?: boolean;
+    /** Data do anúncio (quando o pet foi cadastrado) */
+    createdAt: string;
+    city?: string | null;
+    partner?: { id: string; name: string; slug: string; logoUrl?: string | null };
   };
 };
 
@@ -45,15 +53,17 @@ export function favoritePetToPet(item: FavoriteItem): Pet {
     name: pet?.name ?? '',
     species: (pet?.species as 'dog' | 'cat') ?? 'dog',
     age: typeof pet?.age === 'number' ? pet.age : 0,
-    sex: 'male',
-    size: 'medium',
-    vaccinated: false,
-    neutered: false,
+    sex: (pet?.sex as 'male' | 'female') ?? 'male',
+    size: (pet?.size as 'small' | 'medium' | 'large' | 'xlarge') ?? 'medium',
+    vaccinated: pet?.vaccinated ?? false,
+    neutered: pet?.neutered ?? false,
     description: '',
     photos,
     ownerId: '',
-    createdAt: item?.createdAt ?? '',
-    updatedAt: item?.createdAt ?? '',
+    createdAt: pet?.createdAt ?? item?.createdAt ?? '',
+    updatedAt: pet?.createdAt ?? item?.createdAt ?? '',
     verified: (pet as { verified?: boolean })?.verified ?? false,
+    city: pet?.city ?? undefined,
+    partner: pet?.partner,
   };
 }

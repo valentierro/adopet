@@ -10,9 +10,13 @@ import {
   ActivityIndicator,
   TextInput,
   Modal,
+  Platform,
+  Image,
   type LayoutChangeEvent,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,15 +35,25 @@ import {
   searchAdminUsers,
   getAdminPetsAvailable,
   getAdminPendingAdoptionsByTutor,
+  rejectPendingAdoptionByTutor,
+  getAdminBugReports,
   resolveVerification,
   revokeVerification,
+  getAdminPartners,
+  createAdminPartner,
+  updateAdminPartner,
   type VerificationPendingItem,
   type ReportItem,
   type AdoptionItem,
   type PetAvailableItem,
   type PendingAdoptionByTutorItem,
   type UserSearchItem,
+  type BugReportItem,
+  type PartnerAdminItem,
+  type CreatePartnerBody,
+  type UpdatePartnerBody,
 } from '../../src/api/admin';
+import { presign } from '../../src/api/uploads';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { spacing } from '../../src/theme';
 
@@ -95,6 +109,7 @@ export default function AdminScreen() {
   const [selectedPetIds, setSelectedPetIds] = useState<Set<string>>(new Set());
   const [selectedVerificationIds, setSelectedVerificationIds] = useState<Set<string>>(new Set());
   const [selectedReportIds, setSelectedReportIds] = useState<Set<string>>(new Set());
+  const [selectedPendingAdoptionPetIds, setSelectedPendingAdoptionPetIds] = useState<Set<string>>(new Set());
 
   const { data: pendingPets = [], isLoading: loadingPets, refetch: refetchPets, isRefetching: refetchingPets } = useQuery({
     queryKey: ['admin', 'pending-pets'],
@@ -136,6 +151,16 @@ export default function AdminScreen() {
     queryFn: getAdminPendingAdoptionsByTutor,
   });
 
+  const { data: bugReports = [], refetch: refetchBugReports, isRefetching: refetchingBugReports } = useQuery({
+    queryKey: ['admin', 'bug-reports'],
+    queryFn: getAdminBugReports,
+  });
+
+  const { data: partnersList = [], refetch: refetchPartners, isRefetching: refetchingPartners } = useQuery({
+    queryKey: ['admin', 'partners'],
+    queryFn: getAdminPartners,
+  });
+
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userSearchResults, setUserSearchResults] = useState<UserSearchItem[]>([]);
   const [userSearching, setUserSearching] = useState(false);
@@ -158,6 +183,44 @@ export default function AdminScreen() {
     return () => clearTimeout(t);
   }, [userSearchQuery]);
 
+  useEffect(() => {
+    if (!confirmAdoptionSearchQuery.trim() || confirmAdoptionSearchQuery.length < 2) {
+      setConfirmAdoptionSearchResults([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setConfirmAdoptionSearching(true);
+      try {
+        const list = await searchAdminUsers(confirmAdoptionSearchQuery);
+        setConfirmAdoptionSearchResults(list);
+      } catch {
+        setConfirmAdoptionSearchResults([]);
+      } finally {
+        setConfirmAdoptionSearching(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [confirmAdoptionSearchQuery]);
+
+  useEffect(() => {
+    if (!massConfirmSearchQuery.trim() || massConfirmSearchQuery.length < 2) {
+      setMassConfirmSearchResults([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setMassConfirmSearching(true);
+      try {
+        const list = await searchAdminUsers(massConfirmSearchQuery);
+        setMassConfirmSearchResults(list);
+      } catch {
+        setMassConfirmSearchResults([]);
+      } finally {
+        setMassConfirmSearching(false);
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [massConfirmSearchQuery]);
+
   const [registerPetId, setRegisterPetId] = useState<string | null>(null);
   const [registerAdopterId, setRegisterAdopterId] = useState<string | null>(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -165,10 +228,44 @@ export default function AdminScreen() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [resolveReportModal, setResolveReportModal] = useState<{ reportId: string } | null>(null);
   const [resolveReportFeedback, setResolveReportFeedback] = useState('');
+  const [confirmAdoptionPendingItem, setConfirmAdoptionPendingItem] = useState<PendingAdoptionByTutorItem | null>(null);
+  const [confirmAdoptionSearchQuery, setConfirmAdoptionSearchQuery] = useState('');
+  const [confirmAdoptionSearchResults, setConfirmAdoptionSearchResults] = useState<UserSearchItem[]>([]);
+  const [confirmAdoptionSearching, setConfirmAdoptionSearching] = useState(false);
+  const [confirmAdoptionSelectedAdopterId, setConfirmAdoptionSelectedAdopterId] = useState<string | null>(null);
+  const [showMassConfirmAdoptionModal, setShowMassConfirmAdoptionModal] = useState(false);
+  const [massConfirmSearchQuery, setMassConfirmSearchQuery] = useState('');
+  const [massConfirmSearchResults, setMassConfirmSearchResults] = useState<UserSearchItem[]>([]);
+  const [massConfirmSearching, setMassConfirmSearching] = useState(false);
+  const [massConfirmSelectedAdopterId, setMassConfirmSelectedAdopterId] = useState<string | null>(null);
+  const [massConfirmSubmitting, setMassConfirmSubmitting] = useState(false);
+  const [rejectInProgressPetId, setRejectInProgressPetId] = useState<string | null>(null);
+  const [massRejecting, setMassRejecting] = useState(false);
+  const [showCreatePartnerModal, setShowCreatePartnerModal] = useState(false);
+  const [editingPartner, setEditingPartner] = useState<PartnerAdminItem | null>(null);
+  const [editPartnerForm, setEditPartnerForm] = useState<{ name: string; city: string; description: string; website: string; email: string; phone: string; logoUrl: string; active: boolean; isPaidPartner: boolean }>({
+    name: '', city: '', description: '', website: '', email: '', phone: '', logoUrl: '', active: true, isPaidPartner: false,
+  });
+  const [createPartnerForm, setCreatePartnerForm] = useState<CreatePartnerBody>({
+    type: 'ONG',
+    name: '',
+    city: '',
+    description: '',
+    website: '',
+    email: '',
+    phone: '',
+    logoUrl: '',
+    active: true,
+    approve: false,
+    isPaidPartner: false,
+  });
+  const [partnerLogoUploading, setPartnerLogoUploading] = useState<'create' | string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const scrollContentRef = useRef<View>(null);
   const sectionY = useRef<Record<string, number>>({});
   const pendingByTutorRef = useRef<View>(null);
+  const bugReportsRef = useRef<View>(null);
+  const partnersRef = useRef<View>(null);
   const adoptionsRef = useRef<View>(null);
   const pendingPetsRef = useRef<View>(null);
   const verificationsRef = useRef<View>(null);
@@ -194,6 +291,10 @@ export default function AdminScreen() {
       setRegisterAdopterId(null);
       setUserSearchQuery('');
       setUserSearchResults([]);
+      setConfirmAdoptionPendingItem(null);
+      setConfirmAdoptionSearchQuery('');
+      setConfirmAdoptionSearchResults([]);
+      setConfirmAdoptionSelectedAdopterId(null);
       setToastMessage('Adoção registrada. O pet foi marcado como adotado.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível registrar a adoção.')),
@@ -248,6 +349,78 @@ export default function AdminScreen() {
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível resolver.')),
   });
 
+  const createPartnerMutation = useMutation({
+    mutationFn: (body: CreatePartnerBody) => createAdminPartner(body),
+    onSuccess: (_, v) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
+      queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
+      setShowCreatePartnerModal(false);
+      setCreatePartnerForm({ type: 'ONG', name: '', city: '', description: '', website: '', email: '', phone: '', active: true, approve: false, isPaidPartner: false });
+      setToastMessage(v.approve ? 'Parceiro criado e aprovado.' : 'Parceiro criado. Aprove para aparecer no app.');
+    },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível criar parceiro.')),
+  });
+
+  const uploadPartnerLogo = useCallback(async (forCreate: boolean, partnerId?: string) => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão', 'Precisamos acessar suas fotos para enviar a logo.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const uri = result.assets[0].uri;
+    setPartnerLogoUploading(forCreate ? 'create' : partnerId ?? null);
+    try {
+      const ext = uri.split('.').pop()?.toLowerCase() || 'jpg';
+      const filename = `partner-logo-${Date.now()}.${ext === 'jpg' ? 'jpg' : ext}`;
+      const { uploadUrl, publicUrl } = await presign(filename, `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const putRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: blob,
+        headers: { 'Content-Type': blob.type || 'image/jpeg' },
+      });
+      if (!putRes.ok) throw new Error(`Upload falhou: ${putRes.status}`);
+      if (forCreate) {
+        setCreatePartnerForm((f) => ({ ...f, logoUrl: publicUrl }));
+      } else {
+        setEditPartnerForm((f) => ({ ...f, logoUrl: publicUrl }));
+      }
+    } catch (e: unknown) {
+      Alert.alert('Falha ao enviar logo', getFriendlyErrorMessage(e, 'Tente novamente ou use uma URL.'));
+    } finally {
+      setPartnerLogoUploading(null);
+    }
+  }, []);
+
+  const approvePartnerMutation = useMutation({
+    mutationFn: (id: string) => updateAdminPartner(id, { approve: true }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
+      queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
+      setToastMessage('Parceiro aprovado.');
+    },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível aprovar.')),
+  });
+
+  const updatePartnerMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdatePartnerBody }) => updateAdminPartner(id, body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
+      queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
+      setToastMessage('Parceiro atualizado.');
+      setEditingPartner(null);
+    },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível salvar.')),
+  });
+
   const onRefresh = useCallback(() => {
     refetchPets();
     refetchVerifications();
@@ -257,10 +430,19 @@ export default function AdminScreen() {
     refetchAdoptions();
     refetchPetsAvailable();
     refetchPendingByTutor();
+    refetchBugReports();
+    refetchPartners();
     setSelectedPetIds(new Set());
     setSelectedVerificationIds(new Set());
     setSelectedReportIds(new Set());
-  }, [refetchPets, refetchVerifications, refetchApproved, refetchReports, refetchStats, refetchAdoptions, refetchPetsAvailable, refetchPendingByTutor]);
+    setSelectedPendingAdoptionPetIds(new Set());
+  }, [refetchPets, refetchVerifications, refetchApproved, refetchReports, refetchStats, refetchAdoptions, refetchPetsAvailable, refetchPendingByTutor, refetchBugReports, refetchPartners]);
+
+  useFocusEffect(
+    useCallback(() => {
+      onRefresh();
+    }, [onRefresh]),
+  );
 
   const togglePetSelection = (id: string) => {
     setSelectedPetIds((prev) => {
@@ -287,6 +469,130 @@ export default function AdminScreen() {
       else next.add(id);
       return next;
     });
+  };
+
+  const togglePendingAdoptionSelection = (petId: string) => {
+    setSelectedPendingAdoptionPetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(petId)) next.delete(petId);
+      else next.add(petId);
+      return next;
+    });
+  };
+
+  const handleMassConfirmAdoptions = () => {
+    setShowMassConfirmAdoptionModal(true);
+    setMassConfirmSearchQuery('');
+    setMassConfirmSearchResults([]);
+    setMassConfirmSelectedAdopterId(null);
+  };
+
+  const handleRejectPendingAdoption = (item: PendingAdoptionByTutorItem) => {
+    Alert.alert(
+      'Rejeitar adoção',
+      `Rejeitar a marcação de adoção de "${item.petName}"? O pet permanece como está (não volta ao feed). Não será computado ponto nem quantidade de adoção para o tutor, que verá o badge "Rejeitado pelo Adopet" em Meus anúncios.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Rejeitar',
+          style: 'destructive',
+          onPress: async () => {
+            setRejectInProgressPetId(item.petId);
+            try {
+              await rejectPendingAdoptionByTutor(item.petId);
+              queryClient.invalidateQueries({ queryKey: ['admin', 'pending-adoptions-by-tutor'] });
+              queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
+              queryClient.invalidateQueries({ queryKey: ['feed'] });
+              setToastMessage('Rejeitado. O tutor verá o badge em Meus anúncios.');
+            } catch (e: unknown) {
+              Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível rejeitar.'));
+            } finally {
+              setRejectInProgressPetId(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleMassRejectPendingAdoptions = () => {
+    const petIds = Array.from(selectedPendingAdoptionPetIds);
+    if (petIds.length === 0) return;
+    Alert.alert(
+      'Rejeitar selecionados',
+      `Rejeitar ${petIds.length} marcação(ões) de adoção? Os pets permanecem como estão (não voltam ao feed). Não será computado ponto nem quantidade de adoção; os tutores verão o badge "Rejeitado pelo Adopet" em Meus anúncios.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Rejeitar todos',
+          style: 'destructive',
+          onPress: async () => {
+            setMassRejecting(true);
+            let done = 0;
+            let errorMessage: string | null = null;
+            for (const petId of petIds) {
+              try {
+                await rejectPendingAdoptionByTutor(petId);
+                done++;
+              } catch (e: unknown) {
+                errorMessage = getFriendlyErrorMessage(e, 'Erro ao rejeitar.');
+                break;
+              }
+            }
+            queryClient.invalidateQueries({ queryKey: ['admin', 'pending-adoptions-by-tutor'] });
+            queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
+            queryClient.invalidateQueries({ queryKey: ['feed'] });
+            setSelectedPendingAdoptionPetIds(new Set());
+            setMassRejecting(false);
+            setToastMessage(
+              errorMessage
+                ? `${done} rejeitado(s). ${errorMessage}`
+                : petIds.length === 1
+                  ? 'Rejeitado. O tutor verá o badge em Meus anúncios.'
+                  : `${petIds.length} rejeições concluídas. Os tutores verão o badge em Meus anúncios.`,
+            );
+          },
+        },
+      ],
+    );
+  };
+
+  const handleMassConfirmAdoptionsSubmit = async () => {
+    const petIds = Array.from(selectedPendingAdoptionPetIds);
+    const adopterId = massConfirmSelectedAdopterId;
+    if (petIds.length === 0 || !adopterId) return;
+    setMassConfirmSubmitting(true);
+    try {
+      let done = 0;
+      let errorMessage: string | null = null;
+      for (const petId of petIds) {
+        try {
+          await createAdoption(petId, adopterId);
+          done++;
+        } catch (e: unknown) {
+          errorMessage = getFriendlyErrorMessage(e, 'Erro ao registrar adoção.');
+          break;
+        }
+      }
+      queryClient.invalidateQueries({ queryKey: ['admin', 'adoptions'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'pets-available'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'pending-adoptions-by-tutor'] });
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'tutor-stats'] });
+      setSelectedPendingAdoptionPetIds(new Set());
+      setShowMassConfirmAdoptionModal(false);
+      setMassConfirmSelectedAdopterId(null);
+      setMassConfirmSearchQuery('');
+      setMassConfirmSearchResults([]);
+      if (errorMessage) {
+        setToastMessage(`${done} confirmada(s). ${errorMessage}`);
+      } else {
+        setToastMessage(petIds.length === 1 ? 'Adoção registrada.' : `${petIds.length} adoções registradas.`);
+      }
+    } finally {
+      setMassConfirmSubmitting(false);
+    }
   };
 
   const handlePetPublication = (petId: string, status: 'APPROVED' | 'REJECTED') => {
@@ -403,7 +709,9 @@ export default function AdminScreen() {
     refetchingApproved ||
     refetchingReports ||
     refetchingStats ||
-    refetchingAdoptions;
+    refetchingAdoptions ||
+    refetchingBugReports ||
+    refetchingPartners;
   const unresolvedReports = reports.filter((r) => !r.resolvedAt);
 
   return (
@@ -428,6 +736,8 @@ export default function AdminScreen() {
           <SummaryCard title="Verificações" count={pending.length} sub="pendentes" colors={colors} onPress={() => scrollToSection('verifications')} />
           <SummaryCard title="Denúncias abertas" count={unresolvedReports.length} colors={colors} onPress={() => scrollToSection('reports')} />
           <SummaryCard title="Marcados adotado" count={stats?.pendingAdoptionsByTutorCount ?? 0} sub="pelo tutor" colors={colors} onPress={() => scrollToSection('pendingByTutor')} />
+          <SummaryCard title="Parceiros" count={partnersList.length} colors={colors} onPress={() => scrollToSection('partners')} />
+          <SummaryCard title="Reports de bugs" count={bugReports.length} sub="beta" colors={colors} onPress={() => scrollToSection('bugReports')} />
         </View>
 
         {/* Pets marcados como adotados pelo tutor (aguardando confirmação) */}
@@ -441,8 +751,41 @@ export default function AdminScreen() {
           <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
             O tutor marcou o pet como adotado. Valide em até 48h ou o sistema marcará os pontos automaticamente.
           </Text>
+          {selectedPendingAdoptionPetIds.size > 0 && (
+            <View style={styles.batchBar}>
+              <Text style={[styles.batchLabel, { color: colors.textSecondary }]}>
+                {selectedPendingAdoptionPetIds.size} selecionado(s)
+              </Text>
+              <View style={styles.batchActions}>
+                <TouchableOpacity
+                  style={[styles.batchBtn, { backgroundColor: colors.primary }]}
+                  onPress={handleMassConfirmAdoptions}
+                  disabled={massConfirmSubmitting}
+                >
+                  <Ionicons name="checkmark-done" size={16} color="#fff" />
+                  <Text style={styles.batchBtnText}>Confirmar adoções</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.batchBtn, { backgroundColor: colors.error || '#DC2626' }]}
+                  onPress={handleMassRejectPendingAdoptions}
+                  disabled={massRejecting}
+                >
+                  <Ionicons name="close-circle" size={16} color="#fff" />
+                  <Text style={styles.batchBtnText}>{massRejecting ? 'Rejeitando...' : 'Rejeitar selecionados'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
           {pendingAdoptionsByTutor.map((item) => (
             <View key={item.petId} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
+              <View style={styles.cardRowWrap}>
+                <TouchableOpacity
+                  style={[styles.checkbox, selectedPendingAdoptionPetIds.has(item.petId) && { backgroundColor: colors.primary }]}
+                  onPress={() => togglePendingAdoptionSelection(item.petId)}
+                >
+                  {selectedPendingAdoptionPetIds.has(item.petId) && <Ionicons name="checkmark" size={14} color="#fff" />}
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
               <View style={styles.adoptionCardHeader}>
                 <Text style={[styles.adoptionPetName, { color: colors.textPrimary }]}>{item.petName}</Text>
                 <View style={[styles.adoptionBadge, styles.adoptionBadgePending, { backgroundColor: (colors.error || '#DC2626') + '20' }]}>
@@ -451,6 +794,12 @@ export default function AdminScreen() {
                 </View>
               </View>
               <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>Tutor: {item.tutorName}</Text>
+              {item.pendingAdopterName ? (
+                <Text style={[styles.cardMeta, { color: colors.primary }]}>
+                  Adotante indicado pelo tutor: {item.pendingAdopterName}
+                  {item.pendingAdopterUsername ? ` (@${item.pendingAdopterUsername})` : ''}
+                </Text>
+              ) : null}
               <Text style={[styles.cardDate, { color: colors.textSecondary }]}>
                 Marcado em {new Date(item.markedAt).toLocaleDateString('pt-BR')} às {new Date(item.markedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
               </Text>
@@ -473,10 +822,192 @@ export default function AdminScreen() {
                 <Ionicons name="person-outline" size={14} color={colors.primary} />
                 <Text style={[styles.linkText, { color: colors.primary }]}>Ver perfil do tutor</Text>
               </TouchableOpacity>
+              <View style={[styles.cardActions, styles.cardActionsEqual, { marginTop: spacing.sm }]}>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnEqual, { backgroundColor: colors.primary }]}
+                onPress={() => {
+                  if (item.pendingAdopterId) {
+                    Alert.alert(
+                      'Confirmar adoção',
+                      `Confirmar adoção de ${item.petName} com ${item.pendingAdopterName ?? 'adotante indicado pelo tutor'}?`,
+                      [
+                        { text: 'Cancelar', style: 'cancel' },
+                        { text: 'Confirmar', onPress: () => createAdoptionMutation.mutate({ petId: item.petId }) },
+                      ]
+                    );
+                  } else {
+                    setConfirmAdoptionPendingItem(item);
+                    setConfirmAdoptionSearchQuery('');
+                    setConfirmAdoptionSearchResults([]);
+                    setConfirmAdoptionSelectedAdopterId(null);
+                  }
+                }}
+                disabled={createAdoptionMutation.isPending}
+              >
+                {createAdoptionMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                )}
+                <Text style={styles.actionBtnText} numberOfLines={1}>
+                  {createAdoptionMutation.isPending ? 'Salvando...' : item.pendingAdopterId ? 'Confirmar (indicado)' : 'Confirmar adoção'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionBtn, styles.actionBtnEqual, { backgroundColor: colors.error || '#DC2626' }]}
+                onPress={() => handleRejectPendingAdoption(item)}
+                disabled={rejectInProgressPetId === item.petId}
+              >
+                {rejectInProgressPetId === item.petId ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Ionicons name="close-circle" size={18} color="#fff" />
+                )}
+                <Text style={styles.actionBtnText}>
+                  {rejectInProgressPetId === item.petId ? 'Rejeitando...' : 'Rejeitar'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+                </View>
+              </View>
             </View>
           ))}
           </View>
         )}
+
+      {/* Modal Confirmação em massa */}
+      <Modal visible={showMassConfirmAdoptionModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+              Confirmar {selectedPendingAdoptionPetIds.size} adoção(ões)
+            </Text>
+            <Text style={[styles.sectionSub, { color: colors.textSecondary, marginBottom: spacing.md }]}>
+              O mesmo adotante será atribuído a todos os pets selecionados.
+            </Text>
+            <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Adotante (busque por nome ou email)</Text>
+            <TextInput
+              style={[styles.searchInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+              placeholder="Nome ou email..."
+              placeholderTextColor={colors.textSecondary}
+              value={massConfirmSearchQuery}
+              onChangeText={setMassConfirmSearchQuery}
+              autoCapitalize="none"
+            />
+            {massConfirmSearching && <ActivityIndicator size="small" color={colors.primary} style={styles.loader} />}
+            <ScrollView style={styles.pickerScroll} nestedScrollEnabled>
+              {massConfirmSearchResults.map((u) => (
+                <TouchableOpacity
+                  key={u.id}
+                  style={[styles.pickerItem, massConfirmSelectedAdopterId === u.id && { backgroundColor: colors.primary + '25' }]}
+                  onPress={() => setMassConfirmSelectedAdopterId(u.id)}
+                >
+                  <Text style={[styles.pickerItemText, { color: colors.textPrimary }]}>{u.name}</Text>
+                  <Text style={[styles.pickerItemSub, { color: colors.textSecondary }]}>{u.email}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.background }]}
+                onPress={() => {
+                  setShowMassConfirmAdoptionModal(false);
+                  setMassConfirmSearchQuery('');
+                  setMassConfirmSearchResults([]);
+                  setMassConfirmSelectedAdopterId(null);
+                }}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalBtn,
+                  { backgroundColor: colors.primary },
+                  (!massConfirmSelectedAdopterId || massConfirmSubmitting) && styles.modalBtnDisabled,
+                ]}
+                onPress={handleMassConfirmAdoptionsSubmit}
+                disabled={!massConfirmSelectedAdopterId || massConfirmSubmitting}
+              >
+                <Text style={styles.modalBtnTextPrimary}>
+                  {massConfirmSubmitting ? 'Salvando...' : 'Confirmar todos'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Confirmar adoção (pet já marcado pelo tutor) */}
+      <Modal visible={confirmAdoptionPendingItem != null} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Confirmar adoção</Text>
+            {confirmAdoptionPendingItem ? (
+              <>
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Pet</Text>
+                <Text style={[styles.pickerItemText, { color: colors.textPrimary, marginBottom: spacing.md }]}>
+                  {confirmAdoptionPendingItem.petName} (tutor: {confirmAdoptionPendingItem.tutorName})
+                </Text>
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Adotante (busque por nome ou email)</Text>
+                <TextInput
+                  style={[styles.searchInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+                  placeholder="Nome ou email..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={confirmAdoptionSearchQuery}
+                  onChangeText={setConfirmAdoptionSearchQuery}
+                  autoCapitalize="none"
+                />
+                {confirmAdoptionSearching && <ActivityIndicator size="small" color={colors.primary} style={styles.loader} />}
+                <ScrollView style={styles.pickerScroll} nestedScrollEnabled>
+                  {confirmAdoptionSearchResults.map((u) => (
+                    <TouchableOpacity
+                      key={u.id}
+                      style={[styles.pickerItem, confirmAdoptionSelectedAdopterId === u.id && { backgroundColor: colors.primary + '25' }]}
+                      onPress={() => setConfirmAdoptionSelectedAdopterId(u.id)}
+                    >
+                      <Text style={[styles.pickerItemText, { color: colors.textPrimary }]}>{u.name}</Text>
+                      <Text style={[styles.pickerItemSub, { color: colors.textSecondary }]}>{u.email}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={[styles.modalBtn, { backgroundColor: colors.background }]}
+                    onPress={() => {
+                      setConfirmAdoptionPendingItem(null);
+                      setConfirmAdoptionSearchQuery('');
+                      setConfirmAdoptionSearchResults([]);
+                      setConfirmAdoptionSelectedAdopterId(null);
+                    }}
+                  >
+                    <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.modalBtn,
+                      { backgroundColor: colors.primary },
+                      (!confirmAdoptionSelectedAdopterId || createAdoptionMutation.isPending) && styles.modalBtnDisabled,
+                    ]}
+                    onPress={() => {
+                      if (confirmAdoptionPendingItem && confirmAdoptionSelectedAdopterId) {
+                        createAdoptionMutation.mutate({
+                          petId: confirmAdoptionPendingItem.petId,
+                          adopterUserId: confirmAdoptionSelectedAdopterId,
+                        });
+                      }
+                    }}
+                    disabled={!confirmAdoptionSelectedAdopterId || createAdoptionMutation.isPending}
+                  >
+                    <Text style={styles.modalBtnTextPrimary}>
+                      {createAdoptionMutation.isPending ? 'Salvando...' : 'Confirmar adoção'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
 
         {/* Adoções registradas + Registrar adoção */}
         <View ref={adoptionsRef} onLayout={(e: LayoutChangeEvent) => { sectionY.current.adoptions = e.nativeEvent.layout.y; }} collapsable={false}>
@@ -873,6 +1404,130 @@ export default function AdminScreen() {
       )}
         </View>
 
+      {/* Parceiros (ONG, clínicas, lojas) */}
+      <View ref={partnersRef} onLayout={(e: LayoutChangeEvent) => { sectionY.current.partners = e.nativeEvent.layout.y; }} collapsable={false}>
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.xl }]}>Parceiros ({partnersList.length})</Text>
+        <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
+          ONGs, clínicas e lojas. Aprove para aparecer na tela Parceiros e na seleção ao criar/editar pet.
+        </Text>
+        <TouchableOpacity
+          style={[styles.actionBtn, { backgroundColor: colors.primary, marginBottom: spacing.md }]}
+          onPress={() => {
+                    setCreatePartnerForm({ type: 'ONG', name: '', city: '', description: '', website: '', email: '', phone: '', logoUrl: '', active: true, approve: false, isPaidPartner: false });
+            setShowCreatePartnerModal(true);
+          }}
+        >
+          <Ionicons name="add" size={18} color="#fff" />
+          <Text style={styles.actionBtnText}>Novo parceiro</Text>
+        </TouchableOpacity>
+        {partnersList.length === 0 ? (
+          <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhum parceiro cadastrado.</Text>
+          </View>
+        ) : (
+          partnersList.map((p: PartnerAdminItem) => (
+            <View key={p.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
+              <View style={styles.cardRowWrap}>
+                {p.logoUrl ? (
+                  <Image source={{ uri: p.logoUrl }} style={styles.partnerCardLogo} resizeMode="contain" />
+                ) : null}
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.adoptionPetName, { color: colors.textPrimary }]}>{p.name}</Text>
+                  <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
+                    {p.type} {p.city ? `• ${p.city}` : ''}
+                  </Text>
+                  {p.description ? (
+                    <Text style={[styles.cardMeta, { color: colors.textSecondary }]} numberOfLines={2}>{p.description}</Text>
+                  ) : null}
+                  <Text style={[styles.cardDate, { color: colors.textSecondary }]}>
+                    {new Date(p.createdAt).toLocaleString('pt-BR')}
+                  </Text>
+                  {p.isPaidPartner ? (
+                    <View style={[styles.resolvedBadge, { backgroundColor: (colors.accent || '#f59e0b') + '25', alignSelf: 'flex-start', marginTop: spacing.xs, marginRight: spacing.xs }]}>
+                      <Ionicons name="star" size={14} color={colors.accent || '#f59e0b'} />
+                      <Text style={[styles.resolvedText, { color: colors.accent || '#f59e0b' }]}>Pago</Text>
+                    </View>
+                  ) : null}
+                  {p.approvedAt ? (
+                    <View style={[styles.resolvedBadge, { backgroundColor: colors.primary + '20', alignSelf: 'flex-start', marginTop: spacing.xs }]}>
+                      <Ionicons name="checkmark-done" size={14} color={colors.primary} />
+                      <Text style={[styles.resolvedText, { color: colors.primary }]}>Aprovado</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { backgroundColor: colors.primary, marginTop: spacing.sm, alignSelf: 'flex-start' }]}
+                      onPress={() => approvePartnerMutation.mutate(p.id)}
+                      disabled={approvePartnerMutation.isPending}
+                    >
+                      {approvePartnerMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="checkmark-circle" size={18} color="#fff" />}
+                      <Text style={styles.actionBtnText}>Aprovar</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: colors.background, marginTop: spacing.sm, alignSelf: 'flex-start' }]}
+                    onPress={() => {
+                      setEditingPartner(p);
+                      setEditPartnerForm({
+                        name: p.name,
+                        city: p.city ?? '',
+                        description: p.description ?? '',
+                        website: p.website ?? '',
+                        email: p.email ?? '',
+                        phone: p.phone ?? '',
+                        logoUrl: p.logoUrl ?? '',
+                        active: p.active,
+                        isPaidPartner: !!p.isPaidPartner,
+                      });
+                    }}
+                  >
+                    <Ionicons name="pencil" size={18} color={colors.textPrimary} />
+                    <Text style={[styles.actionBtnText, { color: colors.textPrimary }]}>Editar</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          ))
+        )}
+      </View>
+
+      {/* Reports de bugs (beta) */}
+      <View ref={bugReportsRef} onLayout={(e: LayoutChangeEvent) => { sectionY.current.bugReports = e.nativeEvent.layout.y; }} collapsable={false}>
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.xl }]}>Reports de bugs ({bugReports.length})</Text>
+        <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
+          Erros reportados pelos usuários na tela de falha (app em beta). Apenas leitura.
+        </Text>
+        {bugReports.length === 0 ? (
+          <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhum report de bug ainda.</Text>
+          </View>
+        ) : (
+          bugReports.map((r: BugReportItem) => (
+            <View key={r.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
+              <Text style={[styles.bugReportMessage, { color: colors.textPrimary }]} numberOfLines={3}>{r.message}</Text>
+              {(r.userName ?? r.userEmail) && (
+                <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
+                  {r.userName ?? 'Anônimo'}{r.userEmail ? ` • ${r.userEmail}` : ''}
+                </Text>
+              )}
+              {r.screen ? (
+                <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>Tela: {r.screen}</Text>
+              ) : null}
+              {r.userComment ? (
+                <Text style={[styles.bugReportComment, { color: colors.textSecondary }]}>“{r.userComment}”</Text>
+              ) : null}
+              <Text style={[styles.cardDate, { color: colors.textSecondary }]}>
+                {new Date(r.createdAt).toLocaleString('pt-BR')}
+              </Text>
+              {r.stack ? (
+                <Text style={[styles.bugReportStack, { color: colors.textSecondary }]} numberOfLines={5}>
+                  {r.stack}
+                </Text>
+              ) : null}
+            </View>
+          ))
+        )}
+      </View>
+
       {/* Modal Resolver denúncia com feedback */}
       <Modal visible={!!resolveReportModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -898,6 +1553,314 @@ export default function AdminScreen() {
                 disabled={resolveReportMutation.isPending}
               >
                 <Text style={styles.modalBtnTextPrimary}>{resolveReportMutation.isPending ? 'Resolvendo...' : 'Resolver'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Novo parceiro */}
+      <Modal visible={showCreatePartnerModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.modalContentScroll, { backgroundColor: colors.surface }]}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Novo parceiro</Text>
+            <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Tipo</Text>
+            <View style={styles.rowWrap}>
+              {(['ONG', 'CLINIC', 'STORE'] as const).map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.chip, { backgroundColor: createPartnerForm.type === t ? colors.primary : colors.background }]}
+                  onPress={() => setCreatePartnerForm((f) => ({ ...f, type: t }))}
+                >
+                  <Text style={{ color: createPartnerForm.type === t ? '#fff' : colors.textPrimary, fontSize: 13 }}>{t}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Nome *</Text>
+            <TextInput
+              style={[styles.searchInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+              placeholder="Ex: Instituto Amor de Patas"
+              placeholderTextColor={colors.textSecondary}
+              value={createPartnerForm.name}
+              onChangeText={(name) => setCreatePartnerForm((f) => ({ ...f, name }))}
+            />
+            <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Cidade (opcional)</Text>
+            <TextInput
+              style={[styles.searchInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+              placeholder="Ex: São Paulo"
+              placeholderTextColor={colors.textSecondary}
+              value={createPartnerForm.city ?? ''}
+              onChangeText={(city) => setCreatePartnerForm((f) => ({ ...f, city }))}
+            />
+            <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Descrição (opcional)</Text>
+            <TextInput
+              style={[styles.searchInput, styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+              placeholder="Breve descrição"
+              placeholderTextColor={colors.textSecondary}
+              value={createPartnerForm.description ?? ''}
+              onChangeText={(description) => setCreatePartnerForm((f) => ({ ...f, description }))}
+              multiline
+              numberOfLines={3}
+            />
+            <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Site (opcional)</Text>
+            <TextInput
+              style={[styles.searchInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+              placeholder="https://..."
+              placeholderTextColor={colors.textSecondary}
+              value={createPartnerForm.website ?? ''}
+              onChangeText={(website) => setCreatePartnerForm((f) => ({ ...f, website }))}
+              autoCapitalize="none"
+              keyboardType="url"
+            />
+            <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>E-mail (opcional)</Text>
+            <TextInput
+              style={[styles.searchInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+              placeholder="contato@..."
+              placeholderTextColor={colors.textSecondary}
+              value={createPartnerForm.email ?? ''}
+              onChangeText={(email) => setCreatePartnerForm((f) => ({ ...f, email }))}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Telefone (opcional)</Text>
+            <TextInput
+              style={[styles.searchInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+              placeholder="(11) 99999-9999"
+              placeholderTextColor={colors.textSecondary}
+              value={createPartnerForm.phone ?? ''}
+              onChangeText={(phone) => setCreatePartnerForm((f) => ({ ...f, phone }))}
+              keyboardType="phone-pad"
+            />
+            <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Logo (aparece na página de parceiros)</Text>
+            <View style={styles.partnerLogoRow}>
+              <TextInput
+                style={[styles.searchInput, { flex: 1, backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+                placeholder="URL da logo ou envie abaixo"
+                placeholderTextColor={colors.textSecondary}
+                value={createPartnerForm.logoUrl ?? ''}
+                onChangeText={(logoUrl) => setCreatePartnerForm((f) => ({ ...f, logoUrl }))}
+                autoCapitalize="none"
+                keyboardType="url"
+              />
+              <TouchableOpacity
+                style={[styles.uploadLogoBtn, { backgroundColor: colors.primary }]}
+                onPress={() => uploadPartnerLogo(true)}
+                disabled={partnerLogoUploading === 'create'}
+              >
+                {partnerLogoUploading === 'create' ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="cloud-upload" size={20} color="#fff" />}
+              </TouchableOpacity>
+            </View>
+            {(createPartnerForm.logoUrl ?? '').trim() ? (
+              <View style={styles.logoPreviewWrap}>
+                <Image source={{ uri: (createPartnerForm.logoUrl ?? '').trim() }} style={styles.logoPreview} resizeMode="contain" />
+              </View>
+            ) : null}
+            <TouchableOpacity
+              style={[styles.switchRow, { borderBottomColor: colors.background, marginTop: spacing.sm }]}
+              onPress={() => setCreatePartnerForm((f) => ({ ...f, approve: !f.approve }))}
+            >
+              <Text style={[styles.switchLabel, { color: colors.textPrimary }]}>Aprovar ao criar (aparece no app)</Text>
+              <View style={[styles.checkbox, createPartnerForm.approve && { backgroundColor: colors.primary }]}>
+                {createPartnerForm.approve && <Ionicons name="checkmark" size={14} color="#fff" />}
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.switchRow, { borderBottomColor: colors.background, marginTop: spacing.sm }]}
+              onPress={() => setCreatePartnerForm((f) => ({ ...f, isPaidPartner: !f.isPaidPartner }))}
+            >
+              <Text style={[styles.switchLabel, { color: colors.textPrimary }]}>Parceria paga (destaque no app e no feed)</Text>
+              <View style={[styles.checkbox, createPartnerForm.isPaidPartner && { backgroundColor: colors.primary }]}>
+                {createPartnerForm.isPaidPartner && <Ionicons name="checkmark" size={14} color="#fff" />}
+              </View>
+            </TouchableOpacity>
+            </ScrollView>
+            <View style={[styles.modalActions, { marginTop: spacing.md }]}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.background }]}
+                onPress={() => { setShowCreatePartnerModal(false); }}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.primary }, (createPartnerMutation.isPending || !createPartnerForm.name.trim()) && styles.modalBtnDisabled]}
+                onPress={() => {
+                  const body: CreatePartnerBody = {
+                    type: createPartnerForm.type,
+                    name: createPartnerForm.name.trim(),
+                    ...(createPartnerForm.city?.trim() && { city: createPartnerForm.city.trim() }),
+                    ...(createPartnerForm.description?.trim() && { description: createPartnerForm.description.trim() }),
+                    ...(createPartnerForm.website?.trim() && { website: createPartnerForm.website.trim() }),
+                    ...(createPartnerForm.email?.trim() && { email: createPartnerForm.email.trim() }),
+                    ...(createPartnerForm.phone?.trim() && { phone: createPartnerForm.phone.trim() }),
+                    ...(createPartnerForm.logoUrl?.trim() && { logoUrl: createPartnerForm.logoUrl.trim() }),
+                    active: true,
+                    approve: !!createPartnerForm.approve,
+                    isPaidPartner: !!createPartnerForm.isPaidPartner,
+                  };
+                  createPartnerMutation.mutate(body);
+                }}
+                disabled={createPartnerMutation.isPending || !createPartnerForm.name.trim()}
+              >
+                <Text style={styles.modalBtnTextPrimary}>{createPartnerMutation.isPending ? 'Criando...' : 'Criar'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Editar parceiro */}
+      <Modal visible={!!editingPartner} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.modalContentScroll, { backgroundColor: colors.surface }]}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Editar parceiro</Text>
+            {editingPartner ? (
+              <>
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Tipo</Text>
+                <Text style={[styles.modalLabel, { color: colors.textPrimary, marginBottom: spacing.sm }]}>{editingPartner.type}</Text>
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Nome *</Text>
+                <TextInput
+                  style={[styles.searchInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+                  placeholder="Nome"
+                  placeholderTextColor={colors.textSecondary}
+                  value={editPartnerForm.name}
+                  onChangeText={(name) => setEditPartnerForm((f) => ({ ...f, name }))}
+                />
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Cidade</Text>
+                <TextInput
+                  style={[styles.searchInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+                  placeholder="Cidade"
+                  placeholderTextColor={colors.textSecondary}
+                  value={editPartnerForm.city}
+                  onChangeText={(city) => setEditPartnerForm((f) => ({ ...f, city }))}
+                />
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Descrição</Text>
+                <TextInput
+                  style={[styles.searchInput, styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+                  placeholder="Descrição"
+                  placeholderTextColor={colors.textSecondary}
+                  value={editPartnerForm.description}
+                  onChangeText={(description) => setEditPartnerForm((f) => ({ ...f, description }))}
+                  multiline
+                  numberOfLines={3}
+                />
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Site</Text>
+                <TextInput
+                  style={[styles.searchInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+                  placeholder="https://..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={editPartnerForm.website}
+                  onChangeText={(website) => setEditPartnerForm((f) => ({ ...f, website }))}
+                  autoCapitalize="none"
+                  keyboardType="url"
+                />
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>E-mail</Text>
+                <TextInput
+                  style={[styles.searchInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+                  placeholder="E-mail"
+                  placeholderTextColor={colors.textSecondary}
+                  value={editPartnerForm.email}
+                  onChangeText={(email) => setEditPartnerForm((f) => ({ ...f, email }))}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                />
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Telefone</Text>
+                <TextInput
+                  style={[styles.searchInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+                  placeholder="Telefone"
+                  placeholderTextColor={colors.textSecondary}
+                  value={editPartnerForm.phone}
+                  onChangeText={(phone) => setEditPartnerForm((f) => ({ ...f, phone }))}
+                  keyboardType="phone-pad"
+                />
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Logo (aparece na página de parceiros)</Text>
+                <View style={styles.partnerLogoRow}>
+                  <TextInput
+                    style={[styles.searchInput, { flex: 1, backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+                    placeholder="URL da logo ou envie abaixo"
+                    placeholderTextColor={colors.textSecondary}
+                    value={editPartnerForm.logoUrl}
+                    onChangeText={(logoUrl) => setEditPartnerForm((f) => ({ ...f, logoUrl }))}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                  />
+                  <TouchableOpacity
+                    style={[styles.uploadLogoBtn, { backgroundColor: colors.primary }]}
+                    onPress={() => editingPartner && uploadPartnerLogo(false, editingPartner.id)}
+                    disabled={!!partnerLogoUploading}
+                  >
+                    {partnerLogoUploading === editingPartner?.id ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="cloud-upload" size={20} color="#fff" />}
+                  </TouchableOpacity>
+                </View>
+                {editPartnerForm.logoUrl.trim() ? (
+                  <View style={styles.logoPreviewWrap}>
+                    <Image source={{ uri: editPartnerForm.logoUrl.trim() }} style={styles.logoPreview} resizeMode="contain" />
+                  </View>
+                ) : null}
+                <TouchableOpacity
+                  style={[styles.switchRow, { borderBottomColor: colors.background, marginTop: spacing.sm }]}
+                  onPress={() => setEditPartnerForm((f) => ({ ...f, active: !f.active }))}
+                >
+                  <Text style={[styles.switchLabel, { color: colors.textPrimary }]}>Ativo (visível quando aprovado)</Text>
+                  <View style={[styles.checkbox, editPartnerForm.active && { backgroundColor: colors.primary }]}>
+                    {editPartnerForm.active && <Ionicons name="checkmark" size={14} color="#fff" />}
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.switchRow, { borderBottomColor: colors.background, marginTop: spacing.sm }]}
+                  onPress={() => setEditPartnerForm((f) => ({ ...f, isPaidPartner: !f.isPaidPartner }))}
+                >
+                  <Text style={[styles.switchLabel, { color: colors.textPrimary }]}>Parceria paga (destaque no app e no feed)</Text>
+                  <View style={[styles.checkbox, editPartnerForm.isPaidPartner && { backgroundColor: colors.primary }]}>
+                    {editPartnerForm.isPaidPartner && <Ionicons name="checkmark" size={14} color="#fff" />}
+                  </View>
+                </TouchableOpacity>
+                {!editingPartner.approvedAt && (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: colors.primary, marginTop: spacing.md }]}
+                    onPress={() => {
+                      updatePartnerMutation.mutate({
+                        id: editingPartner.id,
+                        body: { approve: true },
+                      });
+                    }}
+                    disabled={updatePartnerMutation.isPending}
+                  >
+                    <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                    <Text style={styles.actionBtnText}>Aprovar agora</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : null}
+            </ScrollView>
+            <View style={[styles.modalActions, { marginTop: spacing.md }]}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.background }]}
+                onPress={() => setEditingPartner(null)}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.primary }, (updatePartnerMutation.isPending || !editPartnerForm.name.trim()) && styles.modalBtnDisabled]}
+                onPress={() => {
+                  if (!editingPartner) return;
+                  const body: UpdatePartnerBody = {
+                    name: editPartnerForm.name.trim(),
+                    city: editPartnerForm.city.trim() || undefined,
+                    description: editPartnerForm.description.trim() || undefined,
+                    website: editPartnerForm.website.trim() || undefined,
+                    email: editPartnerForm.email.trim() || undefined,
+                    phone: editPartnerForm.phone.trim() || undefined,
+                    logoUrl: editPartnerForm.logoUrl.trim() || undefined,
+                    active: editPartnerForm.active,
+                    isPaidPartner: editPartnerForm.isPaidPartner,
+                  };
+                  updatePartnerMutation.mutate({ id: editingPartner.id, body });
+                }}
+                disabled={updatePartnerMutation.isPending || !editPartnerForm.name.trim()}
+              >
+                <Text style={styles.modalBtnTextPrimary}>{updatePartnerMutation.isPending ? 'Salvando...' : 'Salvar'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -975,6 +1938,8 @@ const styles = StyleSheet.create({
   cardMeta: { fontSize: 13 },
   cardDate: { fontSize: 12, marginTop: 4 },
   cardActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  cardActionsEqual: { flexWrap: 'nowrap' },
+  actionBtnEqual: { flex: 1, minWidth: 0 },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -993,6 +1958,9 @@ const styles = StyleSheet.create({
   reportTarget: { fontSize: 15, fontWeight: '600' },
   reportReason: { fontSize: 14, marginTop: 4 },
   reportDate: { fontSize: 12, marginTop: 4 },
+  bugReportMessage: { fontSize: 15, fontWeight: '600', marginBottom: 4 },
+  bugReportComment: { fontSize: 13, fontStyle: 'italic', marginTop: 4 },
+  bugReportStack: { fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', marginTop: 6 },
   resolvedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginBottom: spacing.sm },
   resolvedText: { fontSize: 12, fontWeight: '600' },
   registerAdoptionBtn: { padding: spacing.md, borderRadius: 10, alignItems: 'center', marginBottom: spacing.md },
@@ -1011,6 +1979,11 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.md },
   modalLabel: { fontSize: 12, fontWeight: '600', marginBottom: spacing.xs },
   searchInput: { padding: spacing.md, borderRadius: 10, fontSize: 16, marginBottom: spacing.sm, borderWidth: 1 },
+  partnerLogoRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
+  uploadLogoBtn: { width: 44, height: 44, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  logoPreviewWrap: { marginBottom: spacing.sm, alignItems: 'flex-start' },
+  logoPreview: { width: 80, height: 80, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.06)' },
+  partnerCardLogo: { width: 48, height: 48, borderRadius: 10, marginRight: spacing.md, backgroundColor: 'rgba(0,0,0,0.06)' },
   feedbackInput: { minHeight: 100, textAlignVertical: 'top' },
   pickerScroll: { maxHeight: 120, marginBottom: spacing.sm },
   pickerItem: { padding: spacing.sm, borderRadius: 8, marginBottom: 2 },
@@ -1021,4 +1994,9 @@ const styles = StyleSheet.create({
   modalBtnText: { fontWeight: '600' },
   modalBtnTextPrimary: { color: '#fff', fontWeight: '600' },
   modalBtnDisabled: { opacity: 0.6 },
+  modalContentScroll: { maxHeight: '85%' },
+  rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm },
+  chip: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: 20 },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.sm },
+  switchLabel: { fontSize: 15, flex: 1 },
 });

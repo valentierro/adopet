@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -41,11 +41,26 @@ export function FeedCard({ pet, onPress, onLike, onPass, height: cardHeight, wra
   const insets = useSafeAreaInsets();
   const photos = pet.photos?.length ? pet.photos : ['https://placedog.net/800/1200'];
   const [photoIndex, setPhotoIndex] = useState(0);
+  const galleryRef = useRef<FlatList<string> | null>(null);
   const h = cardHeight ?? SCREEN_HEIGHT;
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const i = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
     setPhotoIndex(Math.min(i, photos.length - 1));
+  };
+
+  const goToPrevPhoto = () => {
+    if (photos.length <= 1) return;
+    const next = Math.max(0, photoIndex - 1);
+    setPhotoIndex(next);
+    galleryRef.current?.scrollToIndex({ index: next, animated: true });
+  };
+
+  const goToNextPhoto = () => {
+    if (photos.length <= 1) return;
+    const next = Math.min(photos.length - 1, photoIndex + 1);
+    setPhotoIndex(next);
+    galleryRef.current?.scrollToIndex({ index: next, animated: true });
   };
 
   const gradientHeight = 200;
@@ -60,20 +75,29 @@ export function FeedCard({ pet, onPress, onLike, onPass, height: cardHeight, wra
       {photos.length === 1 ? (
         <Image source={{ uri: photos[0] }} style={[styles.image, { width: SCREEN_WIDTH, height: h }]} contentFit="cover" />
       ) : (
-        <FlatList
-          data={photos}
-          horizontal
-          pagingEnabled
-          scrollEnabled={wrapInTouchable}
-          showsHorizontalScrollIndicator={false}
-          onMomentumScrollEnd={onScroll}
-          keyExtractor={(uri, i) => `${i}-${uri.slice(-20)}`}
-          renderItem={({ item }) => (
-            <View style={[styles.slide, { width: SCREEN_WIDTH, height: h }]}>
-              <Image source={{ uri: item }} style={[styles.image, { width: SCREEN_WIDTH, height: h }]} contentFit="cover" />
+        <>
+          <FlatList
+            ref={galleryRef}
+            data={photos}
+            horizontal
+            pagingEnabled
+            scrollEnabled={wrapInTouchable}
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={onScroll}
+            keyExtractor={(uri, i) => `${i}-${uri.slice(-20)}`}
+            renderItem={({ item }) => (
+              <View style={[styles.slide, { width: SCREEN_WIDTH, height: h }]}>
+                <Image source={{ uri: item }} style={[styles.image, { width: SCREEN_WIDTH, height: h }]} contentFit="cover" />
+              </View>
+            )}
+          />
+          {!wrapInTouchable && photos.length > 1 && (
+            <View style={[styles.galleryTapZones, { height: h }]} pointerEvents="box-none">
+              <TouchableOpacity style={styles.galleryTapLeft} onPress={goToPrevPhoto} activeOpacity={1} />
+              <TouchableOpacity style={styles.galleryTapRight} onPress={goToNextPhoto} activeOpacity={1} />
             </View>
           )}
-        />
+        </>
       )}
 
       <View style={[styles.dots, { top: insets.top + 12 }]}>
@@ -114,15 +138,23 @@ export function FeedCard({ pet, onPress, onLike, onPass, height: cardHeight, wra
             <Text style={styles.name} numberOfLines={1}>
               {pet.name}
             </Text>
-            {pet.verified && <VerifiedBadge size={64} />}
+            {pet.verified && <VerifiedBadge size={64} iconBackgroundColor="rgba(255,255,255,0.95)" />}
           </View>
+          {pet.partner ? (
+            <View style={[styles.partnerBadge, { backgroundColor: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'rgba(251, 191, 36, 0.5)' : 'rgba(217, 119, 6, 0.92)' }]}>
+              <Ionicons name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={12} color="#fff" />
+              <Text style={styles.partnerBadgeText}>{(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'Patrocinado' : 'Parceiro'}</Text>
+            </View>
+          ) : null}
           <Text style={styles.meta}>
             {speciesLabel[String(pet.species).toLowerCase()] ?? pet.species} • {pet.age} ano(s) • {sizeLabel[pet.size] ?? pet.size}
           </Text>
-          {pet.distanceKm != null && (
+          {(pet.distanceKm != null || pet.city) && (
             <View style={styles.distanceRow}>
               <Ionicons name="location" size={14} color="rgba(255,255,255,0.9)" />
-              <Text style={styles.distance}>{pet.distanceKm.toFixed(1)} km</Text>
+              {pet.distanceKm != null && <Text style={styles.distance}>{pet.distanceKm.toFixed(1)} km</Text>}
+              {pet.distanceKm != null && pet.city ? <Text style={styles.distance}> • </Text> : null}
+              {pet.city ? <Text style={styles.distance}>{pet.city}</Text> : null}
             </View>
           )}
         </View>
@@ -163,6 +195,22 @@ const styles = StyleSheet.create({
   },
   slide: {},
   image: {},
+  galleryTapZones: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    flexDirection: 'row',
+  },
+  galleryTapLeft: {
+    width: '35%',
+    flex: 0,
+  },
+  galleryTapRight: {
+    width: '35%',
+    flex: 0,
+    marginLeft: 'auto',
+  },
   dots: {
     position: 'absolute',
     left: 0,
@@ -226,6 +274,21 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
     flex: 1,
+  },
+  partnerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  partnerBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
   },
   meta: {
     fontSize: 16,

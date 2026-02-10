@@ -8,33 +8,84 @@ import {
   TouchableOpacity,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Image,
+  Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { PrimaryButton, SecondaryButton } from '../../src/components';
+import { PrimaryButton } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { setOnboardingSeen } from '../../src/storage/onboarding';
 import { spacing } from '../../src/theme';
 
-const SLIDES = [
+const ONBOARDING_IMAGES = {
+  feed: require('../../assets/feed.png'),
+  favoritos: require('../../assets/favoritos.png'),
+  chat: require('../../assets/chat.jpeg'),
+  mapa: require('../../assets/mapa.jpeg'),
+  meus_anuncios: require('../../assets/meus_anuncios.png'),
+  minhas_adocoes: require('../../assets/minhas_adocoes.jpeg'),
+  perfil: require('../../assets/perfil.jpeg'),
+};
+
+type SlideImageKey = keyof typeof ONBOARDING_IMAGES;
+
+const SLIDES: Array<{
+  key: string;
+  image?: SlideImageKey;
+  icon: 'paw' | 'heart' | 'chatbubbles' | 'map' | 'add-circle' | 'heart-circle' | 'checkmark-circle';
+  title: string;
+  message: string;
+}> = [
+  {
+    key: 'feed',
+    image: 'feed',
+    icon: 'paw',
+    title: 'Feed de pets',
+    message: 'Deslize pelos anúncios de cachorros e gatos disponíveis para adoção. Use os filtros por espécie e raça e ajuste o raio em Preferências.',
+  },
   {
     key: 'like',
-    icon: 'heart' as const,
+    image: 'favoritos',
+    icon: 'heart',
     title: 'Curtir é favoritar',
-    message: 'Deslize para a direita nos pets que você gostar. Eles entram nos favoritos e você pode conversar com o tutor depois.',
+    message: 'Deslize para a direita nos pets que gostar. Eles entram nos Favoritos e você pode iniciar uma conversa com o tutor depois.',
   },
   {
     key: 'chat',
-    icon: 'chatbubbles' as const,
-    title: 'Conversar só com favoritos',
-    message: 'Para iniciar uma conversa, o pet precisa estar nos seus favoritos. Assim você só fala com quem tem interesse real.',
+    image: 'chat',
+    icon: 'chatbubbles',
+    title: 'Conversas',
+    message: 'Só é possível conversar com o tutor de um pet que está nos seus Favoritos. Toque e segure em uma conversa para apagá-la.',
+  },
+  {
+    key: 'map',
+    image: 'mapa',
+    icon: 'map',
+    title: 'Mapa',
+    message: 'Veja no mapa onde estão os pets. Toque em um marcador para ver nome, foto e idade e acessar o perfil. O raio é o mesmo das suas Preferências.',
+  },
+  {
+    key: 'announce',
+    image: 'meus_anuncios',
+    icon: 'add-circle',
+    title: 'Anunciar um pet',
+    message: 'Em "Meus anúncios" você pode cadastrar pets para adoção com fotos e descrição. Os anúncios passam por análise antes de aparecer no feed.',
+  },
+  {
+    key: 'adopt',
+    image: 'minhas_adocoes',
+    icon: 'heart-circle',
+    title: 'Minhas adoções',
+    message: 'Quando o pet for adotado, marque no anúncio e indique quem adotou (conversa ou @usuário). A equipe Adopet confirma. Em "Minhas adoções" você vê os pets que adotou.',
   },
   {
     key: 'verify',
-    icon: 'checkmark-circle' as const,
-    title: 'Verificação opcional',
-    message: 'Você e seus pets podem solicitar o selo "Verificado" no perfil. Isso gera mais confiança para quem está adotando.',
+    image: 'perfil',
+    icon: 'checkmark-circle',
+    title: 'Verificação',
+    message: 'Você e seus pets podem solicitar o selo "Verificado", que gera mais confiança. A verificação é opcional e analisada pela equipe.',
   },
 ];
 
@@ -44,6 +95,7 @@ export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const [index, setIndex] = useState(0);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
   const listRef = useRef<FlatList>(null);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -59,8 +111,11 @@ export default function OnboardingScreen() {
     }
   };
 
+  /** Grava "não exibir novamente" sempre que o checkbox estiver marcado, seja ao tocar em "Pular" ou em "Começar". */
   const finish = async () => {
-    await setOnboardingSeen();
+    if (dontShowAgain) {
+      await setOnboardingSeen();
+    }
     router.replace('/(tabs)');
   };
 
@@ -83,11 +138,17 @@ export default function OnboardingScreen() {
         keyExtractor={(item) => item.key}
         renderItem={({ item }) => (
           <View style={[styles.slide, { width }]}>
-            <View style={[styles.iconWrap, { backgroundColor: colors.surface }]}>
-              <Ionicons name={item.icon} size={56} color={colors.primary} />
+            <View style={styles.slideContent}>
+              {item.image ? (
+                <Image source={ONBOARDING_IMAGES[item.image]} style={styles.slideImage} resizeMode="contain" />
+              ) : (
+                <View style={[styles.iconWrap, { backgroundColor: colors.surface }]}>
+                  <Ionicons name={item.icon} size={56} color={colors.primary} />
+                </View>
+              )}
+              <Text style={[styles.title, { color: colors.textPrimary }]}>{item.title}</Text>
+              <Text style={[styles.message, { color: colors.textSecondary }]}>{item.message}</Text>
             </View>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>{item.title}</Text>
-            <Text style={[styles.message, { color: colors.textSecondary }]}>{item.message}</Text>
           </View>
         )}
       />
@@ -103,6 +164,18 @@ export default function OnboardingScreen() {
           />
         ))}
       </View>
+
+      <Pressable
+        style={[styles.checkboxRow, { paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }]}
+        onPress={() => setDontShowAgain((v) => !v)}
+      >
+        <View style={[styles.checkbox, { borderColor: colors.primary, backgroundColor: dontShowAgain ? colors.primary : 'transparent' }]}>
+          {dontShowAgain && <Ionicons name="checkmark" size={16} color="#fff" />}
+        </View>
+        <Text style={[styles.checkboxLabel, { color: colors.textSecondary }]}>
+          Não exibir novamente ao entrar no app
+        </Text>
+      </Pressable>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
         <PrimaryButton
@@ -131,8 +204,21 @@ const styles = StyleSheet.create({
   slide: {
     flex: 1,
     paddingHorizontal: spacing.xl,
-    paddingTop: 80,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slideContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 200,
+  },
+  slideImage: {
+    width: 220,
+    height: 220,
+    maxWidth: '90%',
+    borderRadius: 16,
+    marginBottom: spacing.lg,
   },
   iconWrap: {
     width: 120,
@@ -143,15 +229,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
     textAlign: 'center',
     marginBottom: spacing.md,
   },
   message: {
-    fontSize: 16,
+    fontSize: 15,
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 22,
   },
   dots: {
     flexDirection: 'row',
@@ -162,6 +248,23 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    marginRight: spacing.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxLabel: {
+    fontSize: 14,
   },
   footer: {
     paddingHorizontal: spacing.lg,

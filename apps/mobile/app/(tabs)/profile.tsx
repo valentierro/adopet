@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, ActivityIndicator, Share } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -20,21 +21,28 @@ export default function ProfileScreen() {
   const setUser = useAuthStore((s) => s.setUser);
 
   const queryClient = useQueryClient();
-  const { data: user, isLoading } = useQuery({
+  const { data: user, isLoading, refetch: refetchMe } = useQuery({
     queryKey: ['me'],
     queryFn: getMe,
     staleTime: 60_000,
   });
-  const { data: verificationStatus } = useQuery({
+  const { data: verificationStatus, refetch: refetchVerification } = useQuery({
     queryKey: ['verification-status'],
     queryFn: getVerificationStatus,
     staleTime: 30_000,
   });
-  const { data: tutorStats } = useQuery({
+  const { data: tutorStats, refetch: refetchTutorStats } = useQuery({
     queryKey: ['me', 'tutor-stats'],
     queryFn: getTutorStats,
     staleTime: 60_000,
   });
+  useFocusEffect(
+    useCallback(() => {
+      refetchMe();
+      refetchVerification();
+      refetchTutorStats();
+    }, [refetchMe, refetchVerification, refetchTutorStats]),
+  );
   const requestUserVerification = useMutation({
     mutationFn: () => requestVerification({ type: 'USER_VERIFIED' }),
     onSuccess: () => {
@@ -173,6 +181,9 @@ export default function ProfileScreen() {
         )}
       </View>
       <Text style={[styles.email, { color: colors.textSecondary }]}>{user?.email ?? ''}</Text>
+      {user?.username ? (
+        <Text style={[styles.username, { color: colors.textSecondary }]}>@{user.username}</Text>
+      ) : null}
       {user?.city ? (
         <Text style={[styles.city, { color: colors.textSecondary }]}>{user.city}</Text>
       ) : null}
@@ -226,6 +237,13 @@ export default function ProfileScreen() {
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+        onPress={() => router.push('/my-adoptions')}
+      >
+        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Minhas adoções</Text>
+        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
         onPress={() => router.push('/profile-edit')}
       >
         <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Editar perfil</Text>
@@ -257,6 +275,35 @@ export default function ProfileScreen() {
         onPress={() => router.push('/saved-searches')}
       >
         <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Buscas salvas</Text>
+        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+      </TouchableOpacity>
+      {user?.partner?.isPaidPartner && (
+        <TouchableOpacity
+          style={[
+            styles.menuItem,
+            styles.menuItemPartner,
+            { borderBottomColor: colors.surface, borderLeftColor: colors.primary },
+          ]}
+          onPress={() => router.push('/partner-portal')}
+        >
+          <Text style={[styles.menuLabel, { color: colors.primary }]}>Portal do parceiro</Text>
+          <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+        </TouchableOpacity>
+      )}
+      {user?.partner && !user.partner.isPaidPartner && (
+        <TouchableOpacity
+          style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+          onPress={() => router.push('/partner-subscription')}
+        >
+          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Renovar assinatura do parceiro</Text>
+          <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+        </TouchableOpacity>
+      )}
+      <TouchableOpacity
+        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+        onPress={() => router.push('/partners')}
+      >
+        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Parceiros Adopet</Text>
         <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
       </TouchableOpacity>
       <TouchableOpacity
@@ -406,6 +453,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
+  username: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: spacing.xs,
+  },
   city: {
     fontSize: 14,
     textAlign: 'center',
@@ -448,6 +500,10 @@ const styles = StyleSheet.create({
   menuItemAdmin: {
     borderLeftWidth: 3,
     borderLeftColor: '#0D9488',
+    paddingLeft: spacing.md - 3,
+  },
+  menuItemPartner: {
+    borderLeftWidth: 3,
     paddingLeft: spacing.md - 3,
   },
   footer: {

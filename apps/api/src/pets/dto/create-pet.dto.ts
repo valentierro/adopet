@@ -82,4 +82,9 @@ export class CreatePetDto {
   @IsOptional()
   @IsString()
   initialPhotoUrl?: string;
+
+  @ApiPropertyOptional({ description: 'ID do parceiro (ONG) quando o anúncio é em parceria' })
+  @IsOptional()
+  @IsString()
+  partnerId?: string;
 }

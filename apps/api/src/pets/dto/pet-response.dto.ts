@@ -37,6 +37,9 @@ export class PetResponseDto {
   @ApiProperty({ required: false })
   distanceKm?: number;
 
+  @ApiPropertyOptional({ description: 'Cidade do tutor (para exibir no feed/mapa)' })
+  city?: string;
+
   @ApiProperty({ type: [String] })
   photos: string[];
 
@@ -49,6 +52,15 @@ export class PetResponseDto {
   @ApiPropertyOptional({ enum: ['PENDING', 'APPROVED', 'REJECTED'], description: 'Status de moderação do anúncio (ex.: Em análise)' })
   publicationStatus?: string;
 
+  @ApiPropertyOptional({ description: 'Data em que o pet foi adotado (apenas quando status === ADOPTED)' })
+  adoptedAt?: string;
+
+  @ApiPropertyOptional({ description: 'Nome de usuário do adotante (apenas em GET /pets/mine quando adotado)' })
+  adopterUsername?: string;
+
+  @ApiPropertyOptional({ description: 'Data em que um admin rejeitou a marcação de adoção; exibe badge "Rejeitado pelo Adopet"' })
+  adoptionRejectedAt?: string;
+
   @ApiProperty()
   createdAt: string;
 
@@ -57,6 +69,16 @@ export class PetResponseDto {
 
   @ApiPropertyOptional({ description: 'Indica se o pet possui verificação aprovada' })
   verified?: boolean;
+
+  @ApiPropertyOptional({ description: 'Parceiro (ONG) quando o anúncio é em parceria' })
+  partner?: {
+    id: string;
+    name: string;
+    slug: string;
+    logoUrl?: string;
+    /** Parceria paga: destaque e boost no feed' */
+    isPaidPartner?: boolean;
+  };
 
   @ApiPropertyOptional({ description: 'Dados do tutor (apenas em GET /pets/:id)' })
   owner?: {

@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useFocusEffect } from '@react-navigation/native';
 import { ScreenContainer, LoadingLogo } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { getSavedSearches, createSavedSearch, deleteSavedSearch } from '../../src/api/saved-search';
@@ -37,10 +38,17 @@ export default function SavedSearchesScreen() {
   const [size, setSize] = useState('');
   const [breed, setBreed] = useState('');
 
-  const { data: list = [], isLoading } = useQuery({
+  const { data: list = [], isLoading, refetch } = useQuery({
     queryKey: ['saved-searches'],
     queryFn: getSavedSearches,
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch]),
+  );
+
   const createMutation = useMutation({
     mutationFn: createSavedSearch,
     onSuccess: () => {

@@ -10,6 +10,9 @@ export class MeResponseDto {
   @ApiProperty()
   name: string;
 
+  @ApiPropertyOptional({ example: 'maria.silva', description: 'Nome de usuário único (@nome) para ser encontrado ao indicar adotante' })
+  username?: string;
+
   @ApiPropertyOptional()
   avatarUrl?: string;
 
@@ -45,4 +48,14 @@ export class MeResponseDto {
 
   @ApiPropertyOptional({ description: 'Indica se o usuário é administrador (pode acessar painel admin)' })
   isAdmin?: boolean;
+
+  @ApiPropertyOptional({ description: 'Dados do parceiro vinculado (se for parceiro comercial cadastrado pelo app)' })
+  partner?: {
+    id: string;
+    name: string;
+    slug: string;
+    subscriptionStatus?: string;
+    planId?: string;
+    isPaidPartner: boolean;
+  };
 }

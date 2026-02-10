@@ -22,6 +22,9 @@ const WEIGHT_SIMILAR = 0.1;
 /** Decay para recência: exp(-DECAY_RECENCY * days). Quanto maior, mais penaliza pet antigo. */
 const DECAY_RECENCY = 0.08;
 
+/** Boost de score para pets de parceiro pago (destaque no feed). */
+const BOOST_PAID_PARTNER = 0.08;
+
 @Injectable()
 export class FeedService {
   constructor(
@@ -49,7 +52,13 @@ export class FeedService {
       | 'status'
       | 'createdAt'
       | 'updatedAt'
-    > & { breed?: string | null; adoptionReason?: string | null; media?: { url: string }[] },
+    > & {
+      breed?: string | null;
+      adoptionReason?: string | null;
+      media?: { url: string }[];
+      owner?: { city: string | null } | null;
+      partner?: { id: string; name: string; slug: string; logoUrl: string | null; isPaidPartner: boolean } | null;
+    },
     userLat?: number,
     userLng?: number,
     verified?: boolean,
@@ -78,6 +87,16 @@ export class FeedService {
     };
     if (pet.breed != null) dto.breed = pet.breed;
     if (pet.adoptionReason != null) dto.adoptionReason = pet.adoptionReason;
+    if (pet.owner?.city != null) dto.city = pet.owner.city;
+    if (pet.partner != null) {
+      dto.partner = {
+        id: pet.partner.id,
+        name: pet.partner.name,
+        slug: pet.partner.slug,
+        logoUrl: pet.partner.logoUrl ?? undefined,
+        isPaidPartner: pet.partner.isPaidPartner,
+      };
+    }
     return dto;
   }
 
@@ -165,7 +184,7 @@ export class FeedService {
     ]);
     const speciesPref = querySpecies ?? prefs?.species;
     const speciesFilter =
-      speciesPref && speciesPref !== 'BOTH' ? speciesPref.toLowerCase() : null;
+      speciesPref && speciesPref !== 'BOTH' ? speciesPref.toUpperCase() : null;
     const sizePref = prefs?.sizePref?.toLowerCase() || null;
     const favoriteSpeciesSet = new Set(favoritePets.map((f) => f.pet.species));
     const favoriteSizeSet = new Set(favoritePets.map((f) => f.pet.size));
@@ -183,7 +202,11 @@ export class FeedService {
       ...(excludeOwnerIds.length > 0 ? { ownerId: { notIn: excludeOwnerIds } } : {}),
     };
 
-    const include = { media: { orderBy: { sortOrder: 'asc' as const } } };
+    const include = {
+      media: { orderBy: { sortOrder: 'asc' as const } },
+      owner: { select: { city: true } },
+      partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+    };
 
     const candidates = await this.prisma.pet.findMany({
       where,
@@ -193,7 +216,7 @@ export class FeedService {
     });
 
     if (candidates.length === 0) {
-      return { items: [], nextCursor: null };
+      return { items: [], nextCursor: null, totalCount: 0 };
     }
 
     const petIds = candidates.map((p) => p.id);
@@ -208,12 +231,15 @@ export class FeedService {
     const favByPetId = Object.fromEntries(favCounts.map((f) => [f.petId, f._count.id]));
 
     const now = Date.now();
-    const radiusKm = queryRadiusKm ?? prefs?.radiusKm ?? 50;
+    const radiusKm = Number(queryRadiusKm ?? prefs?.radiusKm ?? 50) || 50;
+    const hasUserLocation = lat != null && lng != null;
     const scored = candidates.map((pet) => {
       const distanceKm =
-        lat != null && lng != null && pet.latitude != null && pet.longitude != null
-          ? this.haversineKm(lat, lng, pet.latitude, pet.longitude)
-          : 50;
+        hasUserLocation && pet.latitude != null && pet.longitude != null
+          ? this.haversineKm(lat!, lng!, pet.latitude, pet.longitude)
+          : hasUserLocation
+            ? Infinity
+            : 50;
       const daysSinceCreated = (now - pet.createdAt.getTime()) / (1000 * 60 * 60 * 24);
       const favoriteCount = favByPetId[pet.id] ?? 0;
       const speciesMatch = speciesFilter == null || pet.species === speciesFilter ? 1 : 0;
@@ -221,7 +247,7 @@ export class FeedService {
         !sizePref || sizePref === 'both' || pet.size === sizePref ? 1 : 0;
       const similarToFavorites =
         favoriteSpeciesSet.has(pet.species) || favoriteSizeSet.has(pet.size) ? 1 : 0;
-      const score = this.relevanceScore(
+      let score = this.relevanceScore(
         distanceKm,
         daysSinceCreated,
         favoriteCount,
@@ -229,13 +255,18 @@ export class FeedService {
         sizeMatch,
         similarToFavorites,
       );
+      if ((pet as { partner?: { isPaidPartner?: boolean } }).partner?.isPaidPartner) {
+        score = Math.min(1, score + BOOST_PAID_PARTNER);
+      }
       return { pet, score, distanceKm };
     });
 
-    /** Filtra por raio quando lat/lng foram enviados (feed respeita preferência do usuário). */
+    /** Filtra por raio quando lat/lng foram enviados (respeita preferência do usuário). */
     let withinRadius = scored;
-    if (lat != null && lng != null) {
-      withinRadius = scored.filter((s) => s.distanceKm <= radiusKm);
+    if (hasUserLocation) {
+      const byRadius = scored.filter((s) => s.distanceKm <= radiusKm);
+      // Se não houver nenhum pet no raio, mostra todos (ordenados por distância) para o feed não ficar vazio
+      withinRadius = byRadius.length > 0 ? byRadius : scored;
     }
 
     withinRadius.sort((a, b) => {
@@ -277,6 +308,7 @@ export class FeedService {
         this.mapToDto(pet, lat, lng, verifiedIds.has(pet.id)),
       ),
       nextCursor,
+      totalCount: withinRadius.length,
     };
   }
 
@@ -286,7 +318,7 @@ export class FeedService {
     lng: number,
     radiusKm: number,
     userId?: string,
-  ): Promise<{ items: { id: string; name: string; latitude: number; longitude: number; photoUrl: string }[] }> {
+  ): Promise<{ items: { id: string; name: string; age: number; species: string; city?: string; latitude: number; longitude: number; photoUrl: string }[] }> {
     const [reportedPetIds, blockedByMe, blockedMe] = await Promise.all([
       this.reportsService.getReportedPetIds(),
       userId ? this.blocksService.getBlockedUserIds(userId) : Promise.resolve([]),
@@ -305,12 +337,15 @@ export class FeedService {
       select: {
         id: true,
         name: true,
+        age: true,
+        species: true,
         latitude: true,
         longitude: true,
         media: { orderBy: { sortOrder: 'asc' }, take: 1, select: { url: true } },
+        owner: { select: { city: true } },
       },
     });
-    const items: { id: string; name: string; latitude: number; longitude: number; photoUrl: string }[] = [];
+    const items: { id: string; name: string; age: number; species: string; city?: string; latitude: number; longitude: number; photoUrl: string }[] = [];
     for (const p of candidates) {
       if (p.latitude == null || p.longitude == null) continue;
       const distanceKm = this.haversineKm(lat, lng, p.latitude, p.longitude);
@@ -318,6 +353,9 @@ export class FeedService {
         items.push({
           id: p.id,
           name: p.name,
+          age: p.age,
+          species: p.species,
+          ...(p.owner?.city != null && { city: p.owner.city }),
           latitude: p.latitude,
           longitude: p.longitude,
           photoUrl: p.media[0]?.url ?? '',
@@ -325,5 +363,46 @@ export class FeedService {
       }
     }
     return { items };
+  }
+
+  /**
+   * Conta pets novos (criados desde `since`) no raio do usuário, para notificação "novos pets na sua região".
+   */
+  async countNewPetsInRadius(
+    userId: string,
+    lat: number,
+    lng: number,
+    radiusKm: number,
+    since: Date,
+    species?: string,
+  ): Promise<number> {
+    const [reportedPetIds, blockedByMe, blockedMe] = await Promise.all([
+      this.reportsService.getReportedPetIds(),
+      this.blocksService.getBlockedUserIds(userId),
+      this.blocksService.getBlockedByUserIds(userId),
+    ]);
+    const excludeOwnerIds = [...blockedByMe, ...blockedMe];
+    const speciesFilter = species && species !== 'BOTH' ? species.toUpperCase() : null;
+    const candidates = await this.prisma.pet.findMany({
+      where: {
+        status: 'AVAILABLE',
+        publicationStatus: 'APPROVED',
+        createdAt: { gte: since },
+        latitude: { not: null },
+        longitude: { not: null },
+        ownerId: { not: userId },
+        ...(speciesFilter ? { species: speciesFilter } : {}),
+        ...(reportedPetIds.length > 0 ? { id: { notIn: reportedPetIds } } : {}),
+        ...(excludeOwnerIds.length > 0 ? { ownerId: { notIn: excludeOwnerIds } } : {}),
+      },
+      select: { id: true, latitude: true, longitude: true },
+      take: 2000,
+    });
+    let count = 0;
+    for (const p of candidates) {
+      if (p.latitude == null || p.longitude == null) continue;
+      if (this.haversineKm(lat, lng, p.latitude, p.longitude) <= radiusKm) count += 1;
+    }
+    return count;
   }
 }

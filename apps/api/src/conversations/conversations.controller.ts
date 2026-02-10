@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, UseGuards, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, UseGuards, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -53,6 +53,16 @@ export class ConversationsController {
     const conv = await this.conversationsService.getOne(id, user.id);
     if (!conv) throw new NotFoundException('Conversa não encontrada');
     this.conversationsService.setTyping(id, user.id);
+    return { message: 'OK' };
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Apagar conversa (remove a conversa e todas as mensagens)' })
+  async delete(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+  ): Promise<{ message: string }> {
+    await this.conversationsService.delete(id, user.id);
     return { message: 'OK' };
   }
 }

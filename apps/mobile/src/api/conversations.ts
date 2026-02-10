@@ -43,3 +43,7 @@ export async function getConversation(conversationId: string): Promise<Conversat
 export async function postConversationTyping(conversationId: string): Promise<{ message: string }> {
   return api.post<{ message: string }>(`/conversations/${conversationId}/typing`, {});
 }
+
+export async function deleteConversation(conversationId: string): Promise<void> {
+  return api.delete(`/conversations/${conversationId}`);
+}

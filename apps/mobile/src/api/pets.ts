@@ -12,13 +12,14 @@ export type CreatePetBody = {
   neutered: boolean;
   description: string;
   adoptionReason?: string;
+  partnerId?: string;
   latitude?: number;
   longitude?: number;
   /** Para testes: URL de imagem placeholder quando cadastro sem fotos. */
   initialPhotoUrl?: string;
 };
 
-export type UpdatePetBody = Partial<CreatePetBody>;
+export type UpdatePetBody = Partial<CreatePetBody> & { partnerId?: string | null };
 
 export type PetStatus = 'AVAILABLE' | 'IN_PROCESS' | 'ADOPTED';
 
@@ -52,8 +53,27 @@ export async function updatePet(id: string, body: UpdatePetBody): Promise<PetRes
   return api.put<PetResponse>(`/pets/${id}`, body);
 }
 
-export async function patchPetStatus(id: string, status: PetStatus): Promise<PetResponse> {
-  return api.patch<PetResponse>(`/pets/${id}/status`, { status });
+export type PatchStatusBody = {
+  status: PetStatus;
+  pendingAdopterId?: string;
+  pendingAdopterUsername?: string;
+};
+
+export async function patchPetStatus(
+  id: string,
+  status: PetStatus,
+  options?: { pendingAdopterId?: string; pendingAdopterUsername?: string },
+): Promise<PetResponse> {
+  const body: PatchStatusBody = { status };
+  if (options?.pendingAdopterId) body.pendingAdopterId = options.pendingAdopterId;
+  if (options?.pendingAdopterUsername) body.pendingAdopterUsername = options.pendingAdopterUsername;
+  return api.patch<PetResponse>(`/pets/${id}/status`, body);
+}
+
+export type ConversationPartner = { id: string; name: string; username?: string };
+
+export async function getConversationPartners(petId: string): Promise<ConversationPartner[]> {
+  return api.get<ConversationPartner[]>(`/pets/${petId}/conversation-partners`);
 }
 
 export async function deletePet(petId: string): Promise<{ message: string }> {

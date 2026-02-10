@@ -6,11 +6,11 @@ import { PrismaService } from '../prisma/prisma.service';
 
 describe('AuthService', () => {
   let service: AuthService;
-  let prisma: { user: { findUnique: jest.Mock; create: jest.Mock }; refreshToken: { findFirst: jest.Mock; delete: jest.Mock; create: jest.Mock; deleteMany: jest.Mock } };
+  let prisma: { user: { findUnique: jest.Mock; findFirst: jest.Mock; create: jest.Mock }; refreshToken: { findFirst: jest.Mock; delete: jest.Mock; create: jest.Mock; deleteMany: jest.Mock } };
 
   beforeEach(async () => {
     prisma = {
-      user: { findUnique: jest.fn(), create: jest.fn() },
+      user: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn() },
       refreshToken: {
         findFirst: jest.fn(),
         delete: jest.fn(),
@@ -37,14 +37,18 @@ describe('AuthService', () => {
 
   describe('signup', () => {
     it('should throw ConflictException if email exists', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: '1', email: 'a@b.com' });
+      prisma.user.findUnique
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({ id: '1', email: 'a@b.com' });
+      prisma.user.findFirst.mockResolvedValue(null);
       await expect(
-        service.signup({ email: 'a@b.com', password: '123456', name: 'Test', phone: '11987654321' }),
+        service.signup({ email: 'a@b.com', password: '123456', name: 'Test', phone: '11987654321', username: 'testuser' }),
       ).rejects.toThrow(ConflictException);
     });
 
     it('should create user and return tokens when email is new', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.findFirst.mockResolvedValue(null);
       prisma.user.create.mockResolvedValue({
         id: 'user-1',
         email: 'new@b.com',
@@ -55,6 +59,7 @@ describe('AuthService', () => {
         password: '123456',
         name: 'Test',
         phone: '11987654321',
+        username: 'testuser',
       });
       expect(res).toHaveProperty('accessToken');
       expect(res).toHaveProperty('refreshToken');

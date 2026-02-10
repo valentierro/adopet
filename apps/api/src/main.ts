@@ -1,11 +1,19 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { join } from 'path';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import * as express from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
   app.setGlobalPrefix('v1');
+  // Webhook Stripe precisa do body bruto para validar assinatura
+  app.use('/v1/payments/stripe-webhook', express.raw({ type: 'application/json' }));
+  app.use(express.json({ limit: '10mb' }));
+  // Fotos do seed: prisma/seed-images (dogs/1.png, cats/1.png, etc.) em /v1/seed-photos
+  app.useStaticAssets(join(process.cwd(), 'prisma', 'seed-images'), { prefix: '/v1/seed-photos/' });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   const config = new DocumentBuilder()

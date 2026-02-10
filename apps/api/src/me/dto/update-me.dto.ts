@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MinLength, MaxLength, IsUrl, IsBoolean } from 'class-validator';
+import { IsOptional, IsString, MinLength, MaxLength, IsUrl, IsBoolean, Matches } from 'class-validator';
 
 export class UpdateMeDto {
   @ApiPropertyOptional()
@@ -56,4 +56,12 @@ export class UpdateMeDto {
   @IsOptional()
   @IsString()
   timeAtHome?: string;
+
+  @ApiPropertyOptional({ example: 'maria.silva', description: 'Nome de usuário único (@nome) para ser encontrado na hora de indicar adotante' })
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(30)
+  @Matches(/^[a-z0-9._]+$/, { message: 'Use apenas letras minúsculas, números, ponto e underscore' })
+  username?: string;
 }

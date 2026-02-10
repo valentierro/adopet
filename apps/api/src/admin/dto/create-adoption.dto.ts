@@ -1,12 +1,13 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsUUID } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateAdoptionDto {
   @ApiProperty({ description: 'ID do pet adotado' })
   @IsUUID()
   petId!: string;
 
-  @ApiProperty({ description: 'ID do usuário que adotou (adotante)' })
+  @ApiPropertyOptional({ description: 'ID do usuário que adotou (adotante); se omitido, usa o adotante indicado pelo tutor (pendingAdopterId)' })
+  @IsOptional()
   @IsUUID()
-  adopterUserId!: string;
+  adopterUserId?: string;
 }

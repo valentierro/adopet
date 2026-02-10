@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, TextInput, Image, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -12,6 +13,7 @@ import { createSwipe } from '../../src/api/swipes';
 import { addFavorite } from '../../src/api/favorites';
 import { trackEvent } from '../../src/analytics';
 import { getPreferences } from '../../src/api/me';
+import { useUpdateCityFromLocation } from '../../src/hooks/useUpdateCityFromLocation';
 import { spacing } from '../../src/theme';
 
 type FeedItem = FeedResponse['items'][number];
@@ -26,11 +28,13 @@ export default function FeedScreen() {
   const { colors, isDark } = useTheme();
   const queryClient = useQueryClient();
   const [cursor, setCursor] = useState<string | null>(null);
+  const [accumulatedItems, setAccumulatedItems] = useState<FeedResponse['items'] | null>(null);
   const [localItems, setLocalItems] = useState<FeedResponse['items'] | null>(null);
   const [showMatchOverlay, setShowMatchOverlay] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const likedPetIdRef = useRef<string | null>(null);
   const matchOverlayShownForRef = useRef<string | null>(null);
+  const lastLikedPetRef = useRef<FeedItem | null>(null);
   const lastPassedPetRef = useRef<FeedItem | null>(null);
   const [showUndo, setShowUndo] = useState(false);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -58,6 +62,8 @@ export default function FeedScreen() {
     })();
   }, []);
 
+  useUpdateCityFromLocation(userCoords);
+
   const { data: prefs } = useQuery({
     queryKey: ['me', 'preferences'],
     queryFn: getPreferences,
@@ -69,7 +75,7 @@ export default function FeedScreen() {
     queryFn: () =>
       fetchFeed({
         ...(userCoords && { lat: userCoords.lat, lng: userCoords.lng }),
-        radiusKm: prefs?.radiusKm,
+        radiusKm: prefs?.radiusKm ?? 50,
         cursor: cursor ?? undefined,
         species: speciesFilter,
         breed: breedFilter.trim() || undefined,
@@ -78,8 +84,25 @@ export default function FeedScreen() {
     enabled: true,
   });
 
-  const items = localItems ?? data?.items ?? [];
   const nextCursor = data?.nextCursor ?? null;
+
+  // Primeira carga: acumula; ao carregar mais: mostra os próximos 20 no deck
+  useEffect(() => {
+    if (!data?.items?.length) return;
+    if (cursor === null) {
+      setAccumulatedItems(data.items);
+    } else {
+      setLocalItems(data.items);
+    }
+  }, [data?.items, cursor]);
+
+  const items = localItems ?? accumulatedItems ?? data?.items ?? [];
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch]),
+  );
 
   const swipeMutation = useMutation({
     mutationFn: async (params: { petId: string; action: 'LIKE' | 'PASS' }) => {
@@ -93,6 +116,12 @@ export default function FeedScreen() {
       }
     },
     onMutate: async ({ petId, action }) => {
+      const removePetFromList = () => {
+        setLocalItems((prev) => {
+          const list = prev ?? data?.items ?? [];
+          return list.filter((p) => p.id !== petId);
+        });
+      };
       if (action === 'PASS') {
         const current = items[0];
         if (current?.id === petId) {
@@ -103,30 +132,39 @@ export default function FeedScreen() {
             setShowUndo(false);
           }, 5000);
         }
-        setLocalItems((prev) => {
-          const list = prev ?? data?.items ?? [];
-          return list.filter((p) => p.id !== petId);
-        });
+        removePetFromList();
+      } else if (action === 'LIKE') {
+        const current = items[0];
+        if (current?.id === petId) lastLikedPetRef.current = current;
+        removePetFromList();
+        likedPetIdRef.current = petId;
+        if (matchOverlayShownForRef.current !== petId) {
+          matchOverlayShownForRef.current = petId;
+          setShowMatchOverlay(true);
+          setToastMessage('Adicionado aos favoritos!');
+        }
       }
     },
     onSuccess: (_, variables) => {
       trackEvent({ name: 'swipe', properties: { petId: variables.petId, action: variables.action } });
-      const removePetFromList = () => {
-        setLocalItems((prev) => {
-          const list = prev ?? data?.items ?? [];
-          return list.filter((p) => p.id !== variables.petId);
-        });
-      };
       if (variables.action === 'LIKE') {
         trackEvent({ name: 'like', properties: { petId: variables.petId } });
-        likedPetIdRef.current = variables.petId;
-        if (matchOverlayShownForRef.current !== variables.petId) {
-          matchOverlayShownForRef.current = variables.petId;
-          setShowMatchOverlay(true);
-          setToastMessage('Adicionado aos favoritos!');
+        lastLikedPetRef.current = null;
+      }
+    },
+    onError: (_, variables) => {
+      if (variables.action === 'LIKE') {
+        matchOverlayShownForRef.current = null;
+        likedPetIdRef.current = null;
+        setShowMatchOverlay(false);
+        const pet = lastLikedPetRef.current;
+        lastLikedPetRef.current = null;
+        if (pet) {
+          setLocalItems((prev) => {
+            const list = prev ?? data?.items ?? [];
+            return [pet, ...list];
+          });
         }
-      } else if (variables.action === 'PASS') {
-        removePetFromList();
       }
     },
     onSettled: () => {
@@ -167,6 +205,7 @@ export default function FeedScreen() {
 
   const handleRefresh = useCallback(() => {
     setCursor(null);
+    setAccumulatedItems(null);
     setLocalItems(null);
     refetch();
   }, [refetch]);
@@ -188,6 +227,10 @@ export default function FeedScreen() {
   }
 
   if (items.length === 0 && !data) {
+    const radiusKm = prefs?.radiusKm ?? 50;
+    const emptyMessage = userCoords
+      ? `Nenhum pet no raio de ${radiusKm} km. Aumente o raio em Preferências ou tente outro filtro.`
+      : 'Não há anúncios no feed. Ative sua localização ou tente outro filtro.';
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
         <View style={[styles.brandHeader, { paddingTop: insets.top + 8 }]}>
@@ -196,9 +239,23 @@ export default function FeedScreen() {
         <View style={styles.emptyWrap}>
           <EmptyState
             title="Nenhum pet no momento"
-            message="Não há anúncios no feed. Ative sua localização ou tente outro filtro."
+            message={emptyMessage}
             icon={<Ionicons name="paw-outline" size={56} color={colors.textSecondary} />}
           />
+          <TouchableOpacity
+            style={[styles.secondaryBtn, { borderColor: colors.primary }]}
+            onPress={() => router.push('/preferences')}
+          >
+            <Ionicons name="options-outline" size={20} color={colors.primary} />
+            <Text style={[styles.secondaryBtnText, { color: colors.primary }]}>Ajustar preferências</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.secondaryBtn, { borderColor: colors.primary }]}
+            onPress={() => router.push('/map')}
+          >
+            <Ionicons name="map-outline" size={20} color={colors.primary} />
+            <Text style={[styles.secondaryBtnText, { color: colors.primary }]}>Ver no mapa</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -219,14 +276,18 @@ export default function FeedScreen() {
           {nextCursor ? (
             <TouchableOpacity
               style={[styles.loadMoreBtn, { backgroundColor: colors.primary }]}
-              onPress={() => {
-                setLocalItems(null);
-                setCursor(nextCursor);
-              }}
+              onPress={() => setCursor(nextCursor)}
             >
               <Text style={styles.loadMoreBtnText}>Carregar mais</Text>
             </TouchableOpacity>
           ) : null}
+          <TouchableOpacity
+            style={[styles.secondaryBtn, { borderColor: colors.primary }]}
+            onPress={() => router.push('/preferences')}
+          >
+            <Ionicons name="options-outline" size={20} color={colors.primary} />
+            <Text style={[styles.secondaryBtnText, { color: colors.primary }]}>Ajustar preferências</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.secondaryBtn, { borderColor: colors.primary }]}
             onPress={() => router.push('/passed-pets')}
@@ -285,6 +346,7 @@ export default function FeedScreen() {
               onPress={() => {
                 setSpeciesFilter(value);
                 setCursor(null);
+                setAccumulatedItems(null);
                 setLocalItems(null);
                 setChangingFilter(true);
               }}
@@ -305,7 +367,7 @@ export default function FeedScreen() {
           placeholder="Filtrar por raça (opcional)"
           placeholderTextColor={colors.textSecondary}
           value={breedFilter}
-          onChangeText={(t) => { setBreedFilter(t); setCursor(null); setLocalItems(null); setChangingFilter(true); }}
+          onChangeText={(t) => { setBreedFilter(t); setCursor(null); setAccumulatedItems(null); setLocalItems(null); setChangingFilter(true); }}
         />
         <View style={styles.swipeHintWrap}>
           <Ionicons name="arrow-back" size={16} color={colors.textSecondary} />

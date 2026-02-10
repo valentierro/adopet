@@ -29,7 +29,7 @@ export class FeedController {
     @Query('lat') lat: string,
     @Query('lng') lng: string,
     @Query('radiusKm') radiusKm?: string,
-  ): Promise<{ items: { id: string; name: string; latitude: number; longitude: number; photoUrl: string }[] }> {
+  ): Promise<{ items: { id: string; name: string; age: number; species: string; city?: string; latitude: number; longitude: number; photoUrl: string }[] }> {
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
     const radius = radiusKm != null ? parseInt(radiusKm, 10) : 50;

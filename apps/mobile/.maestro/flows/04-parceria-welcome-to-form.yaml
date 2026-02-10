@@ -1,0 +1,25 @@
+# Fluxo: Welcome → Formulário de parceria (sem entrar nas tabs)
+# Pré-condição: app na welcome (não logado). Garante que o CTA leva direto ao form.
+# Executar: maestro test .maestro/flows/04-parceria-welcome-to-form.yaml
+---
+appId: br.com.adopet.app
+---
+- launchApp
+# Se já estiver logado, sair para chegar na welcome
+- tapOn:
+    text: "Perfil"
+    optional: true
+- tapOn:
+    text: "Sair"
+    optional: true
+# CTA "Clínicas, veterinários, lojas" deve abrir o form (não as tabs)
+- tapOn:
+    text: "Clínicas, veterinários, lojas"
+- assertVisible:
+    text: "Criar conta e ir para pagamento"
+# Voltar e testar o outro CTA (ONG)
+- back
+- tapOn:
+    text: "Sou ONG ou instituição"
+- assertVisible:
+    text: "Enviar solicitação"

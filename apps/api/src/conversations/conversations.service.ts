@@ -213,4 +213,15 @@ export class ConversationsService {
       };
     });
   }
+
+  async delete(conversationId: string, userId: string): Promise<void> {
+    const conv = await this.prisma.conversation.findFirst({
+      where: {
+        id: conversationId,
+        participants: { some: { userId } },
+      },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada');
+    await this.prisma.conversation.delete({ where: { id: conversationId } });
+  }
 }

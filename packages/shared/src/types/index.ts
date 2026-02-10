@@ -36,16 +36,33 @@ export interface Pet {
   description: string;
   adoptionReason?: string;
   distanceKm?: number;
+  /** Cidade do tutor (para exibir no feed/mapa) */
+  city?: string;
   photos: string[];
   ownerId: string;
   /** Status de adoção (AVAILABLE, IN_PROCESS, ADOPTED) - pode vir da API em respostas do dono */
   status?: string;
+  /** Data em que o pet foi adotado (apenas quando status === ADOPTED, em GET /pets/mine) */
+  adoptedAt?: string;
+  /** Nome de usuário do adotante (apenas em GET /pets/mine quando adotado) */
+  adopterUsername?: string;
+  /** Data em que um admin rejeitou a marcação de adoção; exibe badge "Rejeitado pelo Adopet" */
+  adoptionRejectedAt?: string;
   /** Status de moderação do anúncio: PENDING = Em análise, APPROVED = aprovado, REJECTED = rejeitado */
   publicationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
   createdAt: string;
   updatedAt: string;
   /** Indica se o pet possui verificação aprovada */
   verified?: boolean;
+  /** Parceiro (ONG) quando o anúncio é em parceria */
+  partner?: {
+    id: string;
+    name: string;
+    slug: string;
+    logoUrl?: string;
+    /** Parceria paga: destaque na lista e boost no feed */
+    isPaidPartner?: boolean;
+  };
   /** Dados do tutor (apenas em GET /pets/:id) */
   owner?: {
     id: string;

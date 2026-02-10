@@ -4,6 +4,7 @@ import { api } from './client';
 export type FeedResponse = {
   items: Pet[];
   nextCursor: string | null;
+  totalCount: number;
 };
 
 const FEED_PAGE_SIZE = 20;
@@ -34,6 +35,9 @@ export async function fetchFeed(params: FeedParams = {}): Promise<FeedResponse> 
 export type MapPin = {
   id: string;
   name: string;
+  age: number;
+  species: string;
+  city?: string;
   latitude: number;
   longitude: number;
   photoUrl: string;

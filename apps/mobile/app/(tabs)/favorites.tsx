@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ScreenContainer, PetCard, EmptyState, LoadingLogo, PageIntro } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -63,6 +64,12 @@ export default function FavoritesScreen() {
     return out;
   }, [pageData]);
 
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch]),
+  );
+
   const removeMutation = useMutation({
     mutationFn: removeFavorite,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['favorites'] }),
@@ -106,6 +113,14 @@ export default function FavoritesScreen() {
           message="Pets que você curtir no feed aparecerão aqui. Depois você pode conversar com o tutor."
           icon={<Ionicons name="heart-outline" size={48} color={colors.textSecondary} />}
         />
+        <TouchableOpacity
+          style={[styles.emptyCta, { backgroundColor: colors.primary }]}
+          onPress={() => router.push('/feed')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="paw" size={20} color="#fff" />
+          <Text style={styles.emptyCtaText}>Descobrir pets</Text>
+        </TouchableOpacity>
       </ScreenContainer>
     );
   }
@@ -186,4 +201,16 @@ const styles = StyleSheet.create({
   chatBtnText: { color: '#fff', fontWeight: '600' },
   removeBtn: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: 10, borderWidth: 1 },
   removeBtnText: { fontSize: 14 },
+  emptyCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.xl,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: 12,
+  },
+  emptyCtaText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

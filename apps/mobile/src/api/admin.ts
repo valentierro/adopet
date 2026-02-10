@@ -83,6 +83,10 @@ export type PendingAdoptionByTutorItem = {
   markedAt: string;
   /** Se não houver validação manual, o sistema auto-valida nesta data (48h após markedAt) */
   autoApproveAt?: string;
+  /** Adotante indicado pelo tutor ao marcar como adotado */
+  pendingAdopterId?: string;
+  pendingAdopterName?: string;
+  pendingAdopterUsername?: string;
 };
 
 export type AdoptionItem = {
@@ -107,8 +111,8 @@ export async function getAdminAdoptions(): Promise<AdoptionItem[]> {
   return api.get<AdoptionItem[]>('/admin/adoptions');
 }
 
-export async function createAdoption(petId: string, adopterUserId: string): Promise<AdoptionItem> {
-  return api.post<AdoptionItem>('/admin/adoptions', { petId, adopterUserId });
+export async function createAdoption(petId: string, adopterUserId?: string): Promise<AdoptionItem> {
+  return api.post<AdoptionItem>('/admin/adoptions', adopterUserId != null ? { petId, adopterUserId } : { petId });
 }
 
 export async function searchAdminUsers(search: string): Promise<UserSearchItem[]> {
@@ -123,4 +127,90 @@ export async function getAdminPetsAvailable(): Promise<PetAvailableItem[]> {
 
 export async function getAdminPendingAdoptionsByTutor(): Promise<PendingAdoptionByTutorItem[]> {
   return api.get<PendingAdoptionByTutorItem[]>('/admin/pending-adoptions-by-tutor');
+}
+
+/** [Admin] Rejeitar marcação de adoção pelo tutor; pet permanece como ADOPTED (não volta ao feed), não computa pontos/quantidade de adoção, tutor vê badge "Rejeitado pelo Adopet". */
+export async function rejectPendingAdoptionByTutor(petId: string): Promise<void> {
+  return api.post<void>(`/admin/pending-adoptions-by-tutor/${petId}/reject`, {});
+}
+
+export type BugReportItem = {
+  id: string;
+  userId?: string | null;
+  userName?: string | null;
+  userEmail?: string | null;
+  message: string;
+  stack?: string | null;
+  screen?: string | null;
+  userComment?: string | null;
+  createdAt: string;
+};
+
+/** [Admin] Listar reports de bugs enviados pelos usuários (beta) */
+export async function getAdminBugReports(): Promise<BugReportItem[]> {
+  return api.get<BugReportItem[]>('/admin/bug-reports');
+}
+
+// --- Parceiros (ONG, clínicas, lojas) ---
+
+export type PartnerAdminItem = {
+  id: string;
+  type: string;
+  name: string;
+  slug: string;
+  city?: string | null;
+  description?: string | null;
+  website?: string | null;
+  logoUrl?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  active: boolean;
+  approvedAt?: string | null;
+  isPaidPartner?: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreatePartnerBody = {
+  type: 'ONG' | 'CLINIC' | 'STORE';
+  name: string;
+  slug?: string;
+  city?: string;
+  description?: string;
+  website?: string;
+  logoUrl?: string;
+  phone?: string;
+  email?: string;
+  active?: boolean;
+  approve?: boolean;
+  isPaidPartner?: boolean;
+};
+
+export type UpdatePartnerBody = {
+  name?: string;
+  slug?: string;
+  city?: string;
+  description?: string;
+  website?: string;
+  logoUrl?: string;
+  phone?: string;
+  email?: string;
+  active?: boolean;
+  approve?: boolean;
+  isPaidPartner?: boolean;
+};
+
+/** [Admin] Listar todos os parceiros */
+export async function getAdminPartners(): Promise<PartnerAdminItem[]> {
+  return api.get<PartnerAdminItem[]>('/admin/partners');
+}
+
+/** [Admin] Cadastrar parceiro */
+export async function createAdminPartner(body: CreatePartnerBody): Promise<PartnerAdminItem> {
+  return api.post<PartnerAdminItem>('/admin/partners', body);
+}
+
+/** [Admin] Atualizar ou aprovar parceiro */
+export async function updateAdminPartner(id: string, body: UpdatePartnerBody): Promise<PartnerAdminItem> {
+  return api.patch<PartnerAdminItem>(`/admin/partners/${id}`, body);
 }

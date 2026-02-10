@@ -11,7 +11,14 @@ export class FavoritesService {
   ) {}
 
   async add(userId: string, petId: string): Promise<FavoriteItemDto> {
-    const pet = await this.prisma.pet.findUnique({ where: { id: petId }, include: { media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } } });
+    const pet = await this.prisma.pet.findUnique({
+      where: { id: petId },
+      include: {
+        media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true } },
+        owner: { select: { city: true } },
+      },
+    });
     if (!pet) throw new NotFoundException('Pet não encontrado');
     const existing = await this.prisma.favorite.findUnique({
       where: { userId_petId: { userId, petId } },
@@ -19,7 +26,15 @@ export class FavoritesService {
     if (existing) throw new ConflictException('Pet já está nos favoritos');
     const fav = await this.prisma.favorite.create({
       data: { userId, petId },
-      include: { pet: { include: { media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } } } },
+      include: {
+        pet: {
+          include: {
+            media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+            partner: { select: { id: true, name: true, slug: true, logoUrl: true } },
+            owner: { select: { city: true } },
+          },
+        },
+      },
     });
     const verified = await this.verificationService.isPetVerified(petId);
     const dto = this.toItemDto(fav, verified);
@@ -44,7 +59,15 @@ export class FavoritesService {
       take: this.PAGE_SIZE + 1,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
       orderBy: { createdAt: 'desc' },
-      include: { pet: { include: { media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] } } } },
+      include: {
+        pet: {
+          include: {
+            media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+            partner: { select: { id: true, name: true, slug: true, logoUrl: true } },
+            owner: { select: { city: true } },
+          },
+        },
+      },
     });
     const safeList = Array.isArray(list) ? list : [];
     const withPet = safeList.filter((f) => f?.pet != null);
@@ -64,7 +87,21 @@ export class FavoritesService {
       id: string;
       petId: string;
       createdAt: Date;
-      pet: { id: string; name: string; species: string; age: number; status: string; media?: { url: string }[] } | null;
+      pet: {
+        id: string;
+        name: string;
+        species: string;
+        age: number;
+        sex: string;
+        size: string;
+        vaccinated: boolean;
+        neutered: boolean;
+        createdAt: Date;
+        status: string;
+        media?: { url: string }[];
+        partner?: { id: string; name: string; slug: string; logoUrl: string | null } | null;
+        owner?: { city: string | null } | null;
+      } | null;
     },
     verified = false,
   ): FavoriteItemDto | null {
@@ -80,9 +117,23 @@ export class FavoritesService {
         name: pet.name,
         species: pet.species,
         age: pet.age,
+        sex: pet.sex,
+        size: pet.size,
+        vaccinated: pet.vaccinated,
+        neutered: pet.neutered,
         photos: media.map((m) => m.url),
         status: pet.status,
         verified,
+        createdAt: pet.createdAt.toISOString(),
+        city: pet.owner?.city ?? undefined,
+        ...(pet.partner && {
+          partner: {
+            id: pet.partner.id,
+            name: pet.partner.name,
+            slug: pet.partner.slug,
+            logoUrl: pet.partner.logoUrl ?? undefined,
+          },
+        }),
       },
     };
   }

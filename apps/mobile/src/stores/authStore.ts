@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as authApi from '../api/auth';
+import * as partnerApi from '../api/partner';
 import { getMe } from '../api/me';
 import {
   getStoredAccessToken,
@@ -12,6 +13,7 @@ export type User = {
   id: string;
   email: string;
   name: string;
+  username?: string;
   avatarUrl?: string;
   phone?: string;
   createdAt: string;
@@ -24,6 +26,14 @@ export type User = {
   timeAtHome?: string;
   verified?: boolean;
   isAdmin?: boolean;
+  partner?: {
+    id: string;
+    name: string;
+    slug: string;
+    subscriptionStatus?: string;
+    planId?: string;
+    isPaidPartner: boolean;
+  };
 };
 
 type AuthState = {
@@ -35,7 +45,8 @@ type AuthState = {
   setTokens: (access: string, refresh: string) => void;
   setUser: (user: User | null) => void;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, name: string, phone: string) => Promise<void>;
+  signup: (email: string, password: string, name: string, phone: string, username: string) => Promise<void>;
+  partnerSignup: (body: partnerApi.PartnerSignupBody) => Promise<void>;
   logout: () => Promise<void>;
   refreshTokens: () => Promise<boolean>;
   hydrate: () => Promise<void>;
@@ -78,10 +89,36 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  signup: async (email: string, password: string, name: string, phone: string) => {
+  signup: async (email: string, password: string, name: string, phone: string, username: string) => {
     set({ isLoading: true, user: null });
     try {
-      const res = await authApi.signup({ email, password, name, phone });
+      const usernameNorm = username.trim().toLowerCase().replace(/^@/, '');
+      const res = await authApi.signup({ email, password, name, phone, username: usernameNorm });
+      set({
+        accessToken: res.accessToken,
+        refreshToken: res.refreshToken,
+        isLoading: false,
+      });
+      await setStoredTokens(res.accessToken, res.refreshToken);
+      try {
+        const me = await getMe();
+        set({ user: me });
+      } catch {
+        set({ user: null });
+      }
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  partnerSignup: async (body: partnerApi.PartnerSignupBody) => {
+    set({ isLoading: true, user: null });
+    try {
+      const usernameNorm = body.username.trim().toLowerCase().replace(/^@/, '');
+      const res = await partnerApi.partnerSignup({
+        ...body,
+        username: usernameNorm,
+      });
       set({
         accessToken: res.accessToken,
         refreshToken: res.refreshToken,
