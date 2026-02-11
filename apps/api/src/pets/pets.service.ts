@@ -174,6 +174,21 @@ export class PetsService {
       dto.owner = this.mapOwnerToPublicDto(pet.owner, petsCount, ownerVerified);
       dto.owner.tutorStats = await this.tutorStatsService.getStats(pet.ownerId);
     }
+    if (!dto.partner && pet.ownerId) {
+      const ownerPartner = await this.prisma.partner.findUnique({
+        where: { userId: pet.ownerId },
+        select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true },
+      });
+      if (ownerPartner) {
+        dto.partner = {
+          id: ownerPartner.id,
+          name: ownerPartner.name,
+          slug: ownerPartner.slug,
+          logoUrl: ownerPartner.logoUrl ?? undefined,
+          isPaidPartner: ownerPartner.isPaidPartner,
+        };
+      }
+    }
     if (pet.media?.length) {
       dto.mediaItems = pet.media.map((m) => ({
         id: m.id,
@@ -196,7 +211,23 @@ export class PetsService {
     });
     const petIds = pets.map((p) => p.id);
     const verifiedIds = await this.verificationService.getVerifiedPetIds(petIds);
-    return pets.map((p) => this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id)));
+    const ownerIdsWithoutPartner = [...new Set(pets.filter((p) => !p.partnerId).map((p) => p.ownerId))];
+    const ownerPartners =
+      ownerIdsWithoutPartner.length > 0
+        ? await this.prisma.partner.findMany({
+            where: { userId: { in: ownerIdsWithoutPartner } },
+            select: { userId: true, id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true },
+          })
+        : [];
+    const partnerByOwnerId = Object.fromEntries(ownerPartners.map((p) => [p.userId, p]));
+    const dtos = pets.map((p) => this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id)));
+    dtos.forEach((dto, i) => {
+      if (!dto.partner && partnerByOwnerId[pets[i].ownerId]) {
+        const op = partnerByOwnerId[pets[i].ownerId];
+        dto.partner = { id: op.id, name: op.name, slug: op.slug, logoUrl: op.logoUrl ?? undefined, isPaidPartner: op.isPaidPartner };
+      }
+    });
+    return dtos;
   }
 
   /** [Admin] Aprovar ou rejeitar anúncio (publicação no feed). */

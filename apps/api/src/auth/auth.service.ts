@@ -95,6 +95,8 @@ export class AuthService {
       dto.address?.trim() || null,
       documentType,
       document,
+      dto.legalName?.trim() || null,
+      dto.tradeName?.trim() || null,
     );
     return tokens;
   }

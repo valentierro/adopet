@@ -3,6 +3,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { PartnersService } from './partners.service';
 import type { PartnerPublicDto } from './dto/partner-response.dto';
 import type { PartnerCouponResponseDto } from './dto/partner-coupon-response.dto';
+import type { PartnerServiceResponseDto } from './dto/partner-service-response.dto';
 
 @ApiTags('partners')
 @Controller('partners')
@@ -23,6 +24,12 @@ export class PartnersController {
   @ApiOperation({ summary: 'Cupons ativos do parceiro (público – para usuários verem descontos).' })
   async getCoupons(@Param('id') id: string): Promise<PartnerCouponResponseDto[]> {
     return this.partnersService.findActivePublicCoupons(id);
+  }
+
+  @Get(':id/services')
+  @ApiOperation({ summary: 'Serviços ativos do parceiro (público – para usuários verem serviços).' })
+  async getServices(@Param('id') id: string): Promise<PartnerServiceResponseDto[]> {
+    return this.partnersService.findActivePublicServices(id);
   }
 
   @Post(':id/view')

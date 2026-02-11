@@ -230,6 +230,16 @@ export class FeedService {
         : [];
     const favByPetId = Object.fromEntries(favCounts.map((f) => [f.petId, f._count.id]));
 
+    const ownerIdsForPartnerCheck = [...new Set(candidates.filter((p) => !(p as { partner?: unknown }).partner).map((p) => p.ownerId))];
+    const ownerPartnersForScore =
+      ownerIdsForPartnerCheck.length > 0
+        ? await this.prisma.partner.findMany({
+            where: { userId: { in: ownerIdsForPartnerCheck } },
+            select: { userId: true, isPaidPartner: true },
+          })
+        : [];
+    const isPaidPartnerByOwnerId = Object.fromEntries(ownerPartnersForScore.map((p) => [p.userId, p.isPaidPartner]));
+
     const now = Date.now();
     const radiusKm = Number(queryRadiusKm ?? prefs?.radiusKm ?? 50) || 50;
     const hasUserLocation = lat != null && lng != null;
@@ -255,7 +265,9 @@ export class FeedService {
         sizeMatch,
         similarToFavorites,
       );
-      if ((pet as { partner?: { isPaidPartner?: boolean } }).partner?.isPaidPartner) {
+      const isPaidPartner =
+        (pet as { partner?: { isPaidPartner?: boolean } }).partner?.isPaidPartner || isPaidPartnerByOwnerId[pet.ownerId];
+      if (isPaidPartner) {
         score = Math.min(1, score + BOOST_PAID_PARTNER);
       }
       return { pet, score, distanceKm };
@@ -303,10 +315,26 @@ export class FeedService {
     const itemPetIds = items.map(({ pet }) => pet.id);
     const verifiedIds = await this.verificationService.getVerifiedPetIds(itemPetIds);
 
+    const itemPets = items.map(({ pet }) => pet);
+    const ownerIdsNeedingPartner = [...new Set(itemPets.filter((p) => !(p as { partner?: unknown }).partner).map((p) => p.ownerId))];
+    const ownerPartners =
+      ownerIdsNeedingPartner.length > 0
+        ? await this.prisma.partner.findMany({
+            where: { userId: { in: ownerIdsNeedingPartner } },
+            select: { userId: true, id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true },
+          })
+        : [];
+    const partnerByOwnerId = Object.fromEntries(ownerPartners.map((p) => [p.userId, p]));
+
     return {
-      items: items.map(({ pet }) =>
-        this.mapToDto(pet, lat, lng, verifiedIds.has(pet.id)),
-      ),
+      items: items.map(({ pet }) => {
+        const dto = this.mapToDto(pet, lat, lng, verifiedIds.has(pet.id));
+        if (!dto.partner && partnerByOwnerId[pet.ownerId]) {
+          const op = partnerByOwnerId[pet.ownerId];
+          dto.partner = { id: op.id, name: op.name, slug: op.slug, logoUrl: op.logoUrl ?? undefined, isPaidPartner: op.isPaidPartner };
+        }
+        return dto;
+      }),
       nextCursor,
       totalCount: withinRadius.length,
     };

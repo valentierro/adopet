@@ -63,6 +63,18 @@ export class PartnerSignupDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.replace(/\D/g, '') : value))
   cnpj?: string;
 
+  @ApiPropertyOptional({ example: 'Clínica Veterinária Amor de Patas Ltda', description: 'Razão social (obrigatório se personType = CNPJ)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  legalName?: string;
+
+  @ApiPropertyOptional({ example: 'Amor de Patas', description: 'Nome fantasia (obrigatório se personType = CNPJ)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  tradeName?: string;
+
   @ApiPropertyOptional({ description: 'Endereço completo do estabelecimento' })
   @IsOptional()
   @IsString()

@@ -43,7 +43,7 @@ const SLIDES: Array<{
     image: 'feed',
     icon: 'paw',
     title: 'Feed de pets',
-    message: 'Deslize pelos anúncios de cachorros e gatos disponíveis para adoção. Use os filtros por espécie e raça e ajuste o raio em Preferências.',
+    message: 'Deslize pelos anúncios de cachorros e gatos disponíveis para adoção. Use o filtro por espécie e ajuste o raio em Preferências.',
   },
   {
     key: 'like',

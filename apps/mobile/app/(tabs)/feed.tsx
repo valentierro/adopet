@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, TextInput, Image, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, Image, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,7 +39,6 @@ export default function FeedScreen() {
   const [showUndo, setShowUndo] = useState(false);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [speciesFilter, setSpeciesFilter] = useState<FeedSpeciesFilter>('BOTH');
-  const [breedFilter, setBreedFilter] = useState('');
   const [deckHeight, setDeckHeight] = useState<number>(0);
   const [changingFilter, setChangingFilter] = useState(false);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -71,14 +70,13 @@ export default function FeedScreen() {
   });
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
-    queryKey: [...FEED_QUERY_KEY, cursor, prefs?.radiusKm, speciesFilter, breedFilter, userCoords?.lat, userCoords?.lng],
+    queryKey: [...FEED_QUERY_KEY, cursor, prefs?.radiusKm, speciesFilter, userCoords?.lat, userCoords?.lng],
     queryFn: () =>
       fetchFeed({
         ...(userCoords && { lat: userCoords.lat, lng: userCoords.lng }),
         radiusKm: prefs?.radiusKm ?? 50,
         cursor: cursor ?? undefined,
         species: speciesFilter,
-        breed: breedFilter.trim() || undefined,
       }),
     staleTime: 60_000,
     enabled: true,
@@ -328,13 +326,13 @@ export default function FeedScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.brandHeader, { paddingTop: insets.top + 8 }]}>
+        <View style={[styles.brandHeader, { paddingTop: Math.max(insets.top, 8), paddingBottom: 4 }]}>
           <Image source={isDark ? LogoDark : LogoLight} style={styles.headerLogo} resizeMode="contain" />
           <Text style={[styles.hint, { color: colors.textSecondary }]}>
             {items.length} restante{items.length !== 1 ? 's' : ''}
           </Text>
         </View>
-        <View style={styles.chipsRow}>
+        <View style={[styles.chipsRow, { paddingBottom: spacing.xs }]}>
           {chips.map(({ value, label }) => (
             <TouchableOpacity
               key={value}
@@ -362,13 +360,6 @@ export default function FeedScreen() {
             </TouchableOpacity>
           ))}
         </View>
-        <TextInput
-          style={[styles.breedInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
-          placeholder="Filtrar por raça (opcional)"
-          placeholderTextColor={colors.textSecondary}
-          value={breedFilter}
-          onChangeText={(t) => { setBreedFilter(t); setCursor(null); setAccumulatedItems(null); setLocalItems(null); setChangingFilter(true); }}
-        />
         <View style={styles.swipeHintWrap}>
           <Ionicons name="arrow-back" size={16} color={colors.textSecondary} />
           <Text style={[styles.swipeHint, { color: colors.textSecondary }]}>
@@ -466,21 +457,12 @@ const styles = StyleSheet.create({
   chipsRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: 20, borderWidth: 1 },
   chipText: { fontSize: 14, fontWeight: '600' },
-  breedInput: {
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 10,
-    fontSize: 14,
-    borderWidth: 1,
-  },
   swipeHintWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
   },
   swipeHint: { fontSize: 13, textAlign: 'center' },

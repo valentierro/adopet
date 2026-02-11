@@ -134,6 +134,8 @@ export default function SolicitarParceriaScreen() {
 
   const [personType, setPersonType] = useState<'PF' | 'CNPJ' | ''>('');
   const [documentoComercial, setDocumentoComercial] = useState('');
+  const [razaoSocial, setRazaoSocial] = useState('');
+  const [nomeFantasia, setNomeFantasia] = useState('');
   const [planoDesejado, setPlanoDesejado] = useState('');
 
   const [password, setPassword] = useState('');
@@ -304,6 +306,16 @@ export default function SolicitarParceriaScreen() {
       Alert.alert('Documento inválido', personType === 'PF' ? 'O CPF informado não é válido.' : 'O CNPJ informado não é válido.');
       return;
     }
+    if (personType === 'CNPJ') {
+      if (!razaoSocial.trim()) {
+        Alert.alert('Campo obrigatório', 'Preencha a razão social.');
+        return;
+      }
+      if (!nomeFantasia.trim()) {
+        Alert.alert('Campo obrigatório', 'Preencha o nome fantasia.');
+        return;
+      }
+    }
     const endParts = [rua.trim(), numero.trim(), complemento.trim(), bairro.trim(), cidade.trim(), uf.trim()].filter(Boolean);
     const addressStr = endParts.length ? endParts.join(', ') + (cep.trim() ? ` - CEP ${cep.trim().replace(/\D/g, '').replace(/(\d{5})(\d{3})/, '$1-$2')}` : '') : '';
     if (!addressStr.trim()) {
@@ -321,6 +333,8 @@ export default function SolicitarParceriaScreen() {
         establishmentName: instTrim,
         personType,
         ...(personType === 'PF' ? { cpf: docTrim } : { cnpj: docTrim }),
+        ...(personType === 'CNPJ' && razaoSocial.trim() ? { legalName: razaoSocial.trim() } : {}),
+        ...(personType === 'CNPJ' && nomeFantasia.trim() ? { tradeName: nomeFantasia.trim() } : {}),
         ...(addressStr ? { address: addressStr } : {}),
         planId: planoPagamento,
       });
@@ -397,6 +411,10 @@ export default function SolicitarParceriaScreen() {
                     onPress={() => {
                       setPersonType(opt.value);
                       setDocumentoComercial('');
+                      if (opt.value !== 'CNPJ') {
+                        setRazaoSocial('');
+                        setNomeFantasia('');
+                      }
                     }}
                   >
                     <Text style={[styles.selectOptText, { color: personType === opt.value ? '#fff' : colors.textPrimary }]}>{opt.label}</Text>
@@ -432,6 +450,24 @@ export default function SolicitarParceriaScreen() {
                       setDocumentoComercial(d.length <= 2 ? d : d.length <= 5 ? `${d.slice(0,2)}.${d.slice(2)}` : d.length <= 8 ? `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5)}` : d.length <= 12 ? `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8)}` : `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12)}`);
                     }}
                     keyboardType="numeric"
+                  />
+                  <Text style={labelStyle}>Razão social *</Text>
+                  <TextInput
+                    style={inputStyle}
+                    placeholder="Ex: Clínica Veterinária Amor de Patas Ltda"
+                    placeholderTextColor={colors.textSecondary}
+                    value={razaoSocial}
+                    onChangeText={setRazaoSocial}
+                    autoCapitalize="words"
+                  />
+                  <Text style={labelStyle}>Nome fantasia *</Text>
+                  <TextInput
+                    style={inputStyle}
+                    placeholder="Ex: Amor de Patas"
+                    placeholderTextColor={colors.textSecondary}
+                    value={nomeFantasia}
+                    onChangeText={setNomeFantasia}
+                    autoCapitalize="words"
                   />
                 </>
               )}

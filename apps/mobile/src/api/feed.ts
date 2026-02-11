@@ -17,7 +17,6 @@ export type FeedParams = {
   radiusKm?: number;
   cursor?: string;
   species?: FeedSpeciesFilter;
-  breed?: string;
 };
 
 export async function fetchFeed(params: FeedParams = {}): Promise<FeedResponse> {
@@ -27,7 +26,6 @@ export async function fetchFeed(params: FeedParams = {}): Promise<FeedResponse> 
   if (params.radiusKm != null) query.radiusKm = String(params.radiusKm);
   if (params.cursor) query.cursor = params.cursor;
   if (params.species) query.species = params.species;
-  if (params.breed?.trim()) query.breed = params.breed.trim();
 
   return api.get<FeedResponse>('/feed', query);
 }

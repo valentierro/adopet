@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ScreenContainer, PrimaryButton, LoadingLogo } from '../src/components';
+import { ScreenContainer, PrimaryButton, LoadingLogo, PartnerPanelLayout } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMyPartnerCoupons, createPartnerCoupon, updatePartnerCoupon } from '../src/api/partner';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
@@ -102,8 +102,9 @@ export default function PartnerCouponEditScreen() {
   const labelStyle = [styles.label, { color: colors.textSecondary }];
 
   return (
-    <ScreenContainer scroll>
-      <ScrollView contentContainerStyle={styles.form} showsVerticalScrollIndicator={false}>
+    <ScreenContainer scroll={false}>
+      <PartnerPanelLayout>
+        <ScrollView style={styles.scrollWrap} contentContainerStyle={styles.form} showsVerticalScrollIndicator={false}>
         <Text style={labelStyle}>Código do cupom *</Text>
         <TextInput style={inputStyle} placeholder="Ex: ADOPET10" placeholderTextColor={colors.textSecondary} value={code} onChangeText={(t) => setCode(t.toUpperCase())} autoCapitalize="characters" />
         <Text style={labelStyle}>Título (exibido para o usuário)</Text>
@@ -139,12 +140,14 @@ export default function PartnerCouponEditScreen() {
           onPress={handleSave}
           disabled={createMutation.isPending || updateMutation.isPending}
         />
-      </ScrollView>
+        </ScrollView>
+      </PartnerPanelLayout>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollWrap: { flex: 1 },
   form: { paddingBottom: spacing.xl, gap: spacing.sm },
   label: { fontSize: 14, fontWeight: '600', marginTop: spacing.sm },
   input: { padding: spacing.md, borderRadius: 12, borderWidth: 1, fontSize: 16 },

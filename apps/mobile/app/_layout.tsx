@@ -45,6 +45,8 @@ export default function RootLayout() {
         <Stack.Screen name="partner-edit" options={{ title: 'Dados do estabelecimento' }} />
         <Stack.Screen name="partner-coupons" options={{ title: 'Cupons de desconto' }} />
         <Stack.Screen name="partner-coupon-edit" options={{ title: 'Cupom' }} />
+        <Stack.Screen name="partner-services" options={{ title: 'Serviços prestados' }} />
+        <Stack.Screen name="partner-service-edit" options={{ title: 'Serviço' }} />
         <Stack.Screen name="partner-analytics" options={{ title: 'Analytics' }} />
         <Stack.Screen name="partner-subscription" options={{ title: 'Assinatura' }} />
         <Stack.Screen name="partner-success" options={{ title: 'Pagamento concluído' }} />

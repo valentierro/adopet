@@ -138,7 +138,11 @@ export function FeedCard({ pet, onPress, onLike, onPass, height: cardHeight, wra
             <Text style={styles.name} numberOfLines={1}>
               {pet.name}
             </Text>
-            {pet.verified && <VerifiedBadge size={64} iconBackgroundColor="rgba(255,255,255,0.95)" />}
+            {pet.verified && (
+              <View style={styles.verifiedBadgeWrap}>
+                <VerifiedBadge size={14} showLabel backgroundColor="rgba(255,255,255,0.95)" textColor="#1a1a1a" />
+              </View>
+            )}
           </View>
           {pet.partner ? (
             <View style={[styles.partnerBadge, { backgroundColor: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'rgba(251, 191, 36, 0.5)' : 'rgba(217, 119, 6, 0.92)' }]}>
@@ -147,14 +151,15 @@ export function FeedCard({ pet, onPress, onLike, onPass, height: cardHeight, wra
             </View>
           ) : null}
           <Text style={styles.meta}>
-            {speciesLabel[String(pet.species).toLowerCase()] ?? pet.species} • {pet.age} ano(s) • {sizeLabel[pet.size] ?? pet.size}
+            {speciesLabel[String(pet.species).toLowerCase()] ?? pet.species}
+            {pet.breed?.trim() ? ` • ${pet.breed.trim()}` : ''} • {pet.age} ano(s) • {sizeLabel[pet.size] ?? pet.size}
           </Text>
           {(pet.distanceKm != null || pet.city) && (
             <View style={styles.distanceRow}>
               <Ionicons name="location" size={14} color="rgba(255,255,255,0.9)" />
-              {pet.distanceKm != null && <Text style={styles.distance}>{pet.distanceKm.toFixed(1)} km</Text>}
-              {pet.distanceKm != null && pet.city ? <Text style={styles.distance}> • </Text> : null}
               {pet.city ? <Text style={styles.distance}>{pet.city}</Text> : null}
+              {pet.city && pet.distanceKm != null ? <Text style={styles.distance}> • </Text> : null}
+              {pet.distanceKm != null && <Text style={styles.distance}>{pet.distanceKm.toFixed(1)} km</Text>}
             </View>
           )}
         </View>
@@ -264,7 +269,11 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  verifiedBadgeWrap: {
+    alignSelf: 'flex-start',
   },
   name: {
     fontSize: 28,

@@ -1,7 +1,7 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, LoadingLogo } from '../src/components';
+import { ScreenContainer, LoadingLogo, PartnerPanelLayout } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getPartnerAnalytics } from '../src/api/partner';
 import { spacing } from '../src/theme';
@@ -24,8 +24,10 @@ export default function PartnerAnalyticsScreen() {
   const analytics = data ?? { profileViews: 0, couponCopies: 0, byCoupon: [] };
 
   return (
-    <ScreenContainer scroll>
-      <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Resumo (total acumulado)</Text>
+    <ScreenContainer scroll={false}>
+      <PartnerPanelLayout>
+        <ScrollView style={styles.scrollWrap} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Resumo (total acumulado)</Text>
       <View style={styles.cardsRow}>
         <View style={[styles.metricCard, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '35' }]}>
           <View style={[styles.metricIconWrap, { backgroundColor: colors.primary + '25' }]}>
@@ -58,13 +60,17 @@ export default function PartnerAnalyticsScreen() {
       )}
 
       <Text style={[styles.hint, { color: colors.textSecondary }]}>
-        As visualizações são contabilizadas quando um usuário abre a sua página na aba Parceiros. Os cupons copiados são registrados quando alguém toca em "Copiar" no cupom.
-      </Text>
+          As visualizações são contabilizadas quando um usuário abre a sua página na aba Parceiros. Os cupons copiados são registrados quando alguém toca em "Copiar" no cupom.
+        </Text>
+        </ScrollView>
+      </PartnerPanelLayout>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollWrap: { flex: 1 },
+  scrollContent: { paddingBottom: spacing.xl },
   sectionTitle: {
     fontSize: 13,
     fontWeight: '700',

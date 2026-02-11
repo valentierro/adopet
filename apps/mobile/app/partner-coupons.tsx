@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import { View, Text, TouchableOpacity, FlatList, StyleSheet } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, LoadingLogo } from '../src/components';
+import { ScreenContainer, LoadingLogo, PartnerPanelLayout } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMyPartnerCoupons, type PartnerCoupon } from '../src/api/partner';
 import { spacing } from '../src/theme';
@@ -68,31 +68,33 @@ export default function PartnerCouponsScreen() {
 
   return (
     <ScreenContainer scroll={false}>
-      <FlatList
-        data={list}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <CouponRow item={item} colors={colors} />}
-        contentContainerStyle={[styles.list, list.length === 0 && styles.listEmpty]}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name="pricetag-outline" size={48} color={colors.textSecondary} />
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhum cupom ainda. Crie um para que usuários vejam descontos no app.</Text>
-          </View>
-        }
-      />
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.primary }]}
-        onPress={() => router.push('/partner-coupon-edit')}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="add" size={28} color="#fff" />
-      </TouchableOpacity>
+      <PartnerPanelLayout>
+        <FlatList
+          data={list}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <CouponRow item={item} colors={colors} />}
+          contentContainerStyle={[styles.list, list.length === 0 && styles.listEmpty]}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="pricetag-outline" size={48} color={colors.textSecondary} />
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhum cupom ainda. Crie um para que usuários vejam descontos no app.</Text>
+            </View>
+          }
+        />
+        <TouchableOpacity
+          style={[styles.fab, { backgroundColor: colors.primary }]}
+          onPress={() => router.push('/partner-coupon-edit')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="add" size={28} color="#fff" />
+        </TouchableOpacity>
+      </PartnerPanelLayout>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  list: { paddingBottom: 100 },
+  list: { paddingBottom: 140 },
   listEmpty: { flexGrow: 1 },
   empty: {
     flex: 1,

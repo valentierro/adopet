@@ -10,6 +10,8 @@ export type PartnerSignupBody = {
   personType?: 'PF' | 'CNPJ';
   cpf?: string;
   cnpj?: string;
+  legalName?: string;
+  tradeName?: string;
   address?: string;
   planId?: 'BASIC' | 'DESTAQUE' | 'PREMIUM';
 };
@@ -114,6 +116,51 @@ export async function updatePartnerCoupon(id: string, body: UpdatePartnerCouponB
 
 export async function deletePartnerCoupon(id: string): Promise<{ message: string }> {
   return api.delete<{ message: string }>(`/me/partner/coupons/${id}`);
+}
+
+// --- Serviços do parceiro ---
+
+export type PartnerService = {
+  id: string;
+  partnerId: string;
+  name: string;
+  description?: string;
+  priceDisplay?: string;
+  active: boolean;
+  validUntil?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function getMyPartnerServices(): Promise<PartnerService[]> {
+  return api.get<PartnerService[]>('/me/partner/services');
+}
+
+export type CreatePartnerServiceBody = {
+  name: string;
+  description?: string;
+  priceDisplay?: string;
+  validUntil?: string;
+};
+
+export async function createPartnerService(body: CreatePartnerServiceBody): Promise<PartnerService> {
+  return api.post<PartnerService>('/me/partner/services', body);
+}
+
+export type UpdatePartnerServiceBody = {
+  name?: string;
+  description?: string;
+  priceDisplay?: string;
+  validUntil?: string | null;
+  active?: boolean;
+};
+
+export async function updatePartnerService(id: string, body: UpdatePartnerServiceBody): Promise<PartnerService> {
+  return api.put<PartnerService>(`/me/partner/services/${id}`, body);
+}
+
+export async function deletePartnerService(id: string): Promise<{ message: string }> {
+  return api.delete<{ message: string }>(`/me/partner/services/${id}`);
 }
 
 export type CreateCheckoutSessionBody = {

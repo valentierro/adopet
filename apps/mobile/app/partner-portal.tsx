@@ -93,6 +93,14 @@ export default function PartnerPortalScreen() {
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+        onPress={() => router.push('/partner-services')}
+      >
+        <Ionicons name="construct-outline" size={22} color={colors.primary} />
+        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Serviços prestados</Text>
+        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
         onPress={() => router.push('/partner-analytics')}
       >
         <Ionicons name="stats-chart-outline" size={22} color={colors.primary} />

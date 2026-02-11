@@ -229,13 +229,16 @@ export default function PetDetailsScreen() {
       {pet.partner && (
         <TouchableOpacity
           style={[styles.partnerBanner, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
-          onPress={() => router.push('/partners')}
+          onPress={() => router.push(`/partners/${pet.partner!.id}`)}
           activeOpacity={0.8}
         >
           <Ionicons name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={18} color={colors.primary} />
-          <Text style={[styles.partnerBannerText, { color: colors.textPrimary }]}>
-            Em parceria com {pet.partner.name}{(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? ' (destaque)' : ''}
-          </Text>
+          <View style={styles.partnerBannerTextWrap}>
+            <Text style={[styles.partnerBannerLabel, { color: colors.textSecondary }]}>Anúncio em parceria</Text>
+            <Text style={[styles.partnerBannerText, { color: colors.textPrimary }]}>
+              {pet.partner.name}{(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? ' • Destaque' : ''}
+            </Text>
+          </View>
           <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
         </TouchableOpacity>
       )}
@@ -443,8 +446,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: spacing.md,
   },
+  partnerBannerTextWrap: { flex: 1, minWidth: 0 },
+  partnerBannerLabel: { fontSize: 12, marginBottom: 2 },
   partnerBannerText: {
-    flex: 1,
     fontSize: 14,
     fontWeight: '600',
   },

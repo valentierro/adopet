@@ -12,6 +12,8 @@ import { PushTokenDto } from './dto/push-token.dto';
 import { UpdateMyPartnerDto } from '../partners/dto/update-my-partner.dto';
 import { CreatePartnerCouponDto } from '../partners/dto/create-partner-coupon.dto';
 import { UpdatePartnerCouponDto } from '../partners/dto/update-partner-coupon.dto';
+import { CreatePartnerServiceDto } from '../partners/dto/create-partner-service.dto';
+import { UpdatePartnerServiceDto } from '../partners/dto/update-partner-service.dto';
 import { CreateCheckoutSessionDto } from './dto/checkout-session.dto';
 import { CreateBillingPortalSessionDto } from './dto/billing-portal.dto';
 import type { MeResponseDto } from './dto/me-response.dto';
@@ -19,6 +21,7 @@ import type { PreferencesResponseDto } from './dto/preferences-response.dto';
 import type { MyAdoptionsResponseDto } from './dto/my-adoption-item.dto';
 import type { PartnerMeDto } from '../partners/dto/partner-response.dto';
 import type { PartnerCouponResponseDto } from '../partners/dto/partner-coupon-response.dto';
+import type { PartnerServiceResponseDto } from '../partners/dto/partner-service-response.dto';
 import { TutorStatsResponseDto } from './dto/tutor-stats-response.dto';
 
 @ApiTags('me')
@@ -118,6 +121,40 @@ export class MeController {
     @Param('id') couponId: string,
   ): Promise<{ message: string }> {
     return this.partnersService.deleteCoupon(user.id, couponId);
+  }
+
+  @Get('partner/services')
+  @ApiOperation({ summary: 'Listar serviços do estabelecimento parceiro' })
+  async getMyPartnerServices(@CurrentUser() user: { id: string }): Promise<PartnerServiceResponseDto[]> {
+    return this.partnersService.getServicesByUserId(user.id);
+  }
+
+  @Post('partner/services')
+  @ApiOperation({ summary: 'Criar serviço prestado' })
+  async createMyPartnerService(
+    @CurrentUser() user: { id: string },
+    @Body() dto: CreatePartnerServiceDto,
+  ): Promise<PartnerServiceResponseDto> {
+    return this.partnersService.createService(user.id, dto);
+  }
+
+  @Put('partner/services/:id')
+  @ApiOperation({ summary: 'Atualizar serviço' })
+  async updateMyPartnerService(
+    @CurrentUser() user: { id: string },
+    @Param('id') serviceId: string,
+    @Body() dto: UpdatePartnerServiceDto,
+  ): Promise<PartnerServiceResponseDto> {
+    return this.partnersService.updateService(user.id, serviceId, dto);
+  }
+
+  @Delete('partner/services/:id')
+  @ApiOperation({ summary: 'Excluir serviço' })
+  async deleteMyPartnerService(
+    @CurrentUser() user: { id: string },
+    @Param('id') serviceId: string,
+  ): Promise<{ message: string }> {
+    return this.partnersService.deleteService(user.id, serviceId);
   }
 
   @Get('adoptions')

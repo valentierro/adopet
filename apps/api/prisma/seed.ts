@@ -91,8 +91,8 @@ function seedPhotoUrl(folder: 'dogs' | 'cats', index: number): string {
   return `${SEED_PHOTO_BASE_URL}/v1/seed-photos/${folder}/${num}${SEED_PHOTO_EXT}`;
 }
 
-const SEED_DOGS_PER_USER = 2;
-const SEED_CATS_PER_USER = 2;
+const SEED_DOGS_PER_USER = 1;
+const SEED_CATS_PER_USER = 1;
 
 /** Probabilidade de vincular um pet do seed a um parceiro ONG (para exibir badge no feed). */
 const SEED_PET_PARTNER_CHANCE = 0.3;
@@ -191,6 +191,7 @@ async function seedPetsForExistingUsers() {
   console.log('Seed de pets por usuário concluído.');
 }
 
+/** Anúncios iniciais do seed (apenas 4 para não encher o feed). Usado para verifications (2 APPROVED, 1 PENDING, 1 REJECTED). */
 const PETS = [
   {
     name: 'Rex',
@@ -243,84 +244,6 @@ const PETS = [
     latitude: -23.54,
     longitude: -46.65,
     photos: ['https://placekitten.com/401/401'],
-  },
-  {
-    name: 'Bob',
-    species: 'dog',
-    age: 1,
-    sex: 'male',
-    size: 'small',
-    vaccinated: true,
-    neutered: true,
-    description: 'Filhote cheio de energia. Precisa de espaço para correr.',
-    latitude: -23.55,
-    longitude: -46.62,
-    photos: ['https://placedog.net/400/400?id=5'],
-  },
-  {
-    name: 'Nina',
-    species: 'cat',
-    age: 2,
-    sex: 'female',
-    size: 'small',
-    vaccinated: true,
-    neutered: true,
-    description: 'Gata tranquila, perfeita para quem busca um pet calmo.',
-    latitude: -23.57,
-    longitude: -46.63,
-    photos: ['https://placekitten.com/402/402'],
-  },
-  {
-    name: 'Max',
-    species: 'dog',
-    age: 5,
-    sex: 'male',
-    size: 'xlarge',
-    vaccinated: true,
-    neutered: true,
-    description: 'Cão grande e gentil. Experiência com família recomendada.',
-    latitude: -23.54,
-    longitude: -46.64,
-    photos: ['https://placedog.net/400/400?id=7'],
-  },
-  {
-    name: 'Bela',
-    species: 'dog',
-    age: 2,
-    sex: 'female',
-    size: 'medium',
-    vaccinated: true,
-    neutered: true,
-    description: 'Cadela amorosa, adora brincar e receber carinho.',
-    latitude: -23.55,
-    longitude: -46.65,
-    photos: ['https://placedog.net/400/400?id=8'],
-  },
-  {
-    name: 'Felix',
-    species: 'cat',
-    age: 4,
-    sex: 'male',
-    size: 'medium',
-    vaccinated: true,
-    neutered: true,
-    description: 'Gato sociável, se dá bem com outros animais.',
-    latitude: -23.56,
-    longitude: -46.62,
-    photos: ['https://placekitten.com/403/403'],
-  },
-  {
-    name: 'Mel',
-    species: 'dog',
-    age: 3,
-    sex: 'female',
-    size: 'small',
-    vaccinated: true,
-    neutered: true,
-    description: 'Pequena e encantadora. Ideal para apartamentos.',
-    latitude: -23.53,
-    longitude: -46.63,
-    photos: ['https://placedog.net/400/400?id=10'],
   },
 ];
 
@@ -425,6 +348,23 @@ const SEED_COUPONS: Array<{
   { partnerSlug: 'clinica-vet-amigo-seed', code: 'SEED20REAIS', title: 'R$ 20 de desconto', discountType: 'FIXED', discountValue: 2000, validUntilDays: 365 },
 ];
 
+/** Serviços prestados por parceiro (slug) para exibir na página do parceiro. */
+const SEED_SERVICES: Array<{
+  partnerSlug: string;
+  name: string;
+  description?: string;
+  priceDisplay?: string;
+  validUntilDays?: number;
+}> = [
+  { partnerSlug: 'clinica-vet-recife', name: 'Consulta veterinária', description: 'Consulta clínica para cães e gatos', priceDisplay: 'A partir de R$ 80' },
+  { partnerSlug: 'clinica-vet-recife', name: 'Banho e tosa', description: 'Banho completo e tosa higiênica', priceDisplay: 'A partir de R$ 50' },
+  { partnerSlug: 'clinica-vet-recife', name: 'Vacinação', description: 'Aplicação de vacinas (V8, V10, antirrábica)', priceDisplay: 'Sob consulta' },
+  { partnerSlug: 'pet-shop-animais-felizes', name: 'Banho', description: 'Banho para cães e gatos', priceDisplay: 'A partir de R$ 35' },
+  { partnerSlug: 'pet-shop-animais-felizes', name: 'Hidratação', description: 'Hidratação capilar para pets', priceDisplay: 'R$ 25' },
+  { partnerSlug: 'clinica-vet-amigo-seed', name: 'Consulta', description: 'Consulta de rotina (seed)', priceDisplay: 'Sob consulta' },
+  { partnerSlug: 'clinica-vet-amigo-seed', name: 'Banho e tosa', description: 'Banho + tosa (seed)', priceDisplay: 'A partir de R$ 45', validUntilDays: 365 },
+];
+
 async function seedPartners() {
   const existing = await prisma.partner.findMany({ select: { slug: true } });
   const existingSlugs = new Set(existing.map((p) => p.slug));
@@ -517,6 +457,37 @@ async function seedPartnerCoupons() {
       },
     });
     console.log('Cupom criado:', c.code, 'para', c.partnerSlug);
+  }
+}
+
+async function seedPartnerServices() {
+  for (const s of SEED_SERVICES) {
+    const partner = await prisma.partner.findUnique({ where: { slug: s.partnerSlug } });
+    if (!partner) {
+      console.log('Serviço ignorado (parceiro não encontrado):', s.partnerSlug, s.name);
+      continue;
+    }
+    const existing = await prisma.partnerService.findFirst({
+      where: { partnerId: partner.id, name: s.name },
+    });
+    if (existing) {
+      console.log('Serviço já existe:', s.name, 'em', s.partnerSlug);
+      continue;
+    }
+    const validUntil = s.validUntilDays
+      ? new Date(Date.now() + s.validUntilDays * 24 * 60 * 60 * 1000)
+      : null;
+    await prisma.partnerService.create({
+      data: {
+        partnerId: partner.id,
+        name: s.name,
+        description: s.description ?? null,
+        priceDisplay: s.priceDisplay ?? null,
+        validUntil,
+        active: true,
+      },
+    });
+    console.log('Serviço criado:', s.name, 'para', s.partnerSlug);
   }
 }
 
@@ -620,7 +591,7 @@ async function main() {
   let petsForVerification: { id: string; name: string }[] = [];
   const petCount = await prisma.pet.count();
 
-  if (petCount < 10) {
+  if (petCount < PETS.length) {
     for (const p of PETS) {
       const pet = await prisma.pet.create({
         data: {
@@ -718,8 +689,9 @@ async function main() {
   try {
     // Usuário parceiro comercial para testar portal (parceiro@adopet.com.br)
     await seedParceiroComercialUser();
-    // Cupons dos parceiros comerciais (visíveis na página do parceiro)
+    // Cupons e serviços dos parceiros comerciais (visíveis na página do parceiro)
     await seedPartnerCoupons();
+    await seedPartnerServices();
   } catch (e: unknown) {
     const err = e as { code?: string; message?: string };
     if (err?.code === 'P2022' || (typeof err?.message === 'string' && err.message.includes('does not exist'))) {

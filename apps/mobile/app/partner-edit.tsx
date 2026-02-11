@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, PrimaryButton, LoadingLogo } from '../src/components';
+import { ScreenContainer, PrimaryButton, LoadingLogo, PartnerPanelLayout } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMyPartner, updateMyPartner } from '../src/api/partner';
 import { presign, confirmPartnerLogoUpload } from '../src/api/uploads';
@@ -119,9 +119,10 @@ export default function PartnerEditScreen() {
   const labelStyle = [styles.label, { color: colors.textSecondary }];
 
   return (
-    <ScreenContainer scroll>
-      <ScrollView contentContainerStyle={styles.form} showsVerticalScrollIndicator={false}>
-        <Text style={labelStyle}>Logo do estabelecimento</Text>
+    <ScreenContainer scroll={false}>
+      <PartnerPanelLayout>
+        <ScrollView style={styles.scrollWrap} contentContainerStyle={styles.form} showsVerticalScrollIndicator={false}>
+          <Text style={labelStyle}>Logo do estabelecimento</Text>
         <Text style={[styles.logoHint, { color: colors.textSecondary }]}>Exibida na página de parceiros para os usuários</Text>
         <TouchableOpacity
           style={[styles.logoWrap, { backgroundColor: colors.surface, borderColor: colors.primary + '40' }]}
@@ -155,12 +156,14 @@ export default function PartnerEditScreen() {
         <Text style={labelStyle}>Descrição</Text>
         <TextInput style={[inputStyle, styles.textArea]} placeholder="Conte sobre seu estabelecimento..." placeholderTextColor={colors.textSecondary} value={description} onChangeText={setDescription} multiline numberOfLines={4} textAlignVertical="top" />
         <PrimaryButton title={updateMutation.isPending ? 'Salvando...' : 'Salvar'} onPress={handleSave} disabled={updateMutation.isPending} />
-      </ScrollView>
+        </ScrollView>
+      </PartnerPanelLayout>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollWrap: { flex: 1 },
   form: { paddingBottom: spacing.xl, gap: spacing.sm },
   label: { fontSize: 14, fontWeight: '600', marginTop: spacing.sm },
   logoHint: { fontSize: 12, marginTop: 2, marginBottom: spacing.xs },

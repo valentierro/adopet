@@ -32,7 +32,7 @@ export default function PartnersAreaScreen() {
     <ScreenContainer scroll={false}>
       <PageIntro
         title="Ofertas dos parceiros"
-        subtitle="Cupons de desconto por estabelecimento. Escolha uma categoria e veja as ofertas."
+        subtitle="Serviços e cupons de desconto por estabelecimento. Escolha uma categoria e veja ofertas."
       />
 
       <View style={styles.filterRow}>
@@ -108,8 +108,10 @@ function PartnerOfferCard({
             </Text>
           ) : null}
           <View style={[styles.ctaRow, { backgroundColor: colors.primary + '15' }]}>
-            <Ionicons name="pricetag-outline" size={16} color={colors.primary} />
-            <Text style={[styles.ctaText, { color: colors.primary }]}>Ver cupons de desconto</Text>
+            <Ionicons name={partner.type === 'ONG' ? 'heart-outline' : 'pricetag-outline'} size={16} color={colors.primary} />
+            <Text style={[styles.ctaText, { color: colors.primary }]}>
+              {partner.type === 'ONG' ? 'Conheça a ONG' : 'Ver serviços e cupons'}
+            </Text>
             <Ionicons name="chevron-forward" size={16} color={colors.primary} />
           </View>
         </View>

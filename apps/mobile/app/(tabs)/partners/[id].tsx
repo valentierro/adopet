@@ -6,7 +6,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, LoadingLogo, PageIntro, Toast } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
-import { getPartnerById, getPartnerCouponsPublic, recordPartnerView, recordPartnerCouponCopy, type PartnerCouponPublic } from '../../../src/api/partners';
+import { getPartnerById, getPartnerCouponsPublic, getPartnerServicesPublic, recordPartnerView, recordPartnerCouponCopy, type PartnerCouponPublic, type PartnerServicePublic } from '../../../src/api/partners';
 import { spacing } from '../../../src/theme';
 
 function CouponCard({
@@ -72,6 +72,14 @@ const couponCardStyles = StyleSheet.create({
   valid: { fontSize: 12, marginTop: 4 },
 });
 
+const serviceCardStyles = StyleSheet.create({
+  card: { padding: spacing.md, borderRadius: 12, borderWidth: 1, marginBottom: spacing.sm },
+  name: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
+  price: { fontSize: 14, fontWeight: '600', marginBottom: 4 },
+  desc: { fontSize: 13 },
+  valid: { fontSize: 12, marginTop: 4 },
+});
+
 export default function PartnerDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const navigation = useNavigation();
@@ -85,6 +93,12 @@ export default function PartnerDetailScreen() {
   const { data: coupons = [] } = useQuery({
     queryKey: ['partners', id, 'coupons'],
     queryFn: () => getPartnerCouponsPublic(id!),
+    enabled: !!id && !!partner,
+    staleTime: 2 * 60_000,
+  });
+  const { data: services = [] } = useQuery({
+    queryKey: ['partners', id, 'services'],
+    queryFn: () => getPartnerServicesPublic(id!),
     enabled: !!id && !!partner,
     staleTime: 2 * 60_000,
   });
@@ -220,6 +234,23 @@ export default function PartnerDetailScreen() {
         ) : null}
       </View>
 
+      {services.length > 0 && (
+        <View style={[styles.section, { paddingHorizontal: spacing.lg }]}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Serviços</Text>
+          <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>Oferecidos pelo estabelecimento</Text>
+          {services.map((s) => (
+            <View key={s.id} style={[serviceCardStyles.card, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
+              <Text style={[serviceCardStyles.name, { color: colors.textPrimary }]}>{s.name}</Text>
+              {s.priceDisplay ? <Text style={[serviceCardStyles.price, { color: colors.primary }]}>{s.priceDisplay}</Text> : null}
+              {s.description ? <Text style={[serviceCardStyles.desc, { color: colors.textSecondary }]} numberOfLines={2}>{s.description}</Text> : null}
+              {s.validUntil && (
+                <Text style={[serviceCardStyles.valid, { color: colors.textSecondary }]}>Válido até {new Date(s.validUntil).toLocaleDateString('pt-BR')}</Text>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
+
       {coupons.length > 0 && (
         <View style={[styles.section, { paddingHorizontal: spacing.lg }]}>
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Cupons de desconto</Text>
@@ -235,6 +266,7 @@ export default function PartnerDetailScreen() {
           ))}
         </View>
       )}
+
       <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
     </ScreenContainer>
   );

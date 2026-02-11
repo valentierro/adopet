@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import {
@@ -12,14 +12,14 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
 import { ScreenContainer, LoadingLogo, VerifiedBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuthStore } from '../../src/stores/authStore';
-import { getMe, getTutorStats, getMyAdoptions } from '../../src/api/me';
+import { getMe, getTutorStats, getMyAdoptions, getPreferences } from '../../src/api/me';
 import { getMinePets } from '../../src/api/pets';
 import { getFavorites } from '../../src/api/favorites';
 import { getConversations } from '../../src/api/conversations';
@@ -30,7 +30,28 @@ const LogoLight = require('../../assets/brand/logo/logo_horizontal_light.png');
 const LogoDark = require('../../assets/brand/logo/logo_dark.png');
 
 function useDashboardData() {
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        try {
+          const loc = await Location.getCurrentPositionAsync({});
+          setUserCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+        } catch {
+          setUserCoords(null);
+        }
+      }
+    })();
+  }, []);
+
   const { data: user } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: 60_000 });
+  const { data: prefs } = useQuery({
+    queryKey: ['me', 'preferences'],
+    queryFn: getPreferences,
+    staleTime: 5 * 60_000,
+  });
   const { data: tutorStats } = useQuery({
     queryKey: ['me', 'tutor-stats'],
     queryFn: getTutorStats,
@@ -52,8 +73,13 @@ function useDashboardData() {
     staleTime: 60_000,
   });
   const { data: feedData, refetch: refetchFeed } = useQuery({
-    queryKey: ['feed', 'preview'],
-    queryFn: () => fetchFeed({}),
+    queryKey: ['feed', null, prefs?.radiusKm, 'BOTH', userCoords?.lat, userCoords?.lng],
+    queryFn: () =>
+      fetchFeed({
+        ...(userCoords && { lat: userCoords.lat, lng: userCoords.lng }),
+        radiusKm: prefs?.radiusKm ?? 50,
+        species: 'BOTH',
+      }),
     staleTime: 2 * 60_000,
   });
   const { data: adoptionsData, refetch: refetchAdoptions } = useQuery({
@@ -162,7 +188,12 @@ export default function DashboardScreen() {
     {
       id: 'feed',
       title: 'Descobrir pets',
-      subtitle: 'Deslize, curta e encontre seu match',
+      subtitle:
+        typeof feedTotalCount === 'number'
+          ? feedTotalCount === 0
+            ? 'Nenhum pet no momento na sua região'
+            : `${feedTotalCount} disponível${feedTotalCount !== 1 ? 'eis' : ''}`
+          : 'Deslize, curta e encontre seu match',
       icon: 'paw',
       route: '/feed',
       gradient: [colors.primary, colors.primaryDark || colors.primary],
@@ -217,7 +248,7 @@ export default function DashboardScreen() {
     {
       id: 'partnersArea',
       title: 'Ofertas dos parceiros',
-      subtitle: 'Cupons de desconto por clínicas e lojas',
+      subtitle: 'Serviços e cupons de clínicas e lojas',
       icon: 'pricetag',
       route: '/partners-area',
       gradient: ['#d97706', '#b45309'],

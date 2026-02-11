@@ -726,13 +726,11 @@ export default function AdminScreen() {
           subtitle="Dashboard, adoções, anúncios, denúncias e verificações."
         />
 
-        {/* Dashboard: 3 cards em cima, 3 embaixo */}
-        <View style={styles.summaryRow}>
+        {/* Dashboard: grid de cards (quebra de linha para não cortar) */}
+        <View style={styles.summaryGrid}>
           <SummaryCard title="Total de adoções" count={stats?.totalAdoptions ?? 0} colors={colors} onPress={() => scrollToSection('adoptions')} />
           <SummaryCard title="Adoções este mês" count={stats?.adoptionsThisMonth ?? 0} colors={colors} onPress={() => scrollToSection('adoptions')} />
           <SummaryCard title="Anúncios pendentes" count={pendingPets.length} colors={colors} onPress={() => scrollToSection('pendingPets')} />
-        </View>
-        <View style={styles.summaryRow}>
           <SummaryCard title="Verificações" count={pending.length} sub="pendentes" colors={colors} onPress={() => scrollToSection('verifications')} />
           <SummaryCard title="Denúncias abertas" count={unresolvedReports.length} colors={colors} onPress={() => scrollToSection('reports')} />
           <SummaryCard title="Marcados adotado" count={stats?.pendingAdoptionsByTutorCount ?? 0} sub="pelo tutor" colors={colors} onPress={() => scrollToSection('pendingByTutor')} />
@@ -1208,7 +1206,17 @@ export default function AdminScreen() {
                   <View style={[styles.petThumb, styles.petThumbPlaceholder, { backgroundColor: colors.background }]} />
                 )}
                 <View style={styles.petInfo}>
-                  <Text style={[styles.petName, { color: colors.textPrimary }]} numberOfLines={1}>{pet.name}</Text>
+                  <View style={styles.petNameRow}>
+                    <Text style={[styles.petName, { color: colors.textPrimary }]} numberOfLines={1}>{pet.name}</Text>
+                    {pet.partner && (
+                      <View style={[styles.partnerBadge, { backgroundColor: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? colors.primary + '25' : colors.textSecondary + '20' }]}>
+                        <Ionicons name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={12} color={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? colors.primary : colors.textSecondary} />
+                        <Text style={[styles.partnerBadgeText, { color: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? colors.primary : colors.textSecondary }]}>
+                          {(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'Patrocinado' : 'Parceiro'}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>{pet.species} • {pet.age} ano(s)</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
@@ -1874,6 +1882,12 @@ export default function AdminScreen() {
 }
 
 const styles = StyleSheet.create({
+  summaryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
   summaryRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -1881,8 +1895,8 @@ const styles = StyleSheet.create({
     flexWrap: 'nowrap',
   },
   summaryCard: {
-    flex: 1,
-    minWidth: 0,
+    width: '31%',
+    minWidth: 100,
     padding: spacing.md,
     borderRadius: 12,
     borderWidth: 1,
@@ -1927,8 +1941,18 @@ const styles = StyleSheet.create({
   petRow: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   petThumb: { width: 48, height: 48, borderRadius: 8 },
   petThumbPlaceholder: {},
-  petInfo: { flex: 1, marginLeft: spacing.sm },
-  petName: { fontSize: 16, fontWeight: '600' },
+  petInfo: { flex: 1, marginLeft: spacing.sm, minWidth: 0 },
+  petNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
+  petName: { fontSize: 16, fontWeight: '600', flex: 1, minWidth: 0 },
+  partnerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  partnerBadgeText: { fontSize: 11, fontWeight: '600' },
   linkRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
   linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   linkText: { fontSize: 13, fontWeight: '500' },

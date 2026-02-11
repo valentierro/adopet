@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, Alert, Linking, ScrollView } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
-import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, PrimaryButton, LoadingLogo } from '../src/components';
+import { ScreenContainer, PrimaryButton, LoadingLogo, PartnerPanelLayout } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMyPartner, createPartnerCheckoutSession, createPartnerBillingPortalSession } from '../src/api/partner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -82,29 +81,35 @@ export default function PartnerSubscriptionScreen() {
   const planLabel = partner.planId ? PLAN_LABELS[partner.planId] ?? partner.planId : '—';
 
   return (
-    <ScreenContainer scroll>
-      <View style={[styles.card, { backgroundColor: colors.surface }]}>
-        <Text style={[styles.label, { color: colors.textSecondary }]}>Plano atual</Text>
-        <Text style={[styles.plan, { color: colors.textPrimary }]}>{planLabel}</Text>
-        <View style={[styles.badge, { backgroundColor: partner.isPaidPartner ? colors.primary + '20' : colors.textSecondary + '20' }]}>
-          <Text style={[styles.badgeText, { color: partner.isPaidPartner ? colors.primary : colors.textSecondary }]}>{statusLabel}</Text>
-        </View>
-      </View>
-      <Text style={[styles.para, { color: colors.textSecondary }]}>
-        {partner.isPaidPartner
-          ? 'Sua assinatura está ativa. Use o botão abaixo para gerenciar forma de pagamento ou cancelar quando quiser.'
-          : 'Conclua o pagamento para ativar seu portal de parceiro e publicar cupons de desconto para os usuários do app.'}
-      </Text>
-      {partner.isPaidPartner ? (
-        <PrimaryButton title={loadingPortal ? 'Abrindo...' : 'Gerenciar assinatura / cancelar'} onPress={handleManageSubscription} disabled={loadingPortal} />
-      ) : (
-        <PrimaryButton title={loadingCheckout ? 'Abrindo...' : 'Ir para pagamento'} onPress={handlePayOrReactivate} disabled={loadingCheckout} />
-      )}
+    <ScreenContainer scroll={false}>
+      <PartnerPanelLayout>
+        <ScrollView style={styles.scrollWrap} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={[styles.card, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Plano atual</Text>
+            <Text style={[styles.plan, { color: colors.textPrimary }]}>{planLabel}</Text>
+            <View style={[styles.badge, { backgroundColor: partner.isPaidPartner ? colors.primary + '20' : colors.textSecondary + '20' }]}>
+              <Text style={[styles.badgeText, { color: partner.isPaidPartner ? colors.primary : colors.textSecondary }]}>{statusLabel}</Text>
+            </View>
+          </View>
+          <Text style={[styles.para, { color: colors.textSecondary }]}>
+            {partner.isPaidPartner
+              ? 'Sua assinatura está ativa. Use o botão abaixo para gerenciar forma de pagamento ou cancelar quando quiser.'
+              : 'Conclua o pagamento para ativar seu portal de parceiro e publicar cupons de desconto para os usuários do app.'}
+          </Text>
+          {partner.isPaidPartner ? (
+            <PrimaryButton title={loadingPortal ? 'Abrindo...' : 'Gerenciar assinatura / cancelar'} onPress={handleManageSubscription} disabled={loadingPortal} />
+          ) : (
+            <PrimaryButton title={loadingCheckout ? 'Abrindo...' : 'Ir para pagamento'} onPress={handlePayOrReactivate} disabled={loadingCheckout} />
+          )}
+        </ScrollView>
+      </PartnerPanelLayout>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollWrap: { flex: 1 },
+  scrollContent: { paddingBottom: spacing.xl },
   card: { padding: spacing.lg, borderRadius: 12, marginBottom: spacing.lg },
   label: { fontSize: 13, marginBottom: spacing.xs },
   plan: { fontSize: 18, fontWeight: '700', marginBottom: spacing.sm },

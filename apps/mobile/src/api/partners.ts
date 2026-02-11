@@ -23,9 +23,10 @@ export async function getPartners(type?: 'ONG' | 'CLINIC' | 'STORE'): Promise<Pa
   return api.get<Partner[]>('/partners', params);
 }
 
-/** Um parceiro por ID (público). */
+/** Um parceiro por ID (público). Retorna null se não existir. Nunca undefined (React Query). */
 export async function getPartnerById(id: string): Promise<Partner | null> {
-  return api.get<Partner | null>(`/partners/${id}`, undefined, { skipAuth: true });
+  const result = await api.get<Partner | null>(`/partners/${id}`, undefined, { skipAuth: true });
+  return result ?? null;
 }
 
 /** Cupons ativos do parceiro (público – para exibir na página do parceiro). */
@@ -52,4 +53,18 @@ export async function recordPartnerView(partnerId: string): Promise<void> {
 /** Registra cópia de cupom (analytics, público). */
 export async function recordPartnerCouponCopy(partnerId: string, couponId: string): Promise<void> {
   await api.post<{ ok: boolean }>(`/partners/${partnerId}/coupons/${couponId}/copy`, {}, { skipAuth: true });
+}
+
+/** Serviços ativos do parceiro (público – para exibir na página do parceiro). */
+export type PartnerServicePublic = {
+  id: string;
+  name: string;
+  description?: string;
+  priceDisplay?: string;
+  validUntil?: string | null;
+  active: boolean;
+};
+
+export async function getPartnerServicesPublic(partnerId: string): Promise<PartnerServicePublic[]> {
+  return api.get<PartnerServicePublic[]>(`/partners/${partnerId}/services`, undefined, { skipAuth: true });
 }

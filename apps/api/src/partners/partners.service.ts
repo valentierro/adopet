@@ -8,6 +8,9 @@ import type { UpdateMyPartnerDto } from './dto/update-my-partner.dto';
 import type { CreatePartnerCouponDto } from './dto/create-partner-coupon.dto';
 import type { UpdatePartnerCouponDto } from './dto/update-partner-coupon.dto';
 import type { PartnerCouponResponseDto } from './dto/partner-coupon-response.dto';
+import type { CreatePartnerServiceDto } from './dto/create-partner-service.dto';
+import type { UpdatePartnerServiceDto } from './dto/update-partner-service.dto';
+import type { PartnerServiceResponseDto } from './dto/partner-service-response.dto';
 
 function slugify(name: string): string {
   return name
@@ -119,6 +122,66 @@ export class PartnersService {
     return { message: 'OK' };
   }
 
+  /** Lista serviços do parceiro do usuário. Requer assinatura ativa. */
+  async getServicesByUserId(userId: string): Promise<PartnerServiceResponseDto[]> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId },
+      include: { services: { orderBy: { createdAt: 'desc' } } },
+    });
+    if (!partner) return [];
+    this.ensurePaidPartner(partner);
+    return partner.services.map((s) => this.toServiceDto(s));
+  }
+
+  /** Cria serviço para o parceiro do usuário. Requer assinatura ativa. */
+  async createService(userId: string, dto: CreatePartnerServiceDto): Promise<PartnerServiceResponseDto> {
+    const partner = await this.prisma.partner.findUnique({ where: { userId } });
+    this.ensurePaidPartner(partner);
+    const service = await this.prisma.partnerService.create({
+      data: {
+        partnerId: partner.id,
+        name: dto.name.trim(),
+        description: dto.description?.trim() || null,
+        priceDisplay: dto.priceDisplay?.trim() || null,
+        validUntil: dto.validUntil ? new Date(dto.validUntil) : null,
+      },
+    });
+    return this.toServiceDto(service);
+  }
+
+  /** Atualiza serviço do parceiro do usuário. Requer assinatura ativa. */
+  async updateService(userId: string, serviceId: string, dto: UpdatePartnerServiceDto): Promise<PartnerServiceResponseDto> {
+    const partner = await this.prisma.partner.findUnique({ where: { userId } });
+    this.ensurePaidPartner(partner);
+    const service = await this.prisma.partnerService.findFirst({
+      where: { id: serviceId, partnerId: partner.id },
+    });
+    if (!service) throw new NotFoundException('Serviço não encontrado');
+    const data: { name?: string; description?: string | null; priceDisplay?: string | null; validUntil?: Date | null; active?: boolean } = {};
+    if (dto.name !== undefined) data.name = dto.name.trim();
+    if (dto.description !== undefined) data.description = dto.description?.trim() || null;
+    if (dto.priceDisplay !== undefined) data.priceDisplay = dto.priceDisplay?.trim() || null;
+    if (dto.validUntil !== undefined) data.validUntil = dto.validUntil ? new Date(dto.validUntil) : null;
+    if (dto.active !== undefined) data.active = dto.active;
+    const updated = await this.prisma.partnerService.update({
+      where: { id: serviceId },
+      data,
+    });
+    return this.toServiceDto(updated);
+  }
+
+  /** Remove serviço do parceiro do usuário. Requer assinatura ativa. */
+  async deleteService(userId: string, serviceId: string): Promise<{ message: string }> {
+    const partner = await this.prisma.partner.findUnique({ where: { userId } });
+    this.ensurePaidPartner(partner);
+    const service = await this.prisma.partnerService.findFirst({
+      where: { id: serviceId, partnerId: partner.id },
+    });
+    if (!service) throw new NotFoundException('Serviço não encontrado');
+    await this.prisma.partnerService.delete({ where: { id: serviceId } });
+    return { message: 'OK' };
+  }
+
   /** Atualiza o parceiro do usuário (dados do estabelecimento no portal). Requer assinatura ativa. */
   async updateByUserId(userId: string, dto: UpdateMyPartnerDto): Promise<PartnerMeDto> {
     const existing = await this.prisma.partner.findUnique({
@@ -189,6 +252,20 @@ export class PartnersService {
       orderBy: { validUntil: 'asc' },
     });
     return coupons.map((c) => this.toCouponDto(c));
+  }
+
+  /** Serviços ativos de um parceiro (público – para exibir na página do parceiro). */
+  async findActivePublicServices(partnerId: string): Promise<PartnerServiceResponseDto[]> {
+    const now = new Date();
+    const services = await this.prisma.partnerService.findMany({
+      where: {
+        partnerId,
+        active: true,
+        OR: [{ validUntil: null }, { validUntil: { gte: now } }],
+      },
+      orderBy: { name: 'asc' },
+    });
+    return services.map((s) => this.toServiceDto(s));
   }
 
   /** Registra visualização da página do parceiro (público). */
@@ -274,6 +351,8 @@ export class PartnersService {
     address?: string | null,
     documentType?: 'CPF' | 'CNPJ' | null,
     document?: string | null,
+    legalName?: string | null,
+    tradeName?: string | null,
   ): Promise<{ id: string; slug: string }> {
     const slugBase = slugify(establishmentName);
     if (!slugBase) throw new BadRequestException('Nome do estabelecimento inválido');
@@ -293,6 +372,8 @@ export class PartnersService {
         address: address?.trim() || null,
         documentType: documentType || null,
         document: document?.replace(/\D/g, '') || null,
+        legalName: legalName?.trim() || null,
+        tradeName: tradeName?.trim() || null,
       },
     });
     return { id: partner.id, slug: partner.slug };
@@ -414,6 +495,30 @@ export class PartnersService {
       approvedAt: p.approvedAt?.toISOString() ?? undefined,
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString(),
+    };
+  }
+
+  private toServiceDto(s: {
+    id: string;
+    partnerId: string;
+    name: string;
+    description: string | null;
+    priceDisplay: string | null;
+    active: boolean;
+    validUntil: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }): PartnerServiceResponseDto {
+    return {
+      id: s.id,
+      partnerId: s.partnerId,
+      name: s.name,
+      description: s.description ?? undefined,
+      priceDisplay: s.priceDisplay ?? undefined,
+      active: s.active,
+      validUntil: s.validUntil?.toISOString() ?? undefined,
+      createdAt: s.createdAt.toISOString(),
+      updatedAt: s.updatedAt.toISOString(),
     };
   }
 
