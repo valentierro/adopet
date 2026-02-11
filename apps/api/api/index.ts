@@ -13,8 +13,9 @@ async function getHandler(): Promise<(req: VercelRequest, res: VercelResponse) =
   const { createApp } = require(bootstrapPath);
   const app = await createApp();
   await app.init();
-  cachedHandler = app.getHttpAdapter().getInstance();
-  return cachedHandler;
+  const handler = app.getHttpAdapter().getInstance();
+  cachedHandler = handler;
+  return handler;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
