@@ -1,16 +1,14 @@
 /**
  * Handler serverless da Vercel: repassa todas as requisições para o Nest (Express).
- * O build (pnpm run build) gera dist/app-bootstrap.js; a Vercel inclui api/ e dist/ no deploy.
+ * Importa o bootstrap do source para o bundle da função incluir o Nest (dist/ não vai no pacote da função).
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { join } from 'path';
+import { createApp } from '../src/app-bootstrap';
 
 let cachedHandler: ((req: VercelRequest, res: VercelResponse) => void) | null = null;
 
 async function getHandler(): Promise<(req: VercelRequest, res: VercelResponse) => void> {
   if (cachedHandler) return cachedHandler;
-  const bootstrapPath = join(__dirname, '..', 'dist', 'app-bootstrap.js');
-  const { createApp } = require(bootstrapPath);
   const app = await createApp();
   await app.init();
   const handler = app.getHttpAdapter().getInstance();
