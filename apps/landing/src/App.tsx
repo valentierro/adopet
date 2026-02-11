@@ -12,6 +12,7 @@ import { Contato } from './sections/Contato';
 import { Footer } from './sections/Footer';
 import { TermosPage } from './pages/Termos';
 import { PrivacidadePage } from './pages/Privacidade';
+import { ExclusaoContaPage } from './pages/ExclusaoConta';
 
 function LandingContent() {
   return (
@@ -43,6 +44,7 @@ export default function App() {
 
   if (hash === '#termos') return <TermosPage />;
   if (hash === '#privacidade') return <PrivacidadePage />;
+  if (hash === '#exclusao-conta') return <ExclusaoContaPage />;
   return (
     <div className="min-h-screen">
       <LandingContent />
