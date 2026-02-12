@@ -8,6 +8,8 @@ type Props = {
   onPress: () => void;
   disabled?: boolean;
   style?: ViewStyle;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 };
 
 export function SecondaryButton({
@@ -15,6 +17,8 @@ export function SecondaryButton({
   onPress,
   disabled = false,
   style,
+  accessibilityLabel,
+  accessibilityHint,
 }: Props) {
   const { colors } = useTheme();
 
@@ -33,6 +37,10 @@ export function SecondaryButton({
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled }}
     >
       <Text style={[styles.text, { color: colors.primary }]}>{title}</Text>
     </TouchableOpacity>

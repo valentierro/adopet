@@ -2,7 +2,7 @@
   "expo": {
     "name": "Adopet",
     "slug": "adopet",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/brand/icon/app_icon_light.png",
     "userInterfaceStyle": "automatic",
@@ -25,7 +25,7 @@
         "backgroundColor": "#FFFFFF"
       },
       "package": "br.com.adopet.app",
-      "versionCode": 4
+      "versionCode": 9
     },
     "plugins": [
       "expo-router",

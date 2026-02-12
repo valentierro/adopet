@@ -1,5 +1,6 @@
 import React, { Component, useEffect, type ErrorInfo, type ReactNode } from 'react';
 import { usePathname } from 'expo-router';
+import * as Sentry from '@sentry/react-native';
 import { ErrorFallbackScreen } from './ErrorFallbackScreen';
 import { createBugReport } from '../api/bugReports';
 import { getLastRoute, setLastRoute } from '../utils/lastRoute';
@@ -33,6 +34,7 @@ export class AppErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.setState({ errorInfo });
+    Sentry.captureException(error, { extra: { componentStack: errorInfo?.componentStack } });
   }
 
   handleReport = async (payload: {

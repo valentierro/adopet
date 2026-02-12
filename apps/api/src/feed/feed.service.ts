@@ -55,6 +55,8 @@ export class FeedService {
     > & {
       breed?: string | null;
       adoptionReason?: string | null;
+      feedingType?: string | null;
+      feedingNotes?: string | null;
       media?: { url: string }[];
       owner?: { city: string | null } | null;
       partner?: { id: string; name: string; slug: string; logoUrl: string | null; isPaidPartner: boolean } | null;
@@ -87,6 +89,8 @@ export class FeedService {
     };
     if (pet.breed != null) dto.breed = pet.breed;
     if (pet.adoptionReason != null) dto.adoptionReason = pet.adoptionReason;
+    if (pet.feedingType != null) dto.feedingType = pet.feedingType;
+    if (pet.feedingNotes != null) dto.feedingNotes = pet.feedingNotes;
     if (pet.owner?.city != null) dto.city = pet.owner.city;
     if (pet.partner != null) {
       dto.partner = {
@@ -162,8 +166,13 @@ export class FeedService {
   }
 
   async getFeed(query: FeedQueryDto): Promise<FeedResponseDto> {
-    const { lat, lng, radiusKm: queryRadiusKm, cursor, userId, species: querySpecies, breed: queryBreed } = query;
+    const { lat, lng, radiusKm: queryRadiusKm, cursor, userId, species: querySpecies, breed: queryBreed, ownerId: queryOwnerId } = query;
     const pageSize = DEFAULT_PAGE_SIZE;
+
+    // Listagem por dono (ex.: "Ver anúncios" no perfil do tutor): sem geo, ordenação por data
+    if (queryOwnerId) {
+      return this.getFeedByOwnerId(queryOwnerId, cursor ?? undefined, userId);
+    }
 
     const [prefs, swipedPetIds, reportedPetIds, blockedByMe, blockedMe, favoritePets] = await Promise.all([
       userId
@@ -276,9 +285,7 @@ export class FeedService {
     /** Filtra por raio quando lat/lng foram enviados (respeita preferência do usuário). */
     let withinRadius = scored;
     if (hasUserLocation) {
-      const byRadius = scored.filter((s) => s.distanceKm <= radiusKm);
-      // Se não houver nenhum pet no raio, mostra todos (ordenados por distância) para o feed não ficar vazio
-      withinRadius = byRadius.length > 0 ? byRadius : scored;
+      withinRadius = scored.filter((s) => s.distanceKm <= radiusKm);
     }
 
     withinRadius.sort((a, b) => {
@@ -337,6 +344,62 @@ export class FeedService {
       }),
       nextCursor,
       totalCount: withinRadius.length,
+    };
+  }
+
+  /** Lista anúncios de um dono (ex.: tela "Ver anúncios" no perfil do tutor). */
+  private async getFeedByOwnerId(
+    ownerId: string,
+    cursor: string | undefined,
+    userId: string | undefined,
+  ): Promise<FeedResponseDto> {
+    const pageSize = DEFAULT_PAGE_SIZE;
+    const reportedPetIds = await this.reportsService.getReportedPetIds();
+    const where = {
+      ownerId,
+      status: 'AVAILABLE' as const,
+      publicationStatus: 'APPROVED' as const,
+      ...(reportedPetIds.length > 0 ? { id: { notIn: reportedPetIds } } : {}),
+    };
+    const [totalCount] = await Promise.all([
+      this.prisma.pet.count({ where }),
+    ]);
+    const include = {
+      media: { orderBy: { sortOrder: 'asc' as const } },
+      owner: { select: { city: true } },
+      partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+    };
+    const pets = await this.prisma.pet.findMany({
+      where,
+      take: pageSize + 1,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      orderBy: { id: 'desc' },
+      include,
+    });
+    const hasMore = pets.length > pageSize;
+    const items = pets.slice(0, pageSize);
+    const itemPetIds = items.map((p) => p.id);
+    const verifiedIds = await this.verificationService.getVerifiedPetIds(itemPetIds);
+    const ownerIdsNeedingPartner = [...new Set(items.filter((p) => !(p as { partner?: unknown }).partner).map((p) => p.ownerId))];
+    const ownerPartners =
+      ownerIdsNeedingPartner.length > 0
+        ? await this.prisma.partner.findMany({
+            where: { userId: { in: ownerIdsNeedingPartner } },
+            select: { userId: true, id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true },
+          })
+        : [];
+    const partnerByOwnerId = Object.fromEntries(ownerPartners.map((p) => [p.userId, p]));
+    return {
+      items: items.map((pet) => {
+        const dto = this.mapToDto(pet, undefined, undefined, verifiedIds.has(pet.id));
+        if (!dto.partner && partnerByOwnerId[pet.ownerId]) {
+          const op = partnerByOwnerId[pet.ownerId];
+          dto.partner = { id: op.id, name: op.name, slug: op.slug, logoUrl: op.logoUrl ?? undefined, isPaidPartner: op.isPaidPartner };
+        }
+        return dto;
+      }),
+      nextCursor: hasMore && items.length > 0 ? items[items.length - 1].id : null,
+      totalCount,
     };
   }
 

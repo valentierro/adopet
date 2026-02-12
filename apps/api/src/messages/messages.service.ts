@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../notifications/push.service';
 import { BlocksService } from '../moderation/blocks.service';
@@ -13,6 +14,7 @@ export class MessagesService {
     private readonly prisma: PrismaService,
     private readonly push: PushService,
     private readonly blocksService: BlocksService,
+    private readonly config: ConfigService,
   ) {}
 
   async getPage(
@@ -107,12 +109,17 @@ export class MessagesService {
     createdAt: Date;
     readAt: Date | null;
   }): MessageItemDto {
+    let imageUrl = m.imageUrl ?? undefined;
+    if (imageUrl && !imageUrl.startsWith('http')) {
+      const base = this.config.get<string>('S3_PUBLIC_BASE')?.replace(/\/$/, '');
+      if (base) imageUrl = `${base}/${imageUrl}`;
+    }
     return {
       id: m.id,
       conversationId: m.conversationId,
       senderId: m.senderId,
       content: m.content,
-      imageUrl: m.imageUrl ?? undefined,
+      imageUrl,
       createdAt: m.createdAt.toISOString(),
       readAt: m.readAt?.toISOString(),
     };

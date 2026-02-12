@@ -43,6 +43,7 @@ export default function TabsLayout() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.headerBg },
         headerTintColor: colors.textPrimary,
+        headerLeft: () => <HeaderBackButton />,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: { backgroundColor: colors.tabBarBg },
@@ -73,6 +74,7 @@ export default function TabsLayout() {
           title: 'Favoritos',
           headerTitle: () => <HeaderLogo />,
           headerTitleAlign: 'center',
+          headerLeft: () => <HeaderBackButton />,
           tabBarIcon: ({ color, size }) => <Ionicons name="heart" size={size} color={color} />,
         }}
       />
@@ -82,6 +84,7 @@ export default function TabsLayout() {
           title: 'Anunciar',
           headerTitle: () => <HeaderLogo />,
           headerTitleAlign: 'center',
+          headerLeft: () => <HeaderBackButton />,
           tabBarIcon: ({ color, size }) => <Ionicons name="add-circle" size={size} color={color} />,
         }}
       />
@@ -91,6 +94,7 @@ export default function TabsLayout() {
           title: 'Conversas',
           headerTitle: () => <HeaderLogo />,
           headerTitleAlign: 'center',
+          headerLeft: () => <HeaderBackButton />,
           tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" size={size} color={color} />,
           tabBarBadge: unreadTotal > 0 ? (unreadTotal > 99 ? '99+' : unreadTotal) : undefined,
         }}

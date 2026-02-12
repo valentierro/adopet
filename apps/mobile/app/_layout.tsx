@@ -5,9 +5,21 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Sentry from '@sentry/react-native';
 import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
+import { AppWithOfflineBanner } from '../src/components/AppWithOfflineBanner';
 
 SplashScreen.preventAutoHideAsync();
+
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN ?? process.env.SENTRY_DSN ?? '';
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    enabled: true,
+    tracesSampleRate: 0.2,
+    _experiments: { profilesSampleRate: 0.1 },
+  });
+}
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 2 * 60 * 1000 } },
@@ -18,7 +30,7 @@ const asyncStoragePersister = createAsyncStoragePersister({
   key: 'ADOPET_QUERY_CACHE',
 });
 
-export default function RootLayout() {
+function RootLayout() {
   useEffect(() => {
     SplashScreen.hideAsync();
   }, []);
@@ -29,6 +41,7 @@ export default function RootLayout() {
       persistOptions={{ persister: asyncStoragePersister, maxAge: 24 * 60 * 60 * 1000 }}
     >
       <AppErrorBoundary>
+      <AppWithOfflineBanner>
       <Stack
         screenOptions={{
           headerShown: true,
@@ -41,6 +54,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="profile-edit" options={{ title: 'Editar perfil' }} />
         <Stack.Screen name="tutor-profile" options={{ title: 'Perfil do anunciante' }} />
+        <Stack.Screen name="owner-pets" options={{ title: 'Anúncios do tutor' }} />
         <Stack.Screen name="partner-portal" options={{ title: 'Portal do parceiro' }} />
         <Stack.Screen name="partner-edit" options={{ title: 'Dados do estabelecimento' }} />
         <Stack.Screen name="partner-coupons" options={{ title: 'Cupons de desconto' }} />
@@ -56,7 +70,10 @@ export default function RootLayout() {
         <Stack.Screen name="terms" options={{ title: 'Termos de Uso' }} />
         <Stack.Screen name="privacy" options={{ title: 'Política de Privacidade' }} />
       </Stack>
+      </AppWithOfflineBanner>
       </AppErrorBoundary>
     </PersistQueryClientProvider>
   );
 }
+
+export default Sentry.wrap(RootLayout);

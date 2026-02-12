@@ -341,7 +341,12 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       )}
       <View style={styles.footer}>
-        <PrimaryButton title="Sair" onPress={handleLogout} />
+        <PrimaryButton
+          title="Sair"
+          onPress={handleLogout}
+          accessibilityLabel="Sair da conta"
+          accessibilityHint="Toque duas vezes para encerrar sua sessão"
+        />
         <TouchableOpacity
           style={[styles.deactivateBtn, { marginTop: spacing.lg }]}
           onPress={() => {
@@ -366,6 +371,9 @@ export default function ProfileScreen() {
               ],
             );
           }}
+          accessibilityRole="button"
+          accessibilityLabel="Desativar conta e excluir meus dados"
+          accessibilityHint="Toque duas vezes para desativar sua conta permanentemente. Esta ação não pode ser desfeita."
         >
           <Text style={[styles.deactivateText, { color: colors.textSecondary }]}>Desativar conta e excluir meus dados</Text>
         </TouchableOpacity>

@@ -34,6 +34,12 @@ export class PetResponseDto {
   @ApiPropertyOptional({ description: 'Por que está doando (opcional)' })
   adoptionReason?: string;
 
+  @ApiPropertyOptional({ enum: ['dry', 'wet', 'mixed', 'natural', 'other'], description: 'Tipo de alimentação (opcional)' })
+  feedingType?: string;
+
+  @ApiPropertyOptional({ description: 'Dieta especial, alergias ou observações (opcional)' })
+  feedingNotes?: string;
+
   @ApiProperty({ required: false })
   distanceKm?: number;
 

@@ -35,6 +35,10 @@ export interface Pet {
   neutered: boolean;
   description: string;
   adoptionReason?: string;
+  /** Tipo de alimentação: dry, wet, mixed, natural, other */
+  feedingType?: string;
+  /** Dieta especial, alergias ou observações */
+  feedingNotes?: string;
   distanceKm?: number;
   /** Cidade do tutor (para exibir no feed/mapa) */
   city?: string;

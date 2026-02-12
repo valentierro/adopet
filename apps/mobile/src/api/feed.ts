@@ -17,6 +17,8 @@ export type FeedParams = {
   radiusKm?: number;
   cursor?: string;
   species?: FeedSpeciesFilter;
+  /** Listar anúncios de um dono (ex.: perfil do tutor) */
+  ownerId?: string;
 };
 
 export async function fetchFeed(params: FeedParams = {}): Promise<FeedResponse> {
@@ -26,6 +28,7 @@ export async function fetchFeed(params: FeedParams = {}): Promise<FeedResponse> 
   if (params.radiusKm != null) query.radiusKm = String(params.radiusKm);
   if (params.cursor) query.cursor = params.cursor;
   if (params.species) query.species = params.species;
+  if (params.ownerId) query.ownerId = params.ownerId;
 
   return api.get<FeedResponse>('/feed', query);
 }
@@ -43,13 +46,15 @@ export type MapPin = {
 
 export type FeedMapResponse = { items: MapPin[] };
 
+const FEED_MAP_TIMEOUT_MS = 35_000;
+
 export async function fetchFeedMap(params: { lat: number; lng: number; radiusKm?: number }): Promise<FeedMapResponse> {
   const query: Record<string, string> = {
     lat: String(params.lat),
     lng: String(params.lng),
   };
   if (params.radiusKm != null) query.radiusKm = String(params.radiusKm);
-  return api.get<FeedMapResponse>('/feed/map', query);
+  return api.get<FeedMapResponse>('/feed/map', query, { timeoutMs: FEED_MAP_TIMEOUT_MS });
 }
 
 export { FEED_PAGE_SIZE };

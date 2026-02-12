@@ -46,4 +46,9 @@ export class FeedQueryDto {
   @IsOptional()
   @IsString()
   userId?: string;
+
+  @ApiPropertyOptional({ description: 'Filtrar anúncios por dono (ex.: perfil do tutor)' })
+  @IsOptional()
+  @IsString()
+  ownerId?: string;
 }

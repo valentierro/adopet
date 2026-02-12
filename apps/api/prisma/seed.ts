@@ -73,11 +73,44 @@ const SEED_NEIGHBORHOODS: { name: string; lat: number; lng: number }[] = [
 ];
 const NEIGHBORHOOD_DELTA = 0.005; // ~500 m de variação dentro do bairro
 
+/** Cidades de PE para seed extra de pets (várias cidades, até 40 pets). */
+const CIDADES_PE: { city: string; lat: number; lng: number }[] = [
+  { city: 'Recife', lat: -8.0476, lng: -34.877 },
+  { city: 'Olinda', lat: -8.0089, lng: -34.8553 },
+  { city: 'Jaboatão dos Guararapes', lat: -8.1128, lng: -35.0147 },
+  { city: 'Caruaru', lat: -8.2845, lng: -35.9699 },
+  { city: 'Petrolina', lat: -9.3986, lng: -40.5008 },
+  { city: 'Garanhuns', lat: -8.8822, lng: -36.4962 },
+  { city: 'Vitória de Santo Antão', lat: -8.1238, lng: -35.2914 },
+  { city: 'Cabo de Santo Agostinho', lat: -8.2833, lng: -35.0353 },
+  { city: 'Paulista', lat: -7.9408, lng: -34.8731 },
+  { city: 'Abreu e Lima', lat: -7.9117, lng: -34.9033 },
+  { city: 'Igarassu', lat: -7.8342, lng: -34.9064 },
+  { city: 'Serra Talhada', lat: -7.9912, lng: -38.2983 },
+  { city: 'Arcoverde', lat: -8.4189, lng: -37.0531 },
+  { city: 'Palmares', lat: -8.6833, lng: -35.5917 },
+  { city: 'Santa Cruz do Capibaribe', lat: -7.9578, lng: -36.2047 },
+  { city: 'Salgueiro', lat: -8.0742, lng: -39.1192 },
+  { city: 'Goiana', lat: -7.5606, lng: -35.0022 },
+  { city: 'Camaragibe', lat: -8.0214, lng: -35.0144 },
+  { city: 'São Lourenço da Mata', lat: -8.0022, lng: -35.0183 },
+  { city: 'Belo Jardim', lat: -8.3356, lng: -36.4242 },
+];
+const CIDADE_DELTA = 0.02; // ~2 km de variação na cidade
+
 function pickNeighborhood(): { lat: number; lng: number } {
   const n = SEED_NEIGHBORHOODS[Math.floor(Math.random() * SEED_NEIGHBORHOODS.length)];
   return {
     lat: randomCoord(n.lat, NEIGHBORHOOD_DELTA),
     lng: randomCoord(n.lng, NEIGHBORHOOD_DELTA),
+  };
+}
+
+function pickCidadePE(): { lat: number; lng: number } {
+  const c = CIDADES_PE[Math.floor(Math.random() * CIDADES_PE.length)];
+  return {
+    lat: randomCoord(c.lat, CIDADE_DELTA),
+    lng: randomCoord(c.lng, CIDADE_DELTA),
   };
 }
 
@@ -189,6 +222,96 @@ async function seedPetsForExistingUsers() {
     }
   }
   console.log('Seed de pets por usuário concluído.');
+}
+
+/** Seed extra: até 40 pets em várias cidades de PE. Usa o usuário admin como dono. */
+const SEED_PE_MAX_PETS = 40;
+
+async function seedPetsPernambuco() {
+  const owner = await prisma.user.findFirst({
+    where: { deactivatedAt: null },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, name: true },
+  });
+  if (!owner) {
+    console.log('Nenhum usuário na base. Pulando seed de pets PE.');
+    return;
+  }
+  const existingPeCount = await prisma.pet.count({
+    where: {
+      ownerId: owner.id,
+      latitude: { gte: -10, lte: -7 },
+      longitude: { gte: -41, lte: -34 },
+    },
+  });
+  const targetNew = Math.max(0, SEED_PE_MAX_PETS - existingPeCount);
+  if (targetNew === 0) {
+    console.log(`Já existem ${existingPeCount} pets na região PE (máx. ${SEED_PE_MAX_PETS}). Pulando seed PE.`);
+    return;
+  }
+  const existingPets = await prisma.pet.findMany({
+    where: { ownerId: owner.id },
+    select: { name: true, species: true },
+  });
+  const existingKeys = new Set(existingPets.map((p) => `${p.name}-${p.species}`));
+  const partnerIds = await prisma.partner
+    .findMany({
+      where: { type: 'ONG', active: true, approvedAt: { not: null } },
+      select: { id: true },
+    })
+    .then((rows) => rows.map((r) => r.id));
+  const pickPartnerId = () =>
+    partnerIds.length > 0 && Math.random() < SEED_PET_PARTNER_CHANCE ? pick(partnerIds) : undefined;
+
+  console.log(`Criando até ${targetNew} pets em cidades de PE (owner: ${owner.name})...`);
+  let created = 0;
+  const usedNames = new Set<string>();
+  for (let i = 0; i < targetNew; i++) {
+    const isDog = Math.random() < 0.55;
+    const names = isDog ? DOG_NAMES : CAT_NAMES;
+    const breeds = isDog ? DOG_BREEDS : CAT_BREEDS;
+    const descriptions = isDog ? DESCRIPTIONS_DOG : DESCRIPTIONS_CAT;
+    let name = pick(names);
+    let key = `${name}-${isDog ? 'DOG' : 'CAT'}`;
+    let attempts = 0;
+    while (existingKeys.has(key) || usedNames.has(key)) {
+      name = pick(names);
+      key = `${name}-${isDog ? 'DOG' : 'CAT'}`;
+      if (++attempts > 50) break;
+    }
+    existingKeys.add(key);
+    usedNames.add(key);
+    const { lat, lng } = pickCidadePE();
+    const partnerId = pickPartnerId();
+    await prisma.pet.create({
+      data: {
+        name,
+        species: isDog ? 'DOG' : 'CAT',
+        breed: pick(breeds),
+        age: randomAge(),
+        sex: Math.random() < 0.5 ? 'male' : 'female',
+        size: pick(SIZES),
+        vaccinated: Math.random() < 0.8,
+        neutered: Math.random() < 0.7,
+        description: pick(descriptions),
+        adoptionReason: pick(REASONS) ?? undefined,
+        status: 'AVAILABLE',
+        publicationStatus: 'APPROVED',
+        latitude: lat,
+        longitude: lng,
+        ownerId: owner.id,
+        ...(partnerId ? { partnerId } : {}),
+        media: {
+          create: [
+            { url: seedPhotoUrl(isDog ? 'dogs' : 'cats', i), sortOrder: 0, isPrimary: true },
+          ],
+        },
+      },
+    });
+    created++;
+    console.log(`  [${created}/${targetNew}] ${name} (${isDog ? 'cachorro' : 'gato'})${partnerId ? ' [parceiro]' : ''}`);
+  }
+  console.log(`Seed PE concluído: ${created} pet(s) criado(s) em cidades de Pernambuco.`);
 }
 
 /** Anúncios iniciais do seed (apenas 4 para não encher o feed). Usado para verifications (2 APPROVED, 1 PENDING, 1 REJECTED). */
@@ -703,6 +826,9 @@ async function main() {
 
   // Para cada usuário cadastrado na base: pets com possível vínculo a ONG
   await seedPetsForExistingUsers();
+
+  // Até 40 pets em várias cidades de PE (dono: primeiro usuário)
+  await seedPetsPernambuco();
 
   console.log('Seed concluído.');
   console.log('  Login admin: admin@adopet.com.br / ' + SEED_PASSWORD);

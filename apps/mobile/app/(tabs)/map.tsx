@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, Image, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import MapView, { Marker, Callout } from 'react-native-maps';
+import MapView, { Marker, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useQuery } from '@tanstack/react-query';
 import { ScreenContainer, EmptyState, LoadingLogo } from '../../src/components';
@@ -10,6 +10,7 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { fetchFeedMap } from '../../src/api/feed';
 import { getPreferences } from '../../src/api/me';
 import { useUpdateCityFromLocation } from '../../src/hooks/useUpdateCityFromLocation';
+import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { spacing } from '../../src/theme';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -25,8 +26,12 @@ const DEFAULT_REGION = {
 export default function MapScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const mapRef = useRef<MapView | null>(null);
   const [region, setRegion] = useState(DEFAULT_REGION);
   const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
+  const [locationReady, setLocationReady] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
+  const hasAnimatedToUser = useRef(false);
 
   const { data: prefs } = useQuery({
     queryKey: ['me', 'preferences'],
@@ -35,7 +40,7 @@ export default function MapScreen() {
   });
   const radiusKm = prefs?.radiusKm ?? 50;
 
-  const { data, isLoading, refetch } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['feed', 'map', region.latitude, region.longitude, radiusKm],
     queryFn: () =>
       fetchFeedMap({
@@ -43,9 +48,22 @@ export default function MapScreen() {
         lng: region.longitude,
         radiusKm,
       }),
-    enabled: locationGranted === true,
+    enabled: locationGranted === true && locationReady && mapReady,
     staleTime: 60_000,
+    retry: 5,
+    retryDelay: (attemptIndex) => Math.min(2000 * 2 ** attemptIndex, 8000),
   });
+
+  const isTimeout =
+    isError &&
+    error instanceof Error &&
+    (error.message === 'request timeout' || error.message.includes('timeout'));
+
+  const mapErrorMessage = isError && error
+    ? getFriendlyErrorMessage(error, 'Não foi possível carregar os pets do mapa. Toque em Atualizar para tentar de novo.')
+    : '';
+  const isNetworkError = isError && error instanceof Error &&
+    /network|fetch|connection|ECONNREFUSED|failed to fetch|timeout/i.test(error.message);
 
   useFocusEffect(
     useCallback(() => {
@@ -54,24 +72,47 @@ export default function MapScreen() {
   );
 
   useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       setLocationGranted(status === 'granted');
       if (status === 'granted') {
         try {
-          const loc = await Location.getCurrentPositionAsync({});
-          setRegion({
+          const loc = await Location.getCurrentPositionAsync({
+            maxAge: 60_000,
+            timeout: 15_000,
+          });
+          const userRegion = {
             latitude: loc.coords.latitude,
             longitude: loc.coords.longitude,
             latitudeDelta: 0.08,
             longitudeDelta: 0.08,
-          });
+          };
+          setRegion(userRegion);
+          // Anima para a localização do usuário após o mapa estar montado (evita tela branca ao trocar region no primeiro frame)
+          timeoutId = setTimeout(() => {
+            if (!hasAnimatedToUser.current && mapRef.current) {
+              hasAnimatedToUser.current = true;
+              mapRef.current.animateToRegion(userRegion, 400);
+            }
+          }, 300);
         } catch {
-          // keep default
+          // mantém região padrão (ex.: São Paulo)
         }
+        setLocationReady(true);
       }
     })();
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, []);
+
+  // Fallback: em alguns dispositivos/produção onMapReady pode não disparar; libera busca de pins após 5s
+  useEffect(() => {
+    if (!locationReady || mapReady) return;
+    const t = setTimeout(() => setMapReady(true), 5000);
+    return () => clearTimeout(t);
+  }, [locationReady, mapReady]);
 
   useUpdateCityFromLocation(
     locationGranted ? { lat: region.latitude, lng: region.longitude } : null,
@@ -106,22 +147,31 @@ export default function MapScreen() {
     <ScreenContainer>
       <View style={styles.mapWrap}>
         <MapView
+          ref={mapRef}
           style={styles.map}
+          initialRegion={DEFAULT_REGION}
           region={region}
           onRegionChangeComplete={setRegion}
           showsUserLocation
           loadingEnabled
+          onMapReady={() => setMapReady(true)}
+          {...(Platform.OS === 'ios' ? { provider: PROVIDER_GOOGLE } : {})}
         >
-          {items.map((pin) => (
-            <Marker
-              key={pin.id}
-              coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
-              tracksViewChanges={false}
-            >
-              <View style={styles.markerWrap}>
-                <Image source={AdopetMarkerIcon} style={styles.markerIcon} resizeMode="contain" />
-              </View>
-              <Callout tooltip>
+          {items.map((pin) => {
+            const lat = Number(pin.latitude);
+            const lng = Number(pin.longitude);
+            if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+            return (
+              <Marker
+                key={pin.id}
+                coordinate={{ latitude: lat, longitude: lng }}
+                anchor={{ x: 0.5, y: 0.5 }}
+                tracksViewChanges={true}
+              >
+                <View style={styles.markerWrap}>
+                  <Image source={AdopetMarkerIcon} style={styles.markerIcon} resizeMode="contain" />
+                </View>
+                <Callout tooltip>
                 <View style={[styles.callout, { backgroundColor: colors.surface }]}>
                   {pin.photoUrl ? (
                     <Image source={{ uri: pin.photoUrl }} style={styles.calloutPhoto} />
@@ -149,31 +199,53 @@ export default function MapScreen() {
                 </View>
               </Callout>
             </Marker>
-          ))}
+            );
+          })}
         </MapView>
-        {isLoading && (
-          <View style={styles.loadingOverlay}>
-            <LoadingLogo size={140} />
-          </View>
-        )}
       </View>
-      <View style={[styles.footer, { backgroundColor: colors.surface }]}>
-        <Text style={[styles.footerText, { color: colors.textSecondary }]}>
-          {items.length} pet(s) no raio de {radiusKm} km
-        </Text>
-        <TouchableOpacity
-          style={[styles.refreshBtn, { backgroundColor: colors.primary }]}
-          onPress={() => refetch()}
-          disabled={isLoading}
-        >
-          <Text style={styles.refreshBtnText}>Atualizar</Text>
-        </TouchableOpacity>
+      <View style={[styles.footer, isError && styles.footerError, { backgroundColor: colors.surface }]}>
+        <View style={styles.footerTextWrap}>
+          <Text style={[styles.footerText, { color: colors.textSecondary }]} numberOfLines={isError ? 10 : 2}>
+            {isError
+              ? mapErrorMessage
+              : isLoading
+                ? 'Carregando pets...'
+                : `${items.length} pet(s) no raio de ${radiusKm} km`}
+          </Text>
+          {isError && (
+            <Text style={[styles.footerHint, { color: colors.textSecondary }]}>
+              Você pode ver os pets na aba Início.
+            </Text>
+          )}
+          {isError && __DEV__ && isNetworkError && (
+            <Text style={[styles.footerDevHint, { color: colors.textSecondary }]}>
+              Dica: no simulador, confira se a API está rodando (pnpm dev:api) e se EXPO_PUBLIC_API_URL no .env do app aponta para um host acessível (ex.: http://localhost:3000).
+            </Text>
+          )}
+        </View>
+        <View style={styles.footerActions}>
+          {isError && (
+            <TouchableOpacity
+              style={[styles.refreshBtn, styles.refreshBtnSecondary, { borderColor: colors.primary }]}
+              onPress={() => router.replace('/(tabs)')}
+            >
+              <Text style={[styles.refreshBtnText, { color: colors.primary }]}>Ver pets na aba Início</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[styles.refreshBtn, { backgroundColor: colors.primary }]}
+            onPress={() => refetch()}
+            disabled={isLoading}
+          >
+            <Text style={styles.refreshBtnText}>Atualizar</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </ScreenContainer>
   );
 }
 
-const MARKER_SIZE = 30;
+const MARKER_SIZE = 28;
 
 const styles = StyleSheet.create({
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.md },
@@ -214,19 +286,23 @@ const styles = StyleSheet.create({
   calloutMeta: { fontSize: 12, marginBottom: spacing.sm },
   calloutBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, alignSelf: 'flex-start' },
   calloutBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   footer: {
     padding: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: spacing.sm,
   },
+  footerError: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  footerTextWrap: { flex: 1, minWidth: 0 },
   footerText: { fontSize: 14 },
+  footerHint: { fontSize: 12, marginTop: 4, fontStyle: 'italic' },
+  footerDevHint: { fontSize: 11, marginTop: 6, fontStyle: 'italic', opacity: 0.9 },
+  footerActions: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', marginTop: spacing.sm },
   refreshBtn: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: 20 },
+  refreshBtnSecondary: { backgroundColor: 'transparent', borderWidth: 2 },
   refreshBtnText: { color: '#fff', fontWeight: '600' },
 });

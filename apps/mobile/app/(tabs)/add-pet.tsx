@@ -83,8 +83,19 @@ type FormData = {
   description: string;
   adoptionReason: string;
   adoptionReasonPreset: string;
+  feedingType: string;
+  feedingNotes: string;
   partnerId: string;
 };
+
+const FEEDING_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'Não informar' },
+  { value: 'dry', label: 'Ração seca' },
+  { value: 'wet', label: 'Ração úmida' },
+  { value: 'mixed', label: 'Mista' },
+  { value: 'natural', label: 'Natural' },
+  { value: 'other', label: 'Outra' },
+];
 
 const INITIAL_FORM: FormData = {
   name: '',
@@ -99,6 +110,8 @@ const INITIAL_FORM: FormData = {
   description: '',
   adoptionReason: '',
   adoptionReasonPreset: '',
+  feedingType: '',
+  feedingNotes: '',
   partnerId: '',
 };
 
@@ -241,6 +254,8 @@ export default function AddPetWizardScreen() {
         neutered: form.neutered,
         description: form.description.trim(),
         ...(form.adoptionReason.trim() && { adoptionReason: form.adoptionReason.trim() }),
+        ...(form.feedingType && { feedingType: form.feedingType }),
+        ...(form.feedingNotes.trim() && { feedingNotes: form.feedingNotes.trim() }),
         ...(form.partnerId.trim() && { partnerId: form.partnerId }),
       });
       for (let i = 0; i < uploadedKeys.length; i++) {
@@ -501,6 +516,37 @@ export default function AddPetWizardScreen() {
                 trackColor={{ false: colors.textSecondary, true: colors.primary }}
               />
             </View>
+            <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.md }]}>Tipo de alimentação (opcional)</Text>
+            <View style={styles.rowWrap}>
+              {FEEDING_TYPE_OPTIONS.filter((o) => o.value !== '').map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  style={[
+                    styles.chip,
+                    { backgroundColor: form.feedingType === opt.value ? colors.primary : colors.surface },
+                  ]}
+                  onPress={() => setForm((f) => ({ ...f, feedingType: f.feedingType === opt.value ? '' : opt.value }))}
+                >
+                  <Text style={{ color: form.feedingType === opt.value ? '#fff' : colors.textPrimary, fontSize: 13 }}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.sm }]}>Observações sobre alimentação (opcional)</Text>
+            <TextInput
+              style={[
+                styles.input,
+                styles.textArea,
+                { backgroundColor: colors.surface, color: colors.textPrimary, minHeight: 72 },
+              ]}
+              value={form.feedingNotes}
+              onChangeText={(feedingNotes) => setForm((f) => ({ ...f, feedingNotes }))}
+              placeholder="Ex: alergias, dieta especial, ração que usa..."
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              numberOfLines={2}
+            />
           </View>
         )}
 
@@ -650,6 +696,8 @@ export default function AddPetWizardScreen() {
             <PrimaryButton
               title={submitting ? 'Publicando...' : 'Publicar'}
               onPress={handleSubmit}
+              accessibilityLabel={submitting ? 'Publicando anúncio' : 'Publicar anúncio'}
+              accessibilityHint="Toque duas vezes para publicar o anúncio do pet"
               style={step > 0 ? styles.halfBtn : styles.fullBtn}
               disabled={submitting}
             />

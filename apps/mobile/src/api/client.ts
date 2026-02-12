@@ -4,6 +4,8 @@ const BASE_URL = rawBase.endsWith('/v1') ? rawBase : rawBase.replace(/\/?$/, '')
 type RequestConfig = RequestInit & {
   params?: Record<string, string | number | undefined>;
   skipAuth?: boolean;
+  /** Timeout em ms; padrão REQUEST_TIMEOUT_MS */
+  timeoutMs?: number;
 };
 
 let tokenGetter: (() => string | null) | null = null;
@@ -24,7 +26,7 @@ async function request<T>(
   config: RequestConfig = {},
   isRetry = false,
 ): Promise<T> {
-  const { params, skipAuth, ...init } = config;
+  const { params, skipAuth, timeoutMs, ...init } = config;
   const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const url = new URL(BASE_URL.replace(/\/$/, '') + path);
   if (params) {
@@ -43,7 +45,8 @@ async function request<T>(
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = timeoutMs ?? REQUEST_TIMEOUT_MS;
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
   let res: Response;
   try {
     res = await fetch(url.toString(), {
@@ -79,7 +82,7 @@ export const api = {
   get: <T>(
     path: string,
     params?: Record<string, string | number | undefined>,
-    options?: { skipAuth?: boolean },
+    options?: { skipAuth?: boolean; timeoutMs?: number },
   ) => request<T>(path, { method: 'GET', params, ...options }),
 
   post: <T>(

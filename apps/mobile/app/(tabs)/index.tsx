@@ -10,6 +10,8 @@ import {
   ScrollView,
   RefreshControl,
   useWindowDimensions,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -125,13 +127,31 @@ function useDashboardData() {
   };
 }
 
+const GAMIFICATION_LEVELS: { pts: number; title: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { pts: 0, title: 'Tutor Iniciante', icon: 'paw-outline' },
+  { pts: 25, title: 'Tutor Ativo', icon: 'paw' },
+  { pts: 75, title: 'Tutor Confiável', icon: 'ribbon-outline' },
+  { pts: 150, title: 'Tutor Destaque', icon: 'star' },
+  { pts: 300, title: 'Tutor Ouro', icon: 'trophy' },
+];
+
+const TUTOR_LEVEL_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
+  BEGINNER: 'paw-outline',
+  ACTIVE: 'paw',
+  TRUSTED: 'ribbon-outline',
+  STAR: 'star',
+  GOLD: 'trophy',
+};
+
 export default function DashboardScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { width, height: windowHeight } = useWindowDimensions();
   const cardGap = spacing.md;
   const cardWidth = (width - spacing.lg * 2 - cardGap) / 2;
+  const [showGamificationModal, setShowGamificationModal] = useState(false);
+  const modalHeight = Math.min(windowHeight * 0.82, 560);
 
   const {
     user,
@@ -327,7 +347,7 @@ export default function DashboardScreen() {
             <Text style={[styles.heroTagline, { color: colors.textSecondary }]}>
               Encontre seu próximo companheiro
             </Text>
-            {tutorStats && (tutorStats.points > 0 || tutorStats.adoptedCount > 0) ? (
+            {tutorStats ? (
               <View style={[styles.statsRow, { backgroundColor: colors.surface }]}>
                 <View style={styles.stat}>
                   <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.points}</Text>
@@ -341,11 +361,24 @@ export default function DashboardScreen() {
                   </Text>
                 </View>
                 <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
-                <View style={styles.stat}>
+                <View style={[styles.stat, styles.statTitleWrap]}>
+                  <Ionicons
+                    name={TUTOR_LEVEL_ICON[tutorStats.level] ?? 'paw-outline'}
+                    size={20}
+                    color={colors.primary}
+                    style={styles.statTitleIcon}
+                  />
                   <Text style={[styles.statTitle, { color: colors.textPrimary }]} numberOfLines={1}>
                     {tutorStats.title}
                   </Text>
                 </View>
+                <TouchableOpacity
+                  hitSlop={12}
+                  onPress={() => setShowGamificationModal(true)}
+                  style={styles.statInfoBtn}
+                >
+                  <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+                </TouchableOpacity>
               </View>
             ) : null}
           </View>
@@ -509,6 +542,81 @@ export default function DashboardScreen() {
           <Text style={styles.ctaButtonText}>Anunciar pet para adoção</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      <Modal
+        visible={showGamificationModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowGamificationModal(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setShowGamificationModal(false)}
+          />
+          <View
+            style={[styles.gamificationModal, { backgroundColor: colors.surface, height: modalHeight }]}
+          >
+            <View style={[styles.gamificationModalHeader, { flexShrink: 0 }]}>
+              <Text style={[styles.gamificationModalTitle, { color: colors.textPrimary }]}>
+                Como funciona sua pontuação
+              </Text>
+              <TouchableOpacity
+                hitSlop={12}
+                onPress={() => setShowGamificationModal(false)}
+                style={styles.gamificationModalClose}
+              >
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              style={styles.gamificationModalBody}
+              contentContainerStyle={styles.gamificationModalBodyContent}
+              showsVerticalScrollIndicator={true}
+              bounces={false}
+            >
+              <Text style={[styles.gamificationModalP, { color: colors.textSecondary }]}>
+                <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Pontos</Text> — Você ganha pontos quando seus pets recebem o selo de verificação do Adopet (10 pts por pet) e quando uma adoção é confirmada pela equipe (25 pts por adoção). Há bônus na primeira adoção e em marcos como 3ª, 5ª e 10ª adoção.
+              </Text>
+              <Text style={[styles.gamificationModalP, { color: colors.textSecondary }]}>
+                <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Adoções</Text> — É a quantidade de pets que você já doou e que tiveram a adoção confirmada.
+              </Text>
+              <Text style={[styles.gamificationModalP, { color: colors.textSecondary }]}>
+                <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Título</Text> — Seu nível como tutor, baseado nos pontos acumulados:
+              </Text>
+              <View style={[styles.gamificationLevels, { backgroundColor: colors.surface, borderColor: colors.primary + '40' }]}>
+                <View style={[styles.gamificationLevelHeader, { backgroundColor: colors.primary + '18', borderBottomColor: colors.primary + '50' }]}>
+                  <Text style={[styles.gamificationLevelHeaderPts, { color: colors.primary }]}>Pontos</Text>
+                  <Text style={[styles.gamificationLevelHeaderTitle, { color: colors.textPrimary }]}>Título</Text>
+                </View>
+                {GAMIFICATION_LEVELS.map(({ pts, title, icon }, idx) => (
+                  <View
+                    key={title}
+                    style={[
+                      styles.gamificationLevelRow,
+                      { borderBottomColor: colors.textSecondary + '30' },
+                      idx === GAMIFICATION_LEVELS.length - 1 && styles.gamificationLevelRowLast,
+                    ]}
+                  >
+                    <Text style={[styles.gamificationLevelPts, { color: colors.primary }]}>{pts} pts</Text>
+                    <View style={styles.gamificationLevelTitleWrap}>
+                      <Ionicons name={icon} size={18} color={colors.primary} style={styles.gamificationLevelIcon} />
+                      <Text style={[styles.gamificationLevelTitle, { color: colors.textPrimary }]}>{title}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.gamificationModalBtn, { backgroundColor: colors.primary, flexShrink: 0 }]}
+              onPress={() => setShowGamificationModal(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.gamificationModalBtnText}>Entendi</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -537,10 +645,88 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   stat: { flex: 1, alignItems: 'center' },
+  statTitleWrap: { flex: 1.2, minWidth: 0, flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
+  statTitleIcon: { marginBottom: 4 },
   statValue: { fontSize: 18, fontWeight: '800' },
   statLabel: { fontSize: 11, marginTop: 2 },
-  statTitle: { fontSize: 12, fontWeight: '600' },
+  statTitle: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
   statDivider: { width: 1, height: 24, opacity: 0.3, marginHorizontal: spacing.xs },
+  statInfoBtn: { padding: spacing.xs, marginLeft: spacing.xs },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  gamificationModal: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  gamificationModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  gamificationModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    flex: 1,
+    paddingRight: spacing.md,
+  },
+  gamificationModalClose: { padding: spacing.xs },
+  gamificationModalBody: {
+    flex: 1,
+    minHeight: 0,
+  },
+  gamificationModalBodyContent: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+  },
+  gamificationModalP: {
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: spacing.md,
+  },
+  gamificationLevels: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: spacing.sm,
+    borderWidth: 1,
+  },
+  gamificationLevelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1.5,
+  },
+  gamificationLevelHeaderPts: { fontSize: 12, fontWeight: '800', width: 56, textTransform: 'uppercase', letterSpacing: 0.5 },
+  gamificationLevelHeaderTitle: { fontSize: 12, fontWeight: '800', flex: 1, textTransform: 'uppercase', letterSpacing: 0.5 },
+  gamificationLevelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+  },
+  gamificationLevelRowLast: { borderBottomWidth: 0 },
+  gamificationLevelPts: { fontSize: 14, fontWeight: '700', width: 56 },
+  gamificationLevelTitleWrap: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 },
+  gamificationLevelIcon: { marginRight: 8 },
+  gamificationLevelTitle: { fontSize: 14, fontWeight: '600', flex: 1 },
+  gamificationModalBtn: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  gamificationModalBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   sectionTitle: {
     fontSize: 13,
     fontWeight: '700',

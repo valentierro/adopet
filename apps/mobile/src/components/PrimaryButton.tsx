@@ -15,6 +15,10 @@ type Props = {
   loading?: boolean;
   disabled?: boolean;
   style?: ViewStyle;
+  /** Rótulo para leitores de tela; se não informado, usa o título do botão. */
+  accessibilityLabel?: string;
+  /** Dica adicional para leitores de tela. */
+  accessibilityHint?: string;
 };
 
 export function PrimaryButton({
@@ -23,6 +27,8 @@ export function PrimaryButton({
   loading = false,
   disabled = false,
   style,
+  accessibilityLabel,
+  accessibilityHint,
 }: Props) {
   const { colors } = useTheme();
   const isDisabled = disabled || loading;
@@ -40,6 +46,10 @@ export function PrimaryButton({
       onPress={onPress}
       disabled={isDisabled}
       activeOpacity={0.8}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
     >
       {loading ? (
         <ActivityIndicator color="#FFFFFF" />

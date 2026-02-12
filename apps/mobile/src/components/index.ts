@@ -15,3 +15,4 @@ export { VerifiedBadge } from './VerifiedBadge';
 export { TutorLevelBadge } from './TutorLevelBadge';
 export { Skeleton, FeedSkeleton, ListRowSkeleton } from './Skeleton';
 export { PartnerPanelLayout } from './PartnerPanelLayout';
+export { OfflineBanner } from './OfflineBanner';

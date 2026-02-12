@@ -54,6 +54,8 @@ export default function PetEditScreen() {
   const [size, setSize] = useState<'small' | 'medium' | 'large' | 'xlarge'>('medium');
   const [description, setDescription] = useState('');
   const [adoptionReason, setAdoptionReason] = useState('');
+  const [feedingType, setFeedingType] = useState('');
+  const [feedingNotes, setFeedingNotes] = useState('');
   const [vaccinated, setVaccinated] = useState(false);
   const [neutered, setNeutered] = useState(false);
   const [partnerId, setPartnerId] = useState('');
@@ -92,6 +94,8 @@ export default function PetEditScreen() {
       setSize((pet.size as 'small' | 'medium' | 'large' | 'xlarge') || 'medium');
       setDescription(pet.description);
       setAdoptionReason(pet.adoptionReason ?? '');
+      setFeedingType(pet.feedingType ?? '');
+      setFeedingNotes(pet.feedingNotes ?? '');
       setVaccinated(pet.vaccinated);
       setNeutered(pet.neutered);
       setPartnerId((pet as { partner?: { id: string } })?.partner?.id ?? '');
@@ -115,6 +119,8 @@ export default function PetEditScreen() {
         size,
         description,
         ...(adoptionReason.trim() && { adoptionReason: adoptionReason.trim() }),
+        feedingType: feedingType,
+        feedingNotes: feedingNotes.trim(),
         vaccinated,
         neutered,
         partnerId: partnerId.trim() || null,
@@ -477,6 +483,39 @@ export default function PetEditScreen() {
           <Text style={[styles.switchLabel, { color: colors.textPrimary }]}>Castrado</Text>
           <Switch value={neutered} onValueChange={setNeutered} trackColor={{ false: colors.textSecondary, true: colors.primary }} disabled={isAdopted} />
         </View>
+        <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.md }]}>Tipo de alimentação (opcional)</Text>
+        <View style={styles.rowWrap}>
+          {[
+            { value: '', label: 'Não informar' },
+            { value: 'dry', label: 'Ração seca' },
+            { value: 'wet', label: 'Ração úmida' },
+            { value: 'mixed', label: 'Mista' },
+            { value: 'natural', label: 'Natural' },
+            { value: 'other', label: 'Outra' },
+          ]
+            .filter((o) => o.value !== '')
+            .map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.chip, { backgroundColor: feedingType === opt.value ? colors.primary : colors.surface }]}
+                onPress={() => setFeedingType(feedingType === opt.value ? '' : opt.value)}
+                disabled={isAdopted}
+              >
+                <Text style={{ color: feedingType === opt.value ? '#fff' : colors.textPrimary, fontSize: 13 }}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+        </View>
+        <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.sm }]}>Observações sobre alimentação (opcional)</Text>
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, minHeight: 72 }]}
+          value={feedingNotes}
+          onChangeText={setFeedingNotes}
+          placeholder="Ex: alergias, dieta especial, ração que usa..."
+          placeholderTextColor={colors.textSecondary}
+          multiline
+          numberOfLines={2}
+          editable={!isAdopted}
+        />
         {partners.length > 0 && (
           <>
             <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.md }]}>Em parceria com (opcional)</Text>

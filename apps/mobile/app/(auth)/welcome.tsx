@@ -27,15 +27,21 @@ export default function WelcomeScreen() {
           <PrimaryButton
             title="Entrar"
             onPress={() => router.push('/(auth)/login')}
+            accessibilityLabel="Entrar"
+            accessibilityHint="Toque duas vezes para fazer login na sua conta"
           />
           <SecondaryButton
             title="Criar conta"
             onPress={() => router.push('/(auth)/signup')}
+            accessibilityLabel="Criar conta"
+            accessibilityHint="Toque duas vezes para criar uma nova conta"
           />
           <TouchableOpacity
             style={styles.partnerCardWrap}
             onPress={() => router.push('/parceria-apresentacao?tipo=ong')}
             activeOpacity={0.82}
+            accessibilityRole="button"
+            accessibilityLabel="Sou ONG ou instituição. Parceria gratuita para abrigos e instituições"
           >
             <LinearGradient colors={PARTNER_GRADIENT} style={styles.partnerCard}>
               <View style={styles.partnerCardIconWrap}>
@@ -55,6 +61,8 @@ export default function WelcomeScreen() {
             style={styles.partnerCardWrap}
             onPress={() => router.push('/parceria-apresentacao?tipo=comercial')}
             activeOpacity={0.82}
+            accessibilityRole="button"
+            accessibilityLabel="Clínicas, veterinários, lojas. Planos com destaque no app"
           >
             <LinearGradient colors={PARTNER_GRADIENT} style={styles.partnerCard}>
               <View style={styles.partnerCardIconWrap}>

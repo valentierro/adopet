@@ -38,6 +38,8 @@ export class PetsService {
       longitude?: number | null;
       breed?: string | null;
       adoptionReason?: string | null;
+      feedingType?: string | null;
+      feedingNotes?: string | null;
       media: { id: string; url: string; sortOrder?: number }[];
       partner?: { id: string; name: string; slug: string; logoUrl: string | null } | null;
     },
@@ -69,6 +71,8 @@ export class PetsService {
     };
     if (pet.breed != null) dto.breed = pet.breed;
     if (pet.adoptionReason != null) dto.adoptionReason = pet.adoptionReason;
+    if (pet.feedingType != null) dto.feedingType = pet.feedingType;
+    if (pet.feedingNotes != null) dto.feedingNotes = pet.feedingNotes;
     if (pet.publicationStatus != null) dto.publicationStatus = pet.publicationStatus;
     if (pet.partner != null) {
       dto.partner = {
@@ -393,6 +397,8 @@ export class PetsService {
         neutered: dto.neutered,
         description: dto.description,
         adoptionReason: dto.adoptionReason,
+        feedingType: dto.feedingType ?? null,
+        feedingNotes: dto.feedingNotes ?? null,
         latitude: dto.latitude,
         longitude: dto.longitude,
         partnerId: dto.partnerId ?? null,
@@ -452,6 +458,8 @@ export class PetsService {
         ...(dto.neutered !== undefined && { neutered: dto.neutered }),
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.adoptionReason !== undefined && { adoptionReason: dto.adoptionReason }),
+        ...(dto.feedingType !== undefined && { feedingType: dto.feedingType ?? null }),
+        ...(dto.feedingNotes !== undefined && { feedingNotes: dto.feedingNotes ?? null }),
         ...(dto.latitude !== undefined && { latitude: dto.latitude }),
         ...(dto.longitude !== undefined && { longitude: dto.longitude }),
         ...(dto.partnerId !== undefined && { partnerId: dto.partnerId || null }),

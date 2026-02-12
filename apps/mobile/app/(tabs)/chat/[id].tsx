@@ -11,8 +11,12 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
+  Pressable,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
 import { useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -21,15 +25,37 @@ import { useAuthStore } from '../../../src/stores/authStore';
 import { getMessages, sendMessage, type SendMessagePayload } from '../../../src/api/messages';
 import { getConversation, postConversationTyping } from '../../../src/api/conversations';
 import { presign } from '../../../src/api/uploads';
+import { BASE_URL } from '../../../src/api/client';
 import { createReport } from '../../../src/api/reports';
 import { blockUser } from '../../../src/api/blocks';
 import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
-import { LoadingLogo } from '../../../src/components';
+import { LoadingLogo, PrimaryButton, SecondaryButton } from '../../../src/components';
 import { Ionicons } from '@expo/vector-icons';
 import { spacing } from '../../../src/theme';
 
 const TYPING_DEBOUNCE_MS = 500;
 const CHAT_IMAGE_MAX = 280;
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < chars.length; i++) lookup[chars.charCodeAt(i)] = i;
+  const len = base64.replace(/=+$/, '').length;
+  const placeholders = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  const outputLen = (len * 3) / 4 - placeholders;
+  const bytes = new Uint8Array(outputLen);
+  let p = 0;
+  for (let i = 0; i < len; i += 4) {
+    const b1 = lookup[base64.charCodeAt(i)];
+    const b2 = lookup[base64.charCodeAt(i + 1)];
+    const b3 = lookup[base64.charCodeAt(i + 2)];
+    const b4 = lookup[base64.charCodeAt(i + 3)];
+    bytes[p++] = (b1 << 2) | (b2 >> 4);
+    if (p < outputLen) bytes[p++] = ((b2 & 15) << 4) | (b3 >> 2);
+    if (p < outputLen) bytes[p++] = ((b3 & 3) << 6) | b4;
+  }
+  return bytes;
+}
 
 const USER_REPORT_REASONS = [
   { label: 'Comportamento inadequado', value: 'INAPPROPRIATE' },
@@ -46,12 +72,20 @@ export default function ChatRoomScreen() {
   const { colors } = useTheme();
   const userId = useAuthStore((s) => s.user?.id);
   const [text, setText] = useState('');
+  const [fullScreenImageUri, setFullScreenImageUri] = useState<string | null>(null);
+  const [savingPhoto, setSavingPhoto] = useState(false);
+
+  const resolveImageUri = useCallback((imageUrl: string) => {
+    return imageUrl.startsWith('http')
+      ? imageUrl
+      : `${BASE_URL.replace(/\/v1\/?$/, '')}/${imageUrl.replace(/^\/+/, '')}`;
+  }, []);
 
   const { data: conversation, refetch: refetchConversation } = useQuery({
     queryKey: ['conversation', id],
     queryFn: () => getConversation(id!),
     enabled: !!id,
-    refetchInterval: 2000,
+    refetchInterval: 1500,
   });
   const otherUserId = conversation?.otherUser?.id;
   const otherUserName = conversation?.otherUser?.name ?? 'Usuário';
@@ -70,6 +104,7 @@ export default function ChatRoomScreen() {
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     initialPageParam: undefined as string | undefined,
     enabled: !!id,
+    refetchInterval: 2500,
   });
 
   useFocusEffect(
@@ -96,10 +131,17 @@ export default function ChatRoomScreen() {
       queryClient.refetchQueries({ queryKey: ['conversations'] });
     },
   });
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [reportReason, setReportReason] = useState<string | null>(null);
+  const [reportDescription, setReportDescription] = useState('');
+
   const reportUserMutation = useMutation({
-    mutationFn: (reason: string) =>
-      createReport({ targetType: 'USER', targetId: otherUserId!, reason }),
+    mutationFn: ({ reason, description }: { reason: string; description?: string }) =>
+      createReport({ targetType: 'USER', targetId: otherUserId!, reason, description: description?.trim() || undefined }),
     onSuccess: () => {
+      setReportModalVisible(false);
+      setReportReason(null);
+      setReportDescription('');
       Alert.alert('Denúncia enviada', 'Obrigado. Nossa equipe analisará.');
     },
     onError: (e: unknown) => {
@@ -131,7 +173,10 @@ export default function ChatRoomScreen() {
             [
               ...USER_REPORT_REASONS.map((r) => ({
                 text: r.label,
-                onPress: () => reportUserMutation.mutate(r.value),
+                onPress: () => {
+                  setReportReason(r.value);
+                  setReportModalVisible(true);
+                },
               })),
               { text: 'Cancelar', style: 'cancel' },
             ]
@@ -154,7 +199,12 @@ export default function ChatRoomScreen() {
       },
       { text: 'Cancelar', style: 'cancel' },
     ]);
-  }, [otherUserId, otherUserName, reportUserMutation, blockUserMutation]);
+  }, [otherUserId, otherUserName, blockUserMutation]);
+
+  const handleEnviarDenuncia = () => {
+    if (!reportReason) return;
+    reportUserMutation.mutate({ reason: reportReason, description: reportDescription || undefined });
+  };
 
   // Indicador de digitação: debounce ao digitar
   useEffect(() => {
@@ -261,16 +311,60 @@ export default function ChatRoomScreen() {
     try {
       const ext = uri.split('.').pop()?.toLowerCase() || 'jpg';
       const filename = `chat-${Date.now()}.${ext === 'jpg' ? 'jpg' : ext}`;
-      const { uploadUrl, publicUrl } = await presign(filename, `image/${ext === 'jpg' ? 'jpeg' : ext}`);
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const putRes = await fetch(uploadUrl, { method: 'PUT', body: blob, headers: { 'Content-Type': blob.type || 'image/jpeg' } });
-      if (!putRes.ok) throw new Error('Falha no upload');
+      const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
+      const { uploadUrl, publicUrl } = await presign(filename, contentType);
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: 'base64',
+      });
+      if (!base64 || base64.length === 0) throw new Error('Imagem vazia ou inacessível.');
+      const bytes = base64ToUint8Array(base64);
+      const body =
+        bytes.byteLength === bytes.buffer.byteLength
+          ? bytes.buffer
+          : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      const putRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        body,
+        headers: { 'Content-Type': contentType },
+      });
+      if (!putRes.ok) {
+        const errText = await putRes.text().catch(() => '');
+        throw new Error(errText || `Upload falhou (${putRes.status})`);
+      }
       sendMutation.mutate({ imageUrl: publicUrl });
     } catch (e) {
-      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível enviar a foto.'));
+      const message =
+        e instanceof Error ? e.message : String(e);
+      Alert.alert('Erro', message || 'Não foi possível enviar a foto.');
     }
   }, [id, sendMutation]);
+
+  const handleSavePhoto = useCallback(async () => {
+    if (!fullScreenImageUri || savingPhoto) return;
+    try {
+      setSavingPhoto(true);
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permissão', 'É necessário permitir acesso ao álbum para salvar a foto.');
+        return;
+      }
+      const filename = `adopet-${Date.now()}.jpg`;
+      const localPath = `${FileSystem.cacheDirectory}${filename}`;
+      const result = await FileSystem.downloadAsync(fullScreenImageUri, localPath);
+      // Android exige URI com file://; saveToLibraryAsync evita erro de argumentos em algumas versões
+      const localUri =
+        Platform.OS === 'android' && !result.uri.startsWith('file://')
+          ? `file://${result.uri}`
+          : result.uri;
+      await MediaLibrary.saveToLibraryAsync(localUri);
+      Alert.alert('Foto salva', 'A foto foi salva no seu álbum.');
+      setFullScreenImageUri(null);
+    } catch (e) {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível salvar a foto.'));
+    } finally {
+      setSavingPhoto(false);
+    }
+  }, [fullScreenImageUri, savingPhoto]);
 
   if (isLoading && messages.length === 0) {
     return (
@@ -281,10 +375,11 @@ export default function ChatRoomScreen() {
   }
 
   return (
+    <>
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={90}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <FlatList
         data={[...messages].reverse()}
@@ -329,11 +424,16 @@ export default function ChatRoomScreen() {
             ]}
           >
             {item.imageUrl ? (
-              <Image
-                source={{ uri: item.imageUrl }}
-                style={[styles.bubbleImage, item.content ? { marginBottom: 4 } : null]}
-                resizeMode="cover"
-              />
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => setFullScreenImageUri(resolveImageUri(item.imageUrl!))}
+              >
+                <Image
+                  source={{ uri: resolveImageUri(item.imageUrl!) }}
+                  style={[styles.bubbleImage, item.content ? { marginBottom: 4 } : null]}
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
             ) : null}
             {item.content ? (
               <Text
@@ -364,16 +464,80 @@ export default function ChatRoomScreen() {
           placeholderTextColor={colors.textSecondary}
           multiline
           maxLength={2000}
+          accessibilityLabel="Campo de mensagem"
+          accessibilityHint="Digite sua mensagem para enviar na conversa"
         />
         <TouchableOpacity
           style={[styles.sendBtn, { backgroundColor: colors.primary }]}
           onPress={handleSend}
           disabled={!text.trim() || sendMutation.isPending}
+          accessibilityRole="button"
+          accessibilityLabel="Enviar mensagem"
+          accessibilityHint="Toque duas vezes para enviar"
+          accessibilityState={{ disabled: !text.trim() || sendMutation.isPending }}
         >
           <Text style={styles.sendBtnText}>Enviar</Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
+
+    <Modal visible={reportModalVisible} transparent animationType="fade">
+      <Pressable style={styles.reportModalOverlay} onPress={() => setReportModalVisible(false)}>
+        <Pressable style={[styles.reportModalBox, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+          <Text style={[styles.reportModalTitle, { color: colors.textPrimary }]}>Detalhes da denúncia (opcional)</Text>
+          <TextInput
+            style={[styles.reportModalInput, { color: colors.textPrimary, borderColor: colors.textSecondary }]}
+            placeholder="Descreva o que aconteceu, se quiser"
+            placeholderTextColor={colors.textSecondary}
+            value={reportDescription}
+            onChangeText={setReportDescription}
+            multiline
+            numberOfLines={3}
+            maxLength={2000}
+          />
+          <View style={styles.reportModalActions}>
+            <SecondaryButton title="Cancelar" onPress={() => setReportModalVisible(false)} />
+            <PrimaryButton
+              title={reportUserMutation.isPending ? 'Enviando...' : 'Enviar'}
+              onPress={handleEnviarDenuncia}
+              disabled={reportUserMutation.isPending}
+            />
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+
+    <Modal visible={!!fullScreenImageUri} transparent animationType="fade">
+      <Pressable style={styles.imageViewerOverlay} onPress={() => setFullScreenImageUri(null)}>
+        <Pressable style={styles.imageViewerContent} onPress={(e) => e.stopPropagation()}>
+          {fullScreenImageUri ? (
+            <Image
+              source={{ uri: fullScreenImageUri }}
+              style={styles.imageViewerImage}
+              resizeMode="contain"
+            />
+          ) : null}
+          <View style={[styles.imageViewerActions, { backgroundColor: colors.surface }]}>
+            <TouchableOpacity
+              style={[styles.imageViewerBtn, { borderColor: colors.textSecondary }]}
+              onPress={() => setFullScreenImageUri(null)}
+            >
+              <Text style={[styles.imageViewerBtnText, { color: colors.textSecondary }]}>Fechar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.imageViewerBtn, { backgroundColor: colors.primary }]}
+              onPress={handleSavePhoto}
+              disabled={savingPhoto}
+            >
+              <Text style={styles.imageViewerBtnTextPrimary}>
+                {savingPhoto ? 'Salvando...' : 'Salvar foto'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+    </>
   );
 }
 
@@ -409,7 +573,13 @@ const styles = StyleSheet.create({
   bubbleLeft: { alignSelf: 'flex-start' },
   bubbleRight: { alignSelf: 'flex-end' },
   bubbleText: { fontSize: 15 },
-  bubbleImage: { width: CHAT_IMAGE_MAX, maxHeight: CHAT_IMAGE_MAX, borderRadius: 12, marginBottom: 4 },
+  bubbleImage: {
+    width: CHAT_IMAGE_MAX,
+    minHeight: 120,
+    maxHeight: CHAT_IMAGE_MAX,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -427,4 +597,58 @@ const styles = StyleSheet.create({
   },
   sendBtn: { marginLeft: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: 20 },
   sendBtnText: { color: '#fff', fontWeight: '600' },
+  reportModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  reportModalBox: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 12,
+    padding: spacing.lg,
+  },
+  reportModalTitle: { fontSize: 16, fontWeight: '600', marginBottom: spacing.sm },
+  reportModalInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: spacing.sm,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    marginBottom: spacing.md,
+  },
+  reportModalActions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' },
+  imageViewerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageViewerContent: {
+    width: '100%',
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageViewerImage: {
+    width: '100%',
+    flex: 1,
+  },
+  imageViewerActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    padding: spacing.md,
+    width: '100%',
+    justifyContent: 'center',
+  },
+  imageViewerBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 10,
+    borderWidth: 2,
+  },
+  imageViewerBtnText: { fontSize: 16, fontWeight: '600' },
+  imageViewerBtnTextPrimary: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

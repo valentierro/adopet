@@ -35,4 +35,5 @@ function getDevServer() {
   }
 }
 
+// ESM interop: default export as callable function
 module.exports = { __esModule: true, default: getDevServer };

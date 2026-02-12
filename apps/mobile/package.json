@@ -2,7 +2,7 @@
   "name": "mobile",
   "version": "1.0.0",
   "private": true,
-  "main": "expo-router/entry",
+  "main": "index.js",
   "scripts": {
     "postinstall": "node scripts/patch-expo-router-getDevServer.js",
     "dev": "expo start",

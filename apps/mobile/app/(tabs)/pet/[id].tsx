@@ -16,6 +16,7 @@ import {
   Share,
   Modal,
   Pressable,
+  TextInput,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { ScreenContainer, PrimaryButton, SecondaryButton, StatusBadge, LoadingLogo, VerifiedBadge, TutorLevelBadge } from '../../../src/components';
@@ -130,9 +131,12 @@ export default function PetDetailsScreen() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['favorites'] }),
   });
   const reportMutation = useMutation({
-    mutationFn: (reason: string) =>
-      createReport({ targetType: 'PET', targetId: id!, reason, description: undefined }),
+    mutationFn: ({ reason, description }: { reason: string; description?: string }) =>
+      createReport({ targetType: 'PET', targetId: id!, reason, description: description?.trim() || undefined }),
     onSuccess: () => {
+      setReportModalVisible(false);
+      setReportReason(null);
+      setReportDescription('');
       Alert.alert('Denúncia enviada', 'Obrigado. Nossa equipe analisará o conteúdo.');
     },
     onError: (e: unknown) => {
@@ -165,6 +169,10 @@ export default function PetDetailsScreen() {
         ? 'Solicitação de verificação não aprovada'
         : null;
 
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [reportReason, setReportReason] = useState<string | null>(null);
+  const [reportDescription, setReportDescription] = useState('');
+
   const handleDenunciar = () => {
     Alert.alert(
       'Denunciar anúncio',
@@ -172,12 +180,22 @@ export default function PetDetailsScreen() {
       [
         ...REPORT_REASONS.map((r) => ({
           text: r.label,
-          onPress: () => reportMutation.mutate(r.value),
+          onPress: () => {
+            setReportReason(r.value);
+            setReportModalVisible(true);
+          },
         })),
         { text: 'Cancelar', style: 'cancel' },
       ]
     );
   };
+
+  const handleEnviarDenuncia = () => {
+    if (!reportReason) return;
+    reportMutation.mutate({ reason: reportReason, description: reportDescription || undefined });
+  };
+
+  const [tutorModalVisible, setTutorModalVisible] = useState(false);
 
   const handleConversar = async () => {
     if (!isFavorited) {
@@ -195,7 +213,6 @@ export default function PetDetailsScreen() {
     }
   };
 
-  const [tutorModalVisible, setTutorModalVisible] = useState(false);
 
   const handleCompartilhar = async () => {
     try {
@@ -247,11 +264,11 @@ export default function PetDetailsScreen() {
       </View>
       {pet.partner && (
         <TouchableOpacity
-          style={[styles.partnerBanner, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+          style={[styles.partnerBanner, { backgroundColor: '#f9731618', borderColor: '#f9731650' }]}
           onPress={() => router.push(`/partners/${pet.partner!.id}`)}
           activeOpacity={0.8}
         >
-          <Ionicons name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={18} color={colors.primary} />
+          <Ionicons name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={18} color="#ea580c" />
           <View style={styles.partnerBannerTextWrap}>
             <Text style={[styles.partnerBannerLabel, { color: colors.textSecondary }]}>Anúncio em parceria</Text>
             <Text style={[styles.partnerBannerText, { color: colors.textPrimary }]}>
@@ -290,6 +307,21 @@ export default function PetDetailsScreen() {
       )}
       <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Sobre</Text>
       <Text style={[styles.description, { color: colors.textSecondary }]}>{pet.description}</Text>
+      {(pet.feedingType || pet.feedingNotes) ? (
+        <>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.lg }]}>Alimentação</Text>
+          {pet.feedingType ? (
+            <Text style={[styles.description, { color: colors.textSecondary }]}>
+              {{ dry: 'Ração seca', wet: 'Ração úmida', mixed: 'Mista', natural: 'Natural', other: 'Outra' }[pet.feedingType] ?? pet.feedingType}
+            </Text>
+          ) : null}
+          {pet.feedingNotes ? (
+            <Text style={[styles.description, { color: colors.textSecondary, marginTop: pet.feedingType ? spacing.sm : 0 }]}>
+              {pet.feedingNotes}
+            </Text>
+          ) : null}
+        </>
+      ) : null}
       {pet.adoptionReason ? (
         <>
           <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.lg }]}>Por que está doando?</Text>
@@ -315,13 +347,15 @@ export default function PetDetailsScreen() {
               )}
               <View style={styles.ownerInfo}>
                 <Text style={[styles.ownerLabel, { color: colors.textSecondary }]}>Tutor</Text>
-                <View style={styles.ownerNameRow}>
-                  <Text style={[styles.ownerName, { color: colors.textPrimary }]}>{pet.owner.name}</Text>
-                  {pet.owner.verified && <VerifiedBadge size={20} showLabel backgroundColor={colors.primary} />}
-                  {pet.owner.tutorStats && <TutorLevelBadge tutorStats={pet.owner.tutorStats} compact />}
-                </View>
+                <Text style={[styles.ownerName, { color: colors.textPrimary }]}>{pet.owner.name}</Text>
+                {(pet.owner.verified || pet.owner.tutorStats) && (
+                  <View style={styles.ownerBadgesRow}>
+                    {pet.owner.verified && <VerifiedBadge size={20} showLabel backgroundColor={colors.primary} />}
+                    {pet.owner.tutorStats && <TutorLevelBadge tutorStats={pet.owner.tutorStats} compact />}
+                  </View>
+                )}
                 <Text style={[styles.ownerPets, { color: colors.textSecondary }]}>
-                  {pet.owner.petsCount} pet(s) no anúncio
+                  {pet.owner.petsCount} pet(s) anunciados
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
@@ -345,13 +379,15 @@ export default function PetDetailsScreen() {
                     </Text>
                   </View>
                 )}
-                <View style={styles.modalNameRow}>
-                  <Text style={[styles.modalName, { color: colors.textPrimary }]}>{pet.owner.name}</Text>
-                  {pet.owner.verified && <VerifiedBadge size={20} showLabel backgroundColor={colors.primary} />}
-                  {pet.owner.tutorStats && <TutorLevelBadge tutorStats={pet.owner.tutorStats} compact />}
-                </View>
+                <Text style={[styles.modalName, { color: colors.textPrimary }]}>{pet.owner.name}</Text>
+                {(pet.owner.verified || pet.owner.tutorStats) && (
+                  <View style={styles.modalBadgesRow}>
+                    {pet.owner.verified && <VerifiedBadge size={20} showLabel backgroundColor={colors.primary} />}
+                    {pet.owner.tutorStats && <TutorLevelBadge tutorStats={pet.owner.tutorStats} compact />}
+                  </View>
+                )}
                 <Text style={[styles.modalPets, { color: colors.textSecondary }]}>
-                  {pet.owner.petsCount} pet(s) no anúncio
+                  {pet.owner.petsCount} pet(s) anunciados
                 </Text>
                 <View style={styles.modalActions}>
                   <SecondaryButton
@@ -398,6 +434,32 @@ export default function PetDetailsScreen() {
           </Text>
         </TouchableOpacity>
       </View>
+
+      <Modal visible={reportModalVisible} transparent animationType="fade">
+        <Pressable style={styles.modalOverlay} onPress={() => setReportModalVisible(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Detalhes da denúncia (opcional)</Text>
+            <TextInput
+              style={[styles.reportModalInput, { color: colors.textPrimary, borderColor: colors.textSecondary }]}
+              placeholder="Descreva o que aconteceu, se quiser"
+              placeholderTextColor={colors.textSecondary}
+              value={reportDescription}
+              onChangeText={setReportDescription}
+              multiline
+              numberOfLines={3}
+              maxLength={2000}
+            />
+            <View style={styles.modalActions}>
+              <SecondaryButton title="Cancelar" onPress={() => setReportModalVisible(false)} />
+              <PrimaryButton
+                title={reportMutation.isPending ? 'Enviando...' : 'Enviar'}
+                onPress={handleEnviarDenuncia}
+                disabled={reportMutation.isPending}
+              />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -534,14 +596,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: 2,
   },
-  ownerNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
   ownerName: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  ownerBadgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
   },
   ownerPets: {
     fontSize: 13,
@@ -566,6 +630,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: spacing.lg,
   },
+  reportModalInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: spacing.sm,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    marginBottom: spacing.md,
+  },
   modalAvatar: {
     width: 80,
     height: 80,
@@ -584,15 +656,17 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '700',
   },
-  modalNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: spacing.xs,
-  },
   modalName: {
     fontSize: 20,
     fontWeight: '700',
+    marginBottom: spacing.xs,
+  },
+  modalBadgesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: spacing.xs,
   },
   modalPets: {
     fontSize: 14,

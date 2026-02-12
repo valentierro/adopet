@@ -45,7 +45,10 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string): strin
   if (/HMRClient\.registerBundle|registerBundle is not a function/i.test(msg)) {
     return 'Erro do ambiente de desenvolvimento. Pare o servidor (Ctrl+C), na raiz do projeto execute: pnpm dev:mobile:clear — depois abra o app de novo.';
   }
-  if (/network|fetch|connection|timeout|ECONNREFUSED|failed to fetch|could not connect|abort|the operation was aborted/i.test(msg)) {
+  if (/request timeout|timeout|timed out|abort|the operation was aborted/i.test(msg) && !/connection|network|fetch/i.test(msg)) {
+    return 'A requisição demorou demais. Tente novamente.';
+  }
+  if (/network|fetch|connection|ECONNREFUSED|failed to fetch|could not connect/i.test(msg)) {
     return 'Sem conexão. Verifique sua internet e tente de novo.';
   }
   if (/upload.*não configurado|credentials|S3_ACCESS|Could not load credentials/i.test(msg)) {

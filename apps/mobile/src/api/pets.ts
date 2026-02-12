@@ -12,6 +12,8 @@ export type CreatePetBody = {
   neutered: boolean;
   description: string;
   adoptionReason?: string;
+  feedingType?: string;
+  feedingNotes?: string;
   partnerId?: string;
   latitude?: number;
   longitude?: number;

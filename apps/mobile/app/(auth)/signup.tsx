@@ -126,7 +126,7 @@ export default function SignupScreen() {
           styles.scrollContent,
           {
             paddingTop: Math.max(8, insets.top - 32),
-            paddingBottom: insets.bottom + spacing.xl,
+            paddingBottom: insets.bottom + spacing.xl + 120,
             paddingHorizontal: spacing.md + insets.left,
           },
         ]}
@@ -140,7 +140,7 @@ export default function SignupScreen() {
             Informe apenas dados reais. Seus dados estão protegidos e não serão compartilhados com outros usuários.
           </Text>
         </View>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.form}>
+        <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={Platform.OS === 'android' ? insets.top : 0} style={styles.form}>
           <TextInput
             style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
             placeholder="Nome"

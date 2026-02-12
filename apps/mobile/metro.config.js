@@ -15,16 +15,17 @@ config.resolver.nodeModulesPaths = [
 // Interceptar qualquer resolução do módulo getDevServer do RN (incl. .native).
 const originalResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  const shimPath = path.resolve(projectRoot, 'getDevServerShim.js');
   const isGetDevServer =
     typeof moduleName === 'string' &&
-    (moduleName === 'react-native/Libraries/Core/Devtools/getDevServer' ||
+    (moduleName === 'getDevServerShim' ||
+      moduleName === 'react-native/Libraries/Core/Devtools/getDevServer' ||
       moduleName === 'react-native/Libraries/Core/Devtools/getDevServer.native' ||
+      moduleName.endsWith('getDevServer') ||
+      moduleName.includes('Devtools/getDevServer') ||
       moduleName.includes('Libraries/Core/Devtools/getDevServer'));
   if (isGetDevServer) {
-    return {
-      filePath: path.resolve(projectRoot, 'getDevServerShim.js'),
-      type: 'sourceFile',
-    };
+    return { filePath: shimPath, type: 'sourceFile' };
   }
   if (originalResolveRequest) {
     return originalResolveRequest(context, moduleName, platform);

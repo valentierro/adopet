@@ -67,6 +67,18 @@ export class CreatePetDto {
   @MaxLength(500)
   adoptionReason?: string;
 
+  @ApiPropertyOptional({ example: 'dry', enum: ['dry', 'wet', 'mixed', 'natural', 'other'], description: 'Tipo de alimentação (opcional)' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['dry', 'wet', 'mixed', 'natural', 'other'])
+  feedingType?: string;
+
+  @ApiPropertyOptional({ example: 'Ração premium; sem alergias conhecidas.', description: 'Dieta especial, alergias ou observações (opcional)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  feedingNotes?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)

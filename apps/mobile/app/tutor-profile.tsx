@@ -1,12 +1,15 @@
-import { useLocalSearchParams } from 'expo-router';
-import { View, Text, StyleSheet } from 'react-native';
+import { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Pressable, Alert } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
-import { ScreenContainer, LoadingLogo, TutorLevelBadge } from '../src/components';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { ScreenContainer, LoadingLogo, TutorLevelBadge, PrimaryButton, SecondaryButton } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { useAuthStore } from '../src/stores/authStore';
 import { getOwnerProfileByPetId, getOwnerProfileByPetIdForAdmin } from '../src/api/pet';
+import { createReport } from '../src/api/reports';
+import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
 import { spacing } from '../src/theme';
 
 const HOUSING_LABEL: Record<string, string> = {
@@ -19,6 +22,13 @@ const TIME_AT_HOME_LABEL: Record<string, string> = {
   HALF_DAY: 'Metade do dia',
   LITTLE: 'Pouco tempo',
 };
+
+const USER_REPORT_REASONS: { label: string; value: string }[] = [
+  { label: 'Comportamento inadequado', value: 'INAPPROPRIATE' },
+  { label: 'Spam', value: 'SPAM' },
+  { label: 'Assédio', value: 'HARASSMENT' },
+  { label: 'Outro', value: 'OTHER' },
+];
 
 function LabelValue({
   label,
@@ -49,13 +59,54 @@ function BoolLabel({ value, colors }: { value: boolean | undefined; colors: { te
 
 export default function TutorProfileScreen() {
   const { petId } = useLocalSearchParams<{ petId: string }>();
+  const router = useRouter();
   const { colors } = useTheme();
   const isAdmin = useAuthStore((s) => s.user?.isAdmin);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [reportReason, setReportReason] = useState<string | null>(null);
+  const [reportDescription, setReportDescription] = useState('');
+
   const { data: profile, isLoading, error } = useQuery({
     queryKey: ['owner-profile', petId, isAdmin ? 'admin' : 'public'],
     queryFn: () => (isAdmin ? getOwnerProfileByPetIdForAdmin(petId!) : getOwnerProfileByPetId(petId!)),
     enabled: !!petId,
   });
+
+  const reportProfileMutation = useMutation({
+    mutationFn: ({ reason, description }: { reason: string; description?: string }) =>
+      createReport({ targetType: 'USER', targetId: profile!.id, reason, description: description?.trim() || undefined }),
+    onSuccess: () => {
+      setReportModalVisible(false);
+      setReportReason(null);
+      setReportDescription('');
+      Alert.alert('Denúncia enviada', 'Obrigado. Nossa equipe analisará.');
+    },
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível enviar a denúncia.'));
+    },
+  });
+
+  const handleDenunciarPerfil = () => {
+    Alert.alert(
+      'Denunciar perfil',
+      'Selecione o motivo:',
+      [
+        ...USER_REPORT_REASONS.map((r) => ({
+          text: r.label,
+          onPress: () => {
+            setReportReason(r.value);
+            setReportModalVisible(true);
+          },
+        })),
+        { text: 'Cancelar', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleEnviarDenuncia = () => {
+    if (!reportReason) return;
+    reportProfileMutation.mutate({ reason: reportReason, description: reportDescription || undefined });
+  };
 
   if (isLoading || !profile) {
     return (
@@ -89,13 +140,30 @@ export default function TutorProfileScreen() {
         )}
         <Text style={[styles.name, { color: colors.textPrimary }]}>{profile.name}</Text>
         <Text style={[styles.petsCount, { color: colors.textSecondary }]}>
-          {profile.petsCount} pet(s) no anúncio
+          {profile.petsCount} pet(s) anunciados
         </Text>
         {profile.tutorStats && (
           <View style={styles.tutorBadgeWrap}>
             <TutorLevelBadge tutorStats={profile.tutorStats} showDetails compact={false} />
           </View>
         )}
+
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={[styles.actionBtn, { backgroundColor: colors.primary }]}
+            onPress={() => router.push({ pathname: '/owner-pets', params: { ownerId: profile.id, ownerName: profile.name } })}
+          >
+            <Ionicons name="paw" size={20} color="#fff" />
+            <Text style={styles.actionBtnText}>Ver anúncios</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.actionBtnSecondary, { borderColor: colors.textSecondary }]}
+            onPress={handleDenunciarPerfil}
+          >
+            <Ionicons name="flag-outline" size={20} color={colors.textSecondary} />
+            <Text style={[styles.actionBtnTextSecondary, { color: colors.textSecondary }]}>Denunciar perfil</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
@@ -136,7 +204,7 @@ export default function TutorProfileScreen() {
         value={profile.timeAtHome ? TIME_AT_HOME_LABEL[profile.timeAtHome] ?? profile.timeAtHome : undefined}
         colors={colors}
       />
-      {profile.phone != null && profile.phone !== '' && (
+      {isAdmin && profile.phone != null && profile.phone !== '' && (
         <View style={[styles.phoneRow, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '30' }]}>
           <Ionicons name="call" size={20} color={colors.primary} />
           <View>
@@ -145,6 +213,32 @@ export default function TutorProfileScreen() {
           </View>
         </View>
       )}
+
+      <Modal visible={reportModalVisible} transparent animationType="fade">
+        <Pressable style={styles.modalOverlay} onPress={() => setReportModalVisible(false)}>
+          <Pressable style={[styles.modalBox, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Detalhes da denúncia (opcional)</Text>
+            <TextInput
+              style={[styles.modalInput, { color: colors.textPrimary, borderColor: colors.textSecondary }]}
+              placeholder="Descreva o que aconteceu, se quiser"
+              placeholderTextColor={colors.textSecondary}
+              value={reportDescription}
+              onChangeText={setReportDescription}
+              multiline
+              numberOfLines={3}
+              maxLength={2000}
+            />
+            <View style={styles.modalActions}>
+              <SecondaryButton title="Cancelar" onPress={() => setReportModalVisible(false)} />
+              <PrimaryButton
+                title={reportProfileMutation.isPending ? 'Enviando...' : 'Enviar'}
+                onPress={handleEnviarDenuncia}
+                disabled={reportProfileMutation.isPending}
+              />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -215,5 +309,63 @@ const styles = StyleSheet.create({
   error: {
     textAlign: 'center',
     marginTop: spacing.xl,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    width: '100%',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 10,
+  },
+  actionBtnText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  actionBtnSecondary: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+  },
+  actionBtnTextSecondary: {
+    fontWeight: '500',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  modalBox: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 12,
+    padding: spacing.lg,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: spacing.sm,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    marginBottom: spacing.md,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'flex-end',
   },
 });

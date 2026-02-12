@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, MinLength, MaxLength, IsOptional, IsUrl, ValidateIf } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsOptional, ValidateIf } from 'class-validator';
 
 export class SendMessageDto {
   @ApiPropertyOptional({ example: 'Olá! O pet ainda está disponível?' })
@@ -10,9 +10,9 @@ export class SendMessageDto {
   @ValidateIf((o) => !o.imageUrl)
   content?: string;
 
-  @ApiPropertyOptional({ description: 'URL da imagem enviada no chat (upload prévio)' })
+  @ApiPropertyOptional({ description: 'URL ou path da imagem enviada no chat (upload prévio)' })
   @IsOptional()
   @IsString()
-  @IsUrl()
+  @MaxLength(2000)
   imageUrl?: string;
 }
