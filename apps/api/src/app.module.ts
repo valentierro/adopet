@@ -22,11 +22,13 @@ import { PartnerRecommendationsModule } from './partner-recommendations/partner-
 import { PartnersModule } from './partners/partners.module';
 import { PublicModule } from './public/public.module';
 import { PaymentsModule } from './payments/payments.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    EmailModule,
     HealthModule,
     FeedModule,
     AuthModule,

@@ -12,10 +12,18 @@ import type { PartnerSignupDto } from './dto/partner-signup.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { AuthResponseDto } from './dto/auth-response.dto';
 import { PartnersService } from '../partners/partners.service';
+import { EmailService } from '../email/email.service';
+import { ConfigService } from '@nestjs/config';
+import { getTempPasswordEmailHtml, getTempPasswordEmailText } from '../email/templates/temp-password.email';
+import { getConfirmResetEmailHtml, getConfirmResetEmailText } from '../email/templates/confirm-reset.email';
+import type { ForgotPasswordDto } from './dto/forgot-password.dto';
+import * as crypto from 'crypto';
 
 const ACCESS_TOKEN_EXPIRES = '15m';
 const REFRESH_TOKEN_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const SALT_ROUNDS = 10;
+const TEMP_PASSWORD_LENGTH = 12;
+const CONFIRM_RESET_TOKEN_EXPIRES = '1h';
 
 @Injectable()
 export class AuthService {
@@ -23,6 +31,8 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly partnersService: PartnersService,
+    private readonly emailService: EmailService,
+    private readonly config: ConfigService,
   ) {}
 
   async signup(dto: SignupDto): Promise<AuthResponseDto> {
@@ -148,14 +158,94 @@ export class AuthService {
     return { message: 'OK' };
   }
 
+  /**
+   * Envia e-mail com link de confirmação. Só ao clicar no link a senha é substituída e a temporária enviada.
+   */
+  async forgotPassword(dto: ForgotPasswordDto): Promise<{ message: string }> {
+    const emailLower = dto.email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({
+      where: { email: emailLower },
+      select: { id: true, email: true, passwordHash: true, deactivatedAt: true },
+    });
+    if (!user?.passwordHash || user.deactivatedAt) {
+      return { message: 'Se esse e-mail estiver cadastrado, você receberá um link para confirmar e receber a senha temporária.' };
+    }
+    const token = this.jwtService.sign(
+      { sub: user.id, type: 'confirm-reset' },
+      { expiresIn: CONFIRM_RESET_TOKEN_EXPIRES } as object,
+    );
+    const apiUrl = (this.config.get<string>('API_PUBLIC_URL') ?? this.config.get<string>('APP_URL'))?.replace(/\/$/, '') ?? '';
+    const confirmLink = apiUrl ? `${apiUrl}/v1/auth/confirm-reset-password?token=${encodeURIComponent(token)}` : '';
+    const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? 'https://appadopet.com.br';
+    const logoUrl = (this.config.get<string>('LOGO_URL') || appUrl + '/logo.png').trim();
+    if (this.emailService.isConfigured() && confirmLink) {
+      await this.emailService.sendMail({
+        to: user.email,
+        subject: 'Confirmar redefinição de senha - Adopet',
+        text: getConfirmResetEmailText(confirmLink),
+        html: getConfirmResetEmailHtml(confirmLink, logoUrl),
+      });
+    }
+    return { message: 'Se esse e-mail estiver cadastrado, você receberá um link para confirmar e receber a senha temporária.' };
+  }
+
+  /**
+   * Valida o token do link de confirmação, gera senha temporária, atualiza o usuário e envia por e-mail.
+   */
+  async confirmResetPassword(token: string): Promise<{ success: boolean; message: string }> {
+    let payload: { sub?: string; type?: string };
+    try {
+      payload = this.jwtService.verify(token) as { sub?: string; type?: string };
+    } catch {
+      return { success: false, message: 'Link inválido ou expirado. Solicite uma nova redefinição de senha.' };
+    }
+    if (payload.type !== 'confirm-reset' || !payload.sub) {
+      return { success: false, message: 'Link inválido. Solicite uma nova redefinição de senha.' };
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true, email: true },
+    });
+    if (!user) {
+      return { success: false, message: 'Usuário não encontrado.' };
+    }
+    const temporaryPassword = this.generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, SALT_ROUNDS);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+    const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? 'https://appadopet.com.br';
+    const logoUrl = (this.config.get<string>('LOGO_URL') || appUrl + '/logo.png').trim();
+    if (this.emailService.isConfigured()) {
+      await this.emailService.sendMail({
+        to: user.email,
+        subject: 'Senha temporária - Adopet',
+        text: getTempPasswordEmailText(temporaryPassword),
+        html: getTempPasswordEmailHtml(temporaryPassword, logoUrl),
+      });
+    }
+    return { success: true, message: 'Senha temporária enviada ao seu e-mail. Verifique a caixa de entrada.' };
+  }
+
+  private generateTemporaryPassword(): string {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const bytes = crypto.randomBytes(TEMP_PASSWORD_LENGTH);
+    let result = '';
+    for (let i = 0; i < TEMP_PASSWORD_LENGTH; i++) {
+      result += chars[bytes[i]! % chars.length];
+    }
+    return result;
+  }
+
   private async issueTokens(userId: string, email: string): Promise<AuthResponseDto> {
     const accessToken = this.jwtService.sign(
       { sub: userId, email },
-      { expiresIn: ACCESS_TOKEN_EXPIRES },
+      { expiresIn: ACCESS_TOKEN_EXPIRES } as object,
     );
     const refreshToken = this.jwtService.sign(
       { sub: userId, type: 'refresh' },
-      { expiresIn: '7d' },
+      { expiresIn: '7d' } as object,
     );
     const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRES_MS);
     await this.prisma.refreshToken.create({
