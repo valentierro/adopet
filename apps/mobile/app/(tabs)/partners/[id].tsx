@@ -74,6 +74,9 @@ const couponCardStyles = StyleSheet.create({
 
 const serviceCardStyles = StyleSheet.create({
   card: { padding: spacing.md, borderRadius: 12, borderWidth: 1, marginBottom: spacing.sm },
+  cardTop: { flexDirection: 'row', gap: spacing.md },
+  cardImage: { width: 80, height: 80, borderRadius: 10 },
+  cardBody: { flex: 1, minWidth: 0 },
   name: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
   price: { fontSize: 14, fontWeight: '600', marginBottom: 4 },
   desc: { fontSize: 13 },
@@ -240,12 +243,19 @@ export default function PartnerDetailScreen() {
           <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>Oferecidos pelo estabelecimento</Text>
           {services.map((s) => (
             <View key={s.id} style={[serviceCardStyles.card, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
-              <Text style={[serviceCardStyles.name, { color: colors.textPrimary }]}>{s.name}</Text>
-              {s.priceDisplay ? <Text style={[serviceCardStyles.price, { color: colors.primary }]}>{s.priceDisplay}</Text> : null}
-              {s.description ? <Text style={[serviceCardStyles.desc, { color: colors.textSecondary }]} numberOfLines={2}>{s.description}</Text> : null}
-              {s.validUntil && (
-                <Text style={[serviceCardStyles.valid, { color: colors.textSecondary }]}>Válido até {new Date(s.validUntil).toLocaleDateString('pt-BR')}</Text>
-              )}
+              <View style={serviceCardStyles.cardTop}>
+                {s.imageUrl ? (
+                  <Image source={{ uri: s.imageUrl }} style={serviceCardStyles.cardImage} resizeMode="cover" />
+                ) : null}
+                <View style={serviceCardStyles.cardBody}>
+                  <Text style={[serviceCardStyles.name, { color: colors.textPrimary }]}>{s.name}</Text>
+                  {s.priceDisplay ? <Text style={[serviceCardStyles.price, { color: colors.primary }]}>{s.priceDisplay}</Text> : null}
+                  {s.description ? <Text style={[serviceCardStyles.desc, { color: colors.textSecondary }]} numberOfLines={2}>{s.description}</Text> : null}
+                  {s.validUntil && (
+                    <Text style={[serviceCardStyles.valid, { color: colors.textSecondary }]}>Válido até {new Date(s.validUntil).toLocaleDateString('pt-BR')}</Text>
+                  )}
+                </View>
+              </View>
             </View>
           ))}
         </View>

@@ -61,6 +61,7 @@ export type PartnerServicePublic = {
   name: string;
   description?: string;
   priceDisplay?: string;
+  imageUrl?: string | null;
   validUntil?: string | null;
   active: boolean;
 };

@@ -346,12 +346,12 @@ export default function ProfileScreen() {
           style={[styles.deactivateBtn, { marginTop: spacing.lg }]}
           onPress={() => {
             Alert.alert(
-              'Desativar conta',
-              'Sua conta será desativada. Você não poderá fazer login até reativar. Deseja continuar?',
+              'Desativar conta e excluir dados',
+              'Sua conta será desativada e seus dados pessoais serão excluídos ou anonimizados (nome, e-mail, telefone, favoritos, preferências etc.). Você não poderá fazer login novamente. Esta ação não pode ser desfeita. Deseja continuar?',
               [
                 { text: 'Cancelar', style: 'cancel' },
                 {
-                  text: 'Desativar',
+                  text: 'Sim, desativar e excluir',
                   style: 'destructive',
                   onPress: async () => {
                     try {
@@ -367,7 +367,7 @@ export default function ProfileScreen() {
             );
           }}
         >
-          <Text style={[styles.deactivateText, { color: colors.textSecondary }]}>Desativar conta</Text>
+          <Text style={[styles.deactivateText, { color: colors.textSecondary }]}>Desativar conta e excluir meus dados</Text>
         </TouchableOpacity>
       </View>
     </ScreenContainer>

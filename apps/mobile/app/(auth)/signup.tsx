@@ -41,6 +41,8 @@ export default function SignupScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [phone, setPhone] = useState('');
   const [username, setUsername] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -123,7 +125,7 @@ export default function SignupScreen() {
         contentContainerStyle={[
           styles.scrollContent,
           {
-            paddingTop: insets.top + spacing.lg,
+            paddingTop: Math.max(8, insets.top - 32),
             paddingBottom: insets.bottom + spacing.xl,
             paddingHorizontal: spacing.md + insets.left,
           },
@@ -132,6 +134,12 @@ export default function SignupScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Image source={LogoSplash} style={styles.logo} resizeMode="contain" />
+        <View style={[styles.dataNotice, { backgroundColor: (colors.warning || '#d97706') + '18', borderColor: (colors.warning || '#d97706') + '50' }]}>
+          <Ionicons name="shield-checkmark" size={20} color={colors.warning || '#d97706'} style={styles.dataNoticeIcon} />
+          <Text style={[styles.dataNoticeText, { color: colors.textPrimary }]}>
+            Informe apenas dados reais. Seus dados estão protegidos e não serão compartilhados com outros usuários.
+          </Text>
+        </View>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.form}>
           <TextInput
             style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
@@ -172,24 +180,34 @@ export default function SignupScreen() {
           <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: -4, marginBottom: 4 }}>
             Outros usuários poderão te encontrar por @nome. Use letras minúsculas, números, ponto ou underscore (2 a 30 caracteres).
           </Text>
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
-            placeholder="Senha (mín. 6 caracteres, letra e número)"
-            placeholderTextColor={colors.textSecondary}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoComplete="password-new"
-          />
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
-            placeholder="Confirmar senha"
-            placeholderTextColor={colors.textSecondary}
-            value={passwordConfirm}
-            onChangeText={setPasswordConfirm}
-            secureTextEntry
-            autoComplete="password-new"
-          />
+          <View style={styles.passwordWrap}>
+            <TextInput
+              style={[styles.input, styles.passwordInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+              placeholder="Senha (mín. 6 caracteres, letra e número)"
+              placeholderTextColor={colors.textSecondary}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              autoComplete="password-new"
+            />
+            <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword((v) => !v)} accessibilityLabel={showPassword ? 'Ocultar senha' : 'Ver senha'}>
+              <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.passwordWrap}>
+            <TextInput
+              style={[styles.input, styles.passwordInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+              placeholder="Confirmar senha"
+              placeholderTextColor={colors.textSecondary}
+              value={passwordConfirm}
+              onChangeText={setPasswordConfirm}
+              secureTextEntry={!showPasswordConfirm}
+              autoComplete="password-new"
+            />
+            <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPasswordConfirm((v) => !v)} accessibilityLabel={showPasswordConfirm ? 'Ocultar senha' : 'Ver senha'}>
+              <Ionicons name={showPasswordConfirm ? 'eye-off-outline' : 'eye-outline'} size={22} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
           <View style={[styles.privacyBox, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
             <Text style={[styles.privacyTitle, { color: colors.textPrimary }]}>Seus dados estão seguros</Text>
             <Text style={[styles.privacyText, { color: colors.textSecondary }]}>
@@ -235,8 +253,19 @@ const styles = StyleSheet.create({
     width: 180,
     height: 180 * 1.2,
     alignSelf: 'center',
+    marginTop: -24,
     marginBottom: spacing.xl,
   },
+  dataNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: spacing.lg,
+  },
+  dataNoticeIcon: { marginRight: spacing.sm, marginTop: 2 },
+  dataNoticeText: { flex: 1, fontSize: 13, lineHeight: 20 },
   form: { gap: spacing.md },
   termsRow: {
     flexDirection: 'row',
@@ -262,6 +291,9 @@ const styles = StyleSheet.create({
   },
   privacyTitle: { fontSize: 14, fontWeight: '700', marginBottom: spacing.xs },
   privacyText: { fontSize: 13, lineHeight: 20 },
+  passwordWrap: { position: 'relative' },
+  passwordInput: { paddingRight: 48 },
+  eyeBtn: { position: 'absolute', right: 12, top: 0, bottom: 0, justifyContent: 'center' },
   input: {
     padding: spacing.md,
     borderRadius: 12,

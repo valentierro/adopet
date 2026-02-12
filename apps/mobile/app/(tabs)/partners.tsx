@@ -62,11 +62,27 @@ export default function PartnersScreen() {
         subtitle="ONGs, clínicas e lojas parceiras. Veja cupons de desconto e contato. Parceiros com destaque têm selo no feed."
       />
       {partners.length === 0 ? (
-        <EmptyState
-          title="Nenhum parceiro no momento"
-          message="Em breve teremos ONGs parceiras listadas aqui."
-          icon={<Ionicons name="heart-outline" size={48} color={colors.textSecondary} />}
-        />
+        <>
+          <EmptyState
+            title="Nenhum parceiro no momento"
+            message="Em breve teremos ONGs parceiras listadas aqui."
+            icon={<Ionicons name="heart-outline" size={48} color={colors.textSecondary} />}
+          />
+          <View style={[styles.ctaWrap, { backgroundColor: (colors.warning || '#d97706') + '18', borderColor: (colors.warning || '#d97706') + '40' }]}>
+            <Text style={[styles.ctaTitle, { color: colors.textPrimary }]}>Indique um parceiro</Text>
+            <Text style={[styles.ctaSub, { color: colors.textSecondary }]}>
+              Conhece uma ONG, clínica ou loja que poderia ser parceira? Envie a indicação.
+            </Text>
+            <TouchableOpacity
+              style={[styles.ctaBtn, { backgroundColor: colors.warning || '#d97706' }]}
+              onPress={() => router.push('/indique-parceiro')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="megaphone-outline" size={20} color="#fff" />
+              <Text style={styles.ctaBtnText}>Indicar parceiro</Text>
+            </TouchableOpacity>
+          </View>
+        </>
       ) : (
         <>
           {cities.length > 0 && (
@@ -148,6 +164,20 @@ export default function PartnersScreen() {
           ))}
         </View>
           )}
+          <View style={[styles.ctaWrap, { backgroundColor: (colors.warning || '#d97706') + '18', borderColor: (colors.warning || '#d97706') + '40' }]}>
+            <Text style={[styles.ctaTitle, { color: colors.textPrimary }]}>Indique um parceiro</Text>
+            <Text style={[styles.ctaSub, { color: colors.textSecondary }]}>
+              Conhece uma ONG, clínica ou loja que poderia ser parceira? Envie a indicação.
+            </Text>
+            <TouchableOpacity
+              style={[styles.ctaBtn, { backgroundColor: colors.warning || '#d97706' }]}
+              onPress={() => router.push('/indique-parceiro')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="megaphone-outline" size={20} color="#fff" />
+              <Text style={styles.ctaBtnText}>Indicar parceiro</Text>
+            </TouchableOpacity>
+          </View>
         </>
       )}
     </ScreenContainer>
@@ -189,4 +219,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   linkText: { fontSize: 14, fontWeight: '600' },
+  ctaWrap: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.xl,
+    marginBottom: spacing.xl,
+    padding: spacing.lg,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  ctaTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.xs },
+  ctaSub: { fontSize: 14, lineHeight: 20, marginBottom: spacing.md },
+  ctaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+  },
+  ctaBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
 });

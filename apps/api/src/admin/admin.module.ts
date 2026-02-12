@@ -5,10 +5,11 @@ import { AdoptionAutoApproveScheduler } from './adoption-auto-approve.scheduler'
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { BugReportsModule } from '../bug-reports/bug-reports.module';
+import { PartnerRecommendationsModule } from '../partner-recommendations/partner-recommendations.module';
 import { PartnersModule } from '../partners/partners.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, BugReportsModule, PartnersModule],
+  imports: [PrismaModule, AuthModule, BugReportsModule, PartnerRecommendationsModule, PartnersModule],
   controllers: [AdminController],
   providers: [AdminService, AdoptionAutoApproveScheduler],
   exports: [AdminService],

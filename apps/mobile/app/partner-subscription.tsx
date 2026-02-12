@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Alert, Linking, ScrollView } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
+import { useFocusEffect } from '@react-navigation/native';
 import { ScreenContainer, PrimaryButton, LoadingLogo, PartnerPanelLayout } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMyPartner, createPartnerCheckoutSession, createPartnerBillingPortalSession } from '../src/api/partner';
@@ -18,7 +19,11 @@ const STATUS_LABELS: Record<string, string> = {
   trialing: 'Período de teste',
   past_due: 'Pagamento pendente',
   canceled: 'Cancelada',
+  cancelled: 'Cancelada',
   unpaid: 'Não pago',
+  incomplete: 'Incompleta',
+  incomplete_expired: 'Expirada',
+  paused: 'Pausada',
 };
 
 export default function PartnerSubscriptionScreen() {
@@ -27,6 +32,13 @@ export default function PartnerSubscriptionScreen() {
   const { data: partner, isLoading } = useQuery({ queryKey: ['me', 'partner'], queryFn: getMyPartner });
   const [loadingCheckout, setLoadingCheckout] = useState(false);
   const [loadingPortal, setLoadingPortal] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner'] });
+    }, [queryClient]),
+  );
 
   const handlePayOrReactivate = async () => {
     if (!partner) return;
@@ -60,7 +72,14 @@ export default function PartnerSubscriptionScreen() {
       else Alert.alert('Portal de assinatura', 'Acesse pelo navegador para gerenciar pagamento e cancelar.');
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      Alert.alert('Erro', msg || 'Não foi possível abrir o portal.');
+      if (msg.includes('ASSINATURA_NAO_VINCULADA_STRIPE')) {
+        Alert.alert(
+          'Vincular assinatura ao Stripe',
+          'Sua assinatura ainda não está vinculada ao pagamento. Use o botão "Ir para pagamento" e conclua o pagamento uma vez (em modo teste use o cartão 4242 4242 4242 4242) para poder gerenciar e cancelar pelo app.',
+        );
+      } else {
+        Alert.alert('Erro', msg || 'Não foi possível abrir o portal.');
+      }
     } finally {
       setLoadingPortal(false);
     }

@@ -83,7 +83,22 @@ export class MeService {
     return { id: user.id, name: user.name, username: user.username };
   }
 
-  async getMyAdoptions(userId: string, species?: 'BOTH' | 'DOG' | 'CAT'): Promise<{ items: Array<{ adoptionId: string; petId: string; petName: string; species: string; photos: string[]; adoptedAt: string; tutorName: string; confirmedByAdopet: boolean; adoptionRejectedAt?: string }> }> {
+  async getMyAdoptions(userId: string, species?: 'BOTH' | 'DOG' | 'CAT'): Promise<{
+    items: Array<{
+      adoptionId: string;
+      petId: string;
+      petName: string;
+      species: string;
+      photos: string[];
+      adoptedAt: string;
+      tutorName: string;
+      confirmedByAdopet: boolean;
+      adoptionRejectedAt?: string;
+      vaccinated?: boolean;
+      neutered?: boolean;
+      partner?: { isPaidPartner?: boolean };
+    }>;
+  }> {
     const adoptions = await this.prisma.adoption.findMany({
       where: {
         adopterId: userId,
@@ -95,12 +110,14 @@ export class MeService {
         pet: {
           include: {
             media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+            partner: { select: { isPaidPartner: true } },
           },
         },
       },
     });
     const items = adoptions.map((a) => {
       const pet = a.pet as { adoptionRejectedAt?: Date | null };
+      const partner = a.pet.partner as { isPaidPartner?: boolean } | null;
       return {
         adoptionId: a.id,
         petId: a.petId,
@@ -111,6 +128,9 @@ export class MeService {
         tutorName: a.tutor.name,
         confirmedByAdopet: !pet.adoptionRejectedAt,
         ...(pet.adoptionRejectedAt && { adoptionRejectedAt: pet.adoptionRejectedAt.toISOString() }),
+        vaccinated: a.pet.vaccinated,
+        neutered: a.pet.neutered,
+        ...(partner != null && { partner: { isPaidPartner: partner.isPaidPartner } }),
       };
     });
     return { items };
@@ -186,15 +206,54 @@ export class MeService {
     return { message: 'OK' };
   }
 
+  /**
+   * Desativa a conta e exclui/anonimiza dados pessoais (LGPD – direito à eliminação).
+   * - Remove tokens, preferências, buscas salvas, favoritos e swipes.
+   * - Desvincula parceiro do usuário.
+   * - Anonimiza conteúdo de mensagens enviadas pelo usuário.
+   * - Anonimiza o registro do usuário (mantém id para integridade referencial).
+   */
   async deactivate(userId: string): Promise<{ message: string }> {
-    await this.prisma.$transaction([
-      this.prisma.refreshToken.deleteMany({ where: { userId } }),
-      this.prisma.user.update({
+    const now = new Date();
+    const deletedEmail = `deleted-${userId}@deleted.adopet.local`;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.refreshToken.deleteMany({ where: { userId } });
+      await tx.userPreferences.deleteMany({ where: { userId } });
+      await tx.savedSearch.deleteMany({ where: { userId } });
+      await tx.favorite.deleteMany({ where: { userId } });
+      await tx.swipe.deleteMany({ where: { userId } });
+      await tx.message.updateMany({
+        where: { senderId: userId },
+        data: { content: '', imageUrl: null },
+      });
+      await tx.partner.updateMany({
+        where: { userId },
+        data: { userId: null },
+      });
+      await tx.user.update({
         where: { id: userId },
-        data: { deactivatedAt: new Date(), pushToken: null },
-      }),
-    ]);
-    return { message: 'Conta desativada. Entre em contato para reativar.' };
+        data: {
+          deactivatedAt: now,
+          pushToken: null,
+          email: deletedEmail,
+          name: 'Usuário excluído',
+          username: null,
+          phone: null,
+          avatarUrl: null,
+          city: null,
+          bio: null,
+          housingType: null,
+          hasYard: null,
+          hasOtherPets: null,
+          hasChildren: null,
+          timeAtHome: null,
+          passwordHash: null,
+        },
+      });
+    });
+
+    return { message: 'Conta desativada e dados pessoais excluídos ou anonimizados.' };
   }
 
   /**

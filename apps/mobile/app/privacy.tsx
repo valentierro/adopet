@@ -1,7 +1,7 @@
 import { View, Text, ScrollView, StyleSheet, Linking } from 'react-native';
 import { ScreenContainer } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
-import { SUPPORT_EMAIL } from '../src/constants/support';
+import { SUPPORT_EMAIL, REQUEST_ACCOUNT_DELETION_URL } from '../src/constants/support';
 import { spacing } from '../src/theme';
 
 export default function PrivacyScreen() {
@@ -9,6 +9,10 @@ export default function PrivacyScreen() {
 
   const openEmail = () => {
     Linking.openURL(`mailto:${SUPPORT_EMAIL}`);
+  };
+
+  const openDeletionRequest = () => {
+    Linking.openURL(REQUEST_ACCOUNT_DELETION_URL);
   };
 
   return (
@@ -76,6 +80,12 @@ export default function PrivacyScreen() {
         </Text>
         <Text style={[styles.contactLink, { color: colors.primary }]} onPress={openEmail}>
           {SUPPORT_EMAIL}
+        </Text>
+        <Text style={[styles.body, { color: colors.textSecondary }, { marginTop: spacing.md }]}>
+          Para solicitar a exclusão da sua conta e dos seus dados pessoais, use o link abaixo:
+        </Text>
+        <Text style={[styles.contactLink, { color: colors.primary }]} onPress={openDeletionRequest}>
+          Solicitar exclusão da conta e dos dados
         </Text>
       </View>
     </ScreenContainer>

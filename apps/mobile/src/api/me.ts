@@ -77,6 +77,11 @@ export type MyAdoptionItem = {
   tutorName: string;
   confirmedByAdopet: boolean;
   adoptionRejectedAt?: string;
+  /** Campos do pet para exibir badges (quando a API enviar) */
+  vaccinated?: boolean;
+  neutered?: boolean;
+  verified?: boolean;
+  partner?: { isPaidPartner?: boolean };
 };
 
 export type MyAdoptionsResponse = { items: MyAdoptionItem[] };

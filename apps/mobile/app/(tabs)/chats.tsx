@@ -18,6 +18,7 @@ export default function ChatsScreen() {
   const { data: conversations = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['conversations'],
     queryFn: getConversations,
+    staleTime: 0,
   });
 
   const handleDeleteConversation = (conversationId: string, petName: string) => {
@@ -62,8 +63,14 @@ export default function ChatsScreen() {
 
   if (conversations.length === 0) {
     return (
-      <ScreenContainer>
+      <ScreenContainer scroll>
         <PageIntro title="Conversas" subtitle="Suas conversas com tutores dos pets favoritados." />
+        <View style={[styles.avisoBox, { backgroundColor: (colors.warning || '#d97706') + '14', borderColor: (colors.warning || '#d97706') + '40' }]}>
+          <Ionicons name="information-circle-outline" size={18} color={colors.warning || '#d97706'} style={styles.avisoIcon} />
+          <Text style={[styles.avisoText, { color: colors.textSecondary }]}>
+            Mantenha o respeito no chat e use este espaço apenas para combinar a adoção dos pets.
+          </Text>
+        </View>
         <EmptyState
           title="Nenhuma conversa"
           message="Quando você favoritar um pet e tocar em Conversar, as conversas aparecerão aqui."
@@ -84,6 +91,12 @@ export default function ChatsScreen() {
       <Text style={[styles.hint, { color: colors.textSecondary }]}>
         Toque e segure em uma conversa para apagá-la.
       </Text>
+      <View style={[styles.avisoBox, { backgroundColor: (colors.warning || '#d97706') + '14', borderColor: (colors.warning || '#d97706') + '40' }]}>
+        <Ionicons name="information-circle-outline" size={18} color={colors.warning || '#d97706'} style={styles.avisoIcon} />
+        <Text style={[styles.avisoText, { color: colors.textSecondary }]}>
+          Mantenha o respeito no chat e use este espaço apenas para combinar a adoção dos pets.
+        </Text>
+      </View>
       {conversations.map((c) => (
         <TouchableOpacity
           key={c.id}
@@ -130,6 +143,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: spacing.md,
   },
+  avisoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: spacing.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+  },
+  avisoIcon: { marginRight: spacing.xs, marginTop: 2 },
+  avisoText: { flex: 1, fontSize: 12, lineHeight: 18 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

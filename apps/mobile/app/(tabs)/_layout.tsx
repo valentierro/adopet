@@ -130,7 +130,13 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="passed-pets"
-        options={{ href: null, title: 'Pets que você passou', ...backScreenOptions }}
+        options={{
+          href: null,
+          title: 'Pets que você passou',
+          headerTitle: () => <HeaderLogo />,
+          headerTitleAlign: 'center',
+          ...backScreenOptions,
+        }}
       />
       <Tabs.Screen
         name="map"
@@ -151,6 +157,10 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="partners"
         options={{ href: null, title: 'Parceiros Adopet', ...backScreenOptions }}
+      />
+      <Tabs.Screen
+        name="indique-parceiro"
+        options={{ href: null, title: 'Indique um parceiro', ...backScreenOptions }}
       />
       <Tabs.Screen
         name="partners-area"

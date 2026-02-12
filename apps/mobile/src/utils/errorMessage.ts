@@ -39,12 +39,13 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string): strin
     return 'Adicione o pet aos favoritos para iniciar a conversa.';
   }
   if (/not found|não encontrado|404/i.test(msg)) {
-    return 'Não encontramos o que você buscou. Tente novamente.';
+    // 404 em login/cadastro costuma ser rota inexistente (URL da API errada); em outros casos é recurso não encontrado
+    return 'Serviço temporariamente indisponível. Tente novamente em instantes.';
   }
   if (/HMRClient\.registerBundle|registerBundle is not a function/i.test(msg)) {
     return 'Erro do ambiente de desenvolvimento. Pare o servidor (Ctrl+C), na raiz do projeto execute: pnpm dev:mobile:clear — depois abra o app de novo.';
   }
-  if (/network|fetch|connection|timeout|ECONNREFUSED|failed to fetch|could not connect/i.test(msg)) {
+  if (/network|fetch|connection|timeout|ECONNREFUSED|failed to fetch|could not connect|abort|the operation was aborted/i.test(msg)) {
     return 'Sem conexão. Verifique sua internet e tente de novo.';
   }
   if (/upload.*não configurado|credentials|S3_ACCESS|Could not load credentials/i.test(msg)) {

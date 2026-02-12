@@ -24,4 +24,10 @@ export class CreatePartnerServiceDto {
   @IsOptional()
   @IsString()
   validUntil?: string;
+
+  @ApiPropertyOptional({ description: 'URL da foto do serviço (após upload)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  imageUrl?: string;
 }

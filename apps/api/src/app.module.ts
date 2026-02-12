@@ -18,6 +18,7 @@ import { VerificationModule } from './verification/verification.module';
 import { SavedSearchModule } from './saved-search/saved-search.module';
 import { AdminModule } from './admin/admin.module';
 import { BugReportsModule } from './bug-reports/bug-reports.module';
+import { PartnerRecommendationsModule } from './partner-recommendations/partner-recommendations.module';
 import { PartnersModule } from './partners/partners.module';
 import { PublicModule } from './public/public.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -44,6 +45,7 @@ import { PaymentsModule } from './payments/payments.module';
     SavedSearchModule,
     AdminModule,
     BugReportsModule,
+    PartnerRecommendationsModule,
     PartnersModule,
     PublicModule,
   ],

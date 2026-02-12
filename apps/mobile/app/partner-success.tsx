@@ -14,6 +14,7 @@ export default function PartnerPaymentSuccessScreen() {
 
   useEffect(() => {
     queryClient.invalidateQueries({ queryKey: ['me'] });
+    queryClient.invalidateQueries({ queryKey: ['me', 'partner'] });
   }, [queryClient]);
 
   return (

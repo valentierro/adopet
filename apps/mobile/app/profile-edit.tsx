@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, TextInput, StyleSheet, Alert, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PrimaryButton, LoadingLogo } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMe, updateMe } from '../src/api/me';
+import { presign, confirmAvatarUpload } from '../src/api/uploads';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
 import { spacing } from '../src/theme';
 
@@ -63,6 +66,43 @@ export default function ProfileEditScreen() {
     },
   });
 
+  const uploadAvatarMutation = useMutation({
+    mutationFn: async (uri: string) => {
+      const ext = uri.split('.').pop()?.toLowerCase() || 'jpg';
+      const filename = `avatar.${ext === 'jpg' ? 'jpg' : ext}`;
+      const { uploadUrl, key } = await presign(filename, `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const putRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: blob,
+        headers: { 'Content-Type': blob.type || 'image/jpeg' },
+      });
+      if (!putRes.ok) throw new Error(`Upload falhou: ${putRes.status}`);
+      return confirmAvatarUpload(key);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['me'] }),
+    onError: (e: unknown) => {
+      Alert.alert('Erro ao enviar foto', getFriendlyErrorMessage(e, 'Tente novamente.'));
+    },
+  });
+
+  const pickAndUploadAvatar = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão', 'Precisamos acessar suas fotos para definir a foto de perfil.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets[0]?.uri) return;
+    uploadAvatarMutation.mutate(result.assets[0].uri);
+  }, [uploadAvatarMutation]);
+
   if (isLoading && !user) {
     return (
       <ScreenContainer>
@@ -96,7 +136,28 @@ export default function ProfileEditScreen() {
   return (
     <ScreenContainer scroll>
       <View style={styles.form}>
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Dados básicos</Text>
+        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Foto do perfil</Text>
+        <View style={styles.avatarRow}>
+          <TouchableOpacity onPress={pickAndUploadAvatar} disabled={uploadAvatarMutation.isPending} style={styles.avatarTouch}>
+            {user?.avatarUrl ? (
+              <Image source={{ uri: user.avatarUrl }} style={styles.avatarImg} />
+            ) : (
+              <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface }]}>
+                <Ionicons name="person" size={48} color={colors.textSecondary} />
+              </View>
+            )}
+            {uploadAvatarMutation.isPending && (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator size="large" color="#fff" />
+              </View>
+            )}
+          </TouchableOpacity>
+          <Text style={[styles.avatarHint, { color: colors.textSecondary }]}>
+            {user?.avatarUrl ? 'Toque para alterar a foto' : 'Adicione uma foto para completar seu perfil (obrigatório para publicar pets).'}
+          </Text>
+        </View>
+
+        <Text style={[styles.sectionLabel, { color: colors.textSecondary, marginTop: spacing.lg }]}>Dados básicos</Text>
         <TextInput
           style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
           placeholder="Nome"
@@ -234,6 +295,22 @@ const styles = StyleSheet.create({
   form: {
     gap: spacing.md,
   },
+  avatarRow: { alignItems: 'center', marginBottom: spacing.sm },
+  avatarTouch: { position: 'relative', width: 96, height: 96 },
+  avatarImg: { width: 96, height: 96, borderRadius: 48 },
+  avatarPlaceholder: { width: 96, height: 96, borderRadius: 48, alignItems: 'center', justifyContent: 'center' },
+  avatarOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarHint: { fontSize: 12, marginTop: spacing.sm, textAlign: 'center', paddingHorizontal: spacing.md },
   sectionLabel: {
     fontSize: 13,
     fontWeight: '600',

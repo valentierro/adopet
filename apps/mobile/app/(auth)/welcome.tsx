@@ -1,5 +1,6 @@
 import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PrimaryButton, SecondaryButton } from '../../src/components';
@@ -12,11 +13,12 @@ const PARTNER_GRADIENT: [string, string] = ['#d97706', '#b45309'];
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
 
   return (
     <ScreenContainer>
-      <View style={styles.content}>
+      <View style={[styles.content, { paddingTop: insets.top + spacing.sm }]}>
         <Image source={LogoSplash} style={styles.logo} resizeMode="contain" />
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
           Encontre seu novo melhor amigo
@@ -77,7 +79,7 @@ export default function WelcomeScreen() {
 const styles = StyleSheet.create({
   content: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: spacing.lg,
     alignItems: 'center',
   },
@@ -85,6 +87,7 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200 * 1.2,
     marginBottom: spacing.sm,
+    marginTop: -16,
   },
   subtitle: {
     fontSize: 18,

@@ -61,6 +61,7 @@ export default function PreferencesScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['me', 'preferences'] });
       queryClient.invalidateQueries({ queryKey: ['feed'] });
+      queryClient.refetchQueries({ queryKey: ['feed'] });
       Alert.alert('Salvo', 'Preferências atualizadas.');
     },
     onError: (e: unknown) => Alert.alert('Não foi possível salvar', getFriendlyErrorMessage(e, 'Tente novamente.')),

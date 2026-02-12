@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useState, useCallback, useLayoutEffect } from 'react';
+import { useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -82,10 +82,27 @@ function PetPhotoGallery({ photos }: { photos: string[] }) {
 }
 
 export default function PetDetailsScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const router = useRouter();
+  const navigation = useNavigation();
   const queryClient = useQueryClient();
   const { colors } = useTheme();
+
+  useLayoutEffect(() => {
+    if (from === 'passed-pets') {
+      navigation.setOptions({
+        headerLeft: () => (
+          <TouchableOpacity
+            onPress={() => router.replace('/passed-pets')}
+            style={{ padding: 8, marginLeft: 4 }}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+        ),
+      });
+    }
+  }, [from, navigation, colors.textPrimary, router]);
   const userId = useAuthStore((s) => s.user?.id);
   const { data: pet, isLoading, refetch: refetchPet } = useQuery({
     queryKey: ['pet', id],
@@ -170,6 +187,8 @@ export default function PetDetailsScreen() {
     try {
       const { id: convId } = await createConversation(id!);
       trackEvent({ name: 'open_chat', properties: { petId: id!, conversationId: convId } });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.refetchQueries({ queryKey: ['conversations'] });
       router.push(`/chat/${convId}`);
     } catch (e: unknown) {
       Alert.alert('Conversar', getFriendlyErrorMessage(e, 'Não foi possível abrir a conversa. Tente novamente.'));

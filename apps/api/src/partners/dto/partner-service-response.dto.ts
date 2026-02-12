@@ -16,6 +16,9 @@ export class PartnerServiceResponseDto {
   @ApiPropertyOptional()
   priceDisplay?: string;
 
+  @ApiPropertyOptional()
+  imageUrl?: string;
+
   @ApiProperty()
   active: boolean;
 

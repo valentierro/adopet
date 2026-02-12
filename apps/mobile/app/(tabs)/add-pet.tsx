@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ScreenContainer, PrimaryButton, SecondaryButton, PageIntro } from '../../src/components';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/hooks/useTheme';
 import { getMe } from '../../src/api/me';
 import { spacing } from '../../src/theme';
@@ -202,8 +203,8 @@ export default function AddPetWizardScreen() {
     if (!user?.avatarUrl || !user?.phone) {
       Alert.alert(
         'Complete seu perfil',
-        'Adicione uma foto e seu telefone no perfil antes de publicar um pet. Assim os adotantes podem confiar no anúncio.',
-        [{ text: 'OK', onPress: () => router.push('/profile-edit') }],
+        'Para publicar um pet é preciso ter foto e telefone no perfil. Você será levado à página de edição, onde pode adicionar a foto do perfil e preencher todos os dados de uma vez. Depois, volte aqui e publique o pet.',
+        [{ text: 'Completar perfil', onPress: () => router.push('/profile-edit') }],
       );
       return;
     }
@@ -251,6 +252,7 @@ export default function AddPetWizardScreen() {
       }
       queryClient.invalidateQueries({ queryKey: ['pets', 'mine'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'tutor-stats'] });
+      queryClient.refetchQueries({ queryKey: ['pets', 'mine'] });
       setForm(INITIAL_FORM);
       setStep(0);
       setUploadedKeys([]);
@@ -653,6 +655,19 @@ export default function AddPetWizardScreen() {
             />
           )}
         </View>
+
+        {step === 0 && (
+          <View style={[styles.tipsBox, { backgroundColor: (colors.warning || '#d97706') + '18', borderColor: (colors.warning || '#d97706') + '50' }]}>
+            <View style={styles.tipsTitleRow}>
+              <Ionicons name="bulb" size={20} color={colors.warning || '#d97706'} />
+              <Text style={[styles.tipsTitle, { color: colors.textPrimary }]}>Dicas para um bom anúncio</Text>
+            </View>
+            <Text style={[styles.tipsItem, { color: colors.textSecondary }]}>• Use fotos nítidas e com boa iluminação.</Text>
+            <Text style={[styles.tipsItem, { color: colors.textSecondary }]}>• A primeira foto é a principal: escolha a que mais mostra o pet.</Text>
+            <Text style={[styles.tipsItem, { color: colors.textSecondary }]}>• Mostre o pet em ambiente tranquilo para transmitir confiança.</Text>
+            <Text style={[styles.tipsItem, { color: colors.textSecondary }]}>• Preencha a descrição com temperamento e hábitos — isso aumenta as chances de adoção.</Text>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </ScreenContainer>
   );
@@ -712,4 +727,13 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
   halfBtn: { flex: 1 },
   fullBtn: { flex: 1 },
+  tipsBox: {
+    marginTop: spacing.xl,
+    padding: spacing.lg,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  tipsTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: spacing.sm },
+  tipsTitle: { fontSize: 16, fontWeight: '700' },
+  tipsItem: { fontSize: 14, lineHeight: 22, marginBottom: 4 },
 });

@@ -140,6 +140,8 @@ export default function SolicitarParceriaScreen() {
 
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [username, setUsername] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [planoPagamento, setPlanoPagamento] = useState<'BASIC' | 'DESTAQUE' | 'PREMIUM'>('BASIC');
@@ -488,9 +490,19 @@ export default function SolicitarParceriaScreen() {
               <TextInput style={inputStyle} placeholder="maria.silva" placeholderTextColor={colors.textSecondary} value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} />
               <Text style={[styles.hint, { color: colors.textSecondary }]}>Outros usuários poderão te encontrar por @nome. Use letras minúsculas, números, ponto ou underscore (2 a 30 caracteres).</Text>
               <Text style={labelStyle}>Senha *</Text>
-              <TextInput style={inputStyle} placeholder="Mín. 6 caracteres, letra e número" placeholderTextColor={colors.textSecondary} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" />
+              <View style={styles.passwordWrap}>
+                <TextInput style={[inputStyle, styles.passwordInput]} placeholder="Mín. 6 caracteres, letra e número" placeholderTextColor={colors.textSecondary} value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoCapitalize="none" />
+                <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword((v) => !v)} accessibilityLabel={showPassword ? 'Ocultar senha' : 'Ver senha'}>
+                  <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
               <Text style={labelStyle}>Confirmar senha *</Text>
-              <TextInput style={inputStyle} placeholder="Repita a senha" placeholderTextColor={colors.textSecondary} value={passwordConfirm} onChangeText={setPasswordConfirm} secureTextEntry autoCapitalize="none" />
+              <View style={styles.passwordWrap}>
+                <TextInput style={[inputStyle, styles.passwordInput]} placeholder="Repita a senha" placeholderTextColor={colors.textSecondary} value={passwordConfirm} onChangeText={setPasswordConfirm} secureTextEntry={!showPasswordConfirm} autoCapitalize="none" />
+                <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPasswordConfirm((v) => !v)} accessibilityLabel={showPasswordConfirm ? 'Ocultar senha' : 'Ver senha'}>
+                  <Ionicons name={showPasswordConfirm ? 'eye-off-outline' : 'eye-outline'} size={22} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
               <View style={[styles.termsRow, { marginTop: spacing.sm }]}>
                 <Pressable style={styles.termsCheckWrap} onPress={() => setAcceptedTerms((v) => !v)} accessibilityRole="checkbox" accessibilityState={{ checked: acceptedTerms }}>
                   <View style={[styles.checkbox, { borderColor: acceptedTerms ? colors.primary : colors.textSecondary, backgroundColor: acceptedTerms ? colors.primary : 'transparent' }]}>
@@ -684,6 +696,9 @@ const styles = StyleSheet.create({
   intro: { fontSize: 15, lineHeight: 22, marginBottom: spacing.lg },
   label: { fontSize: 14, fontWeight: '600', marginBottom: spacing.xs, marginTop: spacing.sm },
   input: { padding: spacing.md, borderRadius: 12, borderWidth: 1, fontSize: 16 },
+  passwordWrap: { position: 'relative' },
+  passwordInput: { paddingRight: 48 },
+  eyeBtn: { position: 'absolute', right: 12, top: 0, bottom: 0, justifyContent: 'center' },
   textArea: { minHeight: 100, paddingTop: spacing.md },
   cepRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   cepInput: { flex: 1 },

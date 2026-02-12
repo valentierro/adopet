@@ -27,6 +27,6 @@ export class FavoriteItemDto {
     createdAt: string;
     /** Cidade do tutor */
     city?: string | null;
-    partner?: { id: string; name: string; slug: string; logoUrl?: string | null };
+    partner?: { id: string; name: string; slug: string; logoUrl?: string | null; isPaidPartner?: boolean };
   };
 }

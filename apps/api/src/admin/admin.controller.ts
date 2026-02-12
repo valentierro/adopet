@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
 import { AdminService } from './admin.service';
 import { BugReportsService } from '../bug-reports/bug-reports.service';
+import { PartnerRecommendationsService } from '../partner-recommendations/partner-recommendations.service';
 import { PartnersService } from '../partners/partners.service';
 import { AdminStatsDto } from './dto/admin-stats.dto';
 import { AdoptionItemDto } from './dto/adoption-item.dto';
@@ -13,6 +14,7 @@ import { PetAvailableItemDto } from './dto/pet-available-item.dto';
 import { PendingAdoptionByTutorDto } from './dto/pending-adoption-by-tutor.dto';
 import type { BugReportResponseDto } from '../bug-reports/dto/bug-report-response.dto';
 import type { PartnerAdminDto } from '../partners/dto/partner-response.dto';
+import type { PartnerRecommendationResponseDto } from '../partner-recommendations/dto/partner-recommendation-response.dto';
 import { CreatePartnerDto } from '../partners/dto/create-partner.dto';
 import { UpdatePartnerDto } from '../partners/dto/update-partner.dto';
 
@@ -24,6 +26,7 @@ export class AdminController {
   constructor(
     private readonly adminService: AdminService,
     private readonly bugReportsService: BugReportsService,
+    private readonly partnerRecommendationsService: PartnerRecommendationsService,
     private readonly partnersService: PartnersService,
   ) {}
 
@@ -74,6 +77,12 @@ export class AdminController {
   @ApiOperation({ summary: '[Admin] Listar reports de bugs enviados pelos usuários (beta)' })
   async getBugReports(): Promise<BugReportResponseDto[]> {
     return this.bugReportsService.findAllForAdmin();
+  }
+
+  @Get('partner-recommendations')
+  @ApiOperation({ summary: '[Admin] Listar indicações de parceiros (quem indicou + dados do indicado)' })
+  async getPartnerRecommendations(): Promise<PartnerRecommendationResponseDto[]> {
+    return this.partnerRecommendationsService.findAllForAdmin();
   }
 
   @Get('partners')

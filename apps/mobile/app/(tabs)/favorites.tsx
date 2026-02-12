@@ -51,6 +51,7 @@ export default function FavoritesScreen() {
         return { items: [...EMPTY_ITEMS], nextCursor: null };
       }
     },
+    staleTime: 0,
   });
 
   const items: FavoriteItem[] = useMemo(() => {
@@ -72,13 +73,18 @@ export default function FavoritesScreen() {
 
   const removeMutation = useMutation({
     mutationFn: removeFavorite,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['favorites'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['favorites'] });
+      queryClient.refetchQueries({ queryKey: ['favorites'] });
+    },
   });
 
   const startChat = useCallback(
     async (item: FavoriteItem) => {
       try {
         const { id } = await createConversation(item.petId);
+        queryClient.invalidateQueries({ queryKey: ['conversations'] });
+        queryClient.refetchQueries({ queryKey: ['conversations'] });
         router.push(`/chat/${id}`);
       } catch (e: unknown) {
         Alert.alert(
@@ -87,7 +93,7 @@ export default function FavoritesScreen() {
         );
       }
     },
-    [router],
+    [router, queryClient],
   );
 
   const safeItems = Array.isArray(items) ? items : EMPTY_ITEMS;
@@ -108,6 +114,12 @@ export default function FavoritesScreen() {
     return (
       <ScreenContainer>
         <PageIntro title="Favoritos" subtitle="Pets que você curtiu e pode conversar com o tutor." />
+        <View style={[styles.motivoBox, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}>
+          <Ionicons name="heart" size={18} color={colors.primary} style={styles.motivoIcon} />
+          <Text style={[styles.motivoText, { color: colors.textPrimary }]}>
+            Cada coração que você dá pode ser o início de uma nova história. Vale a pena dar o próximo passo.
+          </Text>
+        </View>
         <EmptyState
           title="Nenhum favorito ainda"
           message="Pets que você curtir no feed aparecerão aqui. Depois você pode conversar com o tutor."
@@ -134,7 +146,15 @@ export default function FavoritesScreen() {
         refreshing={isRefetching}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
-          <PageIntro title="Favoritos" subtitle="Pets que você curtiu e pode conversar com o tutor." />
+          <>
+            <PageIntro title="Favoritos" subtitle="Pets que você curtiu e pode conversar com o tutor." />
+            <View style={[styles.motivoBox, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}>
+              <Ionicons name="heart" size={18} color={colors.primary} style={styles.motivoIcon} />
+              <Text style={[styles.motivoText, { color: colors.textPrimary }]}>
+                Cada coração que você dá pode ser o início de uma nova história. Vale a pena dar o próximo passo.
+              </Text>
+            </View>
+          </>
         }
         renderItem={({ item }) => {
           if (!item?.pet) return null;
@@ -186,6 +206,16 @@ const styles = StyleSheet.create({
   skeletonWrap: { paddingTop: spacing.sm },
   skeletonCard: { marginBottom: spacing.lg },
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 160 },
+  motivoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: spacing.md,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+  },
+  motivoIcon: { marginRight: spacing.sm, marginTop: 2 },
+  motivoText: { flex: 1, fontSize: 14, lineHeight: 20, fontStyle: 'italic' },
   listContent: { padding: spacing.lg, paddingBottom: spacing.xl },
   cardWrap: { marginBottom: spacing.lg },
   actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },

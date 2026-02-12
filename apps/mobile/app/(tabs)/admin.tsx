@@ -40,6 +40,7 @@ import {
   resolveVerification,
   revokeVerification,
   getAdminPartners,
+  getAdminPartnerRecommendations,
   createAdminPartner,
   updateAdminPartner,
   type VerificationPendingItem,
@@ -50,6 +51,7 @@ import {
   type UserSearchItem,
   type BugReportItem,
   type PartnerAdminItem,
+  type PartnerRecommendationItem,
   type CreatePartnerBody,
   type UpdatePartnerBody,
 } from '../../src/api/admin';
@@ -160,6 +162,10 @@ export default function AdminScreen() {
     queryKey: ['admin', 'partners'],
     queryFn: getAdminPartners,
   });
+  const { data: partnerRecommendations = [], refetch: refetchPartnerRecommendations, isRefetching: refetchingPartnerRecommendations } = useQuery({
+    queryKey: ['admin', 'partner-recommendations'],
+    queryFn: getAdminPartnerRecommendations,
+  });
 
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userSearchResults, setUserSearchResults] = useState<UserSearchItem[]>([]);
@@ -265,6 +271,7 @@ export default function AdminScreen() {
   const sectionY = useRef<Record<string, number>>({});
   const pendingByTutorRef = useRef<View>(null);
   const bugReportsRef = useRef<View>(null);
+  const partnerRecommendationsRef = useRef<View>(null);
   const partnersRef = useRef<View>(null);
   const adoptionsRef = useRef<View>(null);
   const pendingPetsRef = useRef<View>(null);
@@ -431,12 +438,13 @@ export default function AdminScreen() {
     refetchPetsAvailable();
     refetchPendingByTutor();
     refetchBugReports();
+    refetchPartnerRecommendations();
     refetchPartners();
     setSelectedPetIds(new Set());
     setSelectedVerificationIds(new Set());
     setSelectedReportIds(new Set());
     setSelectedPendingAdoptionPetIds(new Set());
-  }, [refetchPets, refetchVerifications, refetchApproved, refetchReports, refetchStats, refetchAdoptions, refetchPetsAvailable, refetchPendingByTutor, refetchBugReports, refetchPartners]);
+  }, [refetchPets, refetchVerifications, refetchApproved, refetchReports, refetchStats, refetchAdoptions, refetchPetsAvailable, refetchPendingByTutor, refetchBugReports, refetchPartnerRecommendations, refetchPartners]);
 
   useFocusEffect(
     useCallback(() => {
@@ -711,6 +719,7 @@ export default function AdminScreen() {
     refetchingStats ||
     refetchingAdoptions ||
     refetchingBugReports ||
+    refetchingPartnerRecommendations ||
     refetchingPartners;
   const unresolvedReports = reports.filter((r) => !r.resolvedAt);
 
@@ -735,6 +744,7 @@ export default function AdminScreen() {
           <SummaryCard title="Denúncias abertas" count={unresolvedReports.length} colors={colors} onPress={() => scrollToSection('reports')} />
           <SummaryCard title="Marcados adotado" count={stats?.pendingAdoptionsByTutorCount ?? 0} sub="pelo tutor" colors={colors} onPress={() => scrollToSection('pendingByTutor')} />
           <SummaryCard title="Parceiros" count={partnersList.length} colors={colors} onPress={() => scrollToSection('partners')} />
+          <SummaryCard title="Indicações" count={partnerRecommendations.length} sub="parceiros" colors={colors} onPress={() => scrollToSection('partnerRecommendations')} />
           <SummaryCard title="Reports de bugs" count={bugReports.length} sub="beta" colors={colors} onPress={() => scrollToSection('bugReports')} />
         </View>
 
@@ -1498,6 +1508,49 @@ export default function AdminScreen() {
         )}
       </View>
 
+      {/* Indicações de parceiros */}
+      <View ref={partnerRecommendationsRef} onLayout={(e: LayoutChangeEvent) => { sectionY.current.partnerRecommendations = e.nativeEvent.layout.y; }} collapsable={false}>
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.xl }]}>Indicações de parceiros ({partnerRecommendations.length})</Text>
+        <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
+          Indicações enviadas pelos usuários (ONG, clínica ou loja). Quem indicou aparece abaixo de cada card.
+        </Text>
+        {partnerRecommendations.length === 0 ? (
+          <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhuma indicação ainda.</Text>
+          </View>
+        ) : (
+          partnerRecommendations.map((r: PartnerRecommendationItem) => (
+            <View key={r.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary, fontSize: 16, marginTop: 0 }]}>{r.suggestedName}</Text>
+              <View style={styles.rowWrap}>
+                <View style={[styles.chip, { backgroundColor: colors.primary + '25' }]}>
+                  <Text style={[styles.chipText, { color: colors.primary }]}>
+                    {r.suggestedType === 'ONG' ? 'ONG' : r.suggestedType === 'CLINIC' ? 'Clínica' : 'Loja'}
+                  </Text>
+                </View>
+                {r.suggestedCity ? (
+                  <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>{r.suggestedCity}</Text>
+                ) : null}
+              </View>
+              {(r.suggestedEmail ?? r.suggestedPhone) && (
+                <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
+                  {[r.suggestedEmail, r.suggestedPhone].filter(Boolean).join(' • ')}
+                </Text>
+              )}
+              {r.message ? (
+                <Text style={[styles.bugReportComment, { color: colors.textSecondary }]} numberOfLines={4}>“{r.message}”</Text>
+              ) : null}
+              <Text style={[styles.cardMeta, { color: colors.textSecondary, marginTop: 4 }]}>
+                Indicado por: {r.indicadorName ?? '—'}{r.indicadorEmail ? ` (${r.indicadorEmail})` : ''}
+              </Text>
+              <Text style={[styles.cardDate, { color: colors.textSecondary }]}>
+                {new Date(r.createdAt).toLocaleString('pt-BR')}
+              </Text>
+            </View>
+          ))
+        )}
+      </View>
+
       {/* Reports de bugs (beta) */}
       <View ref={bugReportsRef} onLayout={(e: LayoutChangeEvent) => { sectionY.current.bugReports = e.nativeEvent.layout.y; }} collapsable={false}>
         <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.xl }]}>Reports de bugs ({bugReports.length})</Text>
@@ -2021,6 +2074,7 @@ const styles = StyleSheet.create({
   modalContentScroll: { maxHeight: '85%' },
   rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm },
   chip: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: 20 },
+  chipText: { fontSize: 13, fontWeight: '600' },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.sm },
   switchLabel: { fontSize: 15, flex: 1 },
 });

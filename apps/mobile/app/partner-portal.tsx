@@ -1,8 +1,8 @@
 import { useRouter } from 'expo-router';
-import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, LoadingLogo } from '../src/components';
+import { ScreenContainer, LoadingLogo, PartnerPanelLayout } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMyPartner } from '../src/api/partner';
 import { spacing } from '../src/theme';
@@ -62,59 +62,74 @@ export default function PartnerPortalScreen() {
   }
 
   return (
-    <ScreenContainer scroll>
-      <View style={[styles.card, { backgroundColor: colors.surface }]}>
-        {partner.logoUrl ? (
-          <Image source={{ uri: partner.logoUrl }} style={styles.logo} resizeMode="contain" />
-        ) : null}
-        <Text style={[styles.name, { color: colors.textPrimary }]}>{partner.name}</Text>
-        <Text style={[styles.slug, { color: colors.textSecondary }]}>{partner.slug}</Text>
-        <View style={[styles.badge, { backgroundColor: colors.primary + '20' }]}>
-          <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
-          <Text style={[styles.badgeText, { color: colors.primary }]}>Assinatura ativa</Text>
-        </View>
-      </View>
+    <ScreenContainer scroll={false}>
+      <PartnerPanelLayout showFooter={false}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.card, { backgroundColor: colors.surface }]}>
+            {partner.logoUrl ? (
+              <Image source={{ uri: partner.logoUrl }} style={styles.logo} resizeMode="contain" />
+            ) : null}
+            <Text style={[styles.name, { color: colors.textPrimary }]}>{partner.name}</Text>
+            <Text style={[styles.slug, { color: colors.textSecondary }]}>{partner.slug}</Text>
+            <View style={[styles.badge, { backgroundColor: colors.primary + '20' }]}>
+              <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+              <Text style={[styles.badgeText, { color: colors.primary }]}>Assinatura ativa</Text>
+            </View>
+          </View>
 
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/partner-edit')}
-      >
-        <Ionicons name="business-outline" size={22} color={colors.primary} />
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Dados do estabelecimento</Text>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/partner-coupons')}
-      >
-        <Ionicons name="pricetag-outline" size={22} color={colors.primary} />
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Cupons de desconto</Text>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/partner-services')}
-      >
-        <Ionicons name="construct-outline" size={22} color={colors.primary} />
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Serviços prestados</Text>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/partner-analytics')}
-      >
-        <Ionicons name="stats-chart-outline" size={22} color={colors.primary} />
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Analytics</Text>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/partner-subscription')}
-      >
-        <Ionicons name="card-outline" size={22} color={colors.primary} />
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Assinatura</Text>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+            onPress={() => router.push('/partner-edit')}
+          >
+            <Ionicons name="business-outline" size={22} color={colors.primary} />
+            <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Dados do estabelecimento</Text>
+            <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+            onPress={() => router.push('/partner-coupons')}
+          >
+            <Ionicons name="pricetag-outline" size={22} color={colors.primary} />
+            <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Cupons de desconto</Text>
+            <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+            onPress={() => router.push('/partner-services')}
+          >
+            <Ionicons name="construct-outline" size={22} color={colors.primary} />
+            <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Serviços prestados</Text>
+            <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+            onPress={() => router.push('/partner-analytics')}
+          >
+            <Ionicons name="stats-chart-outline" size={22} color={colors.primary} />
+            <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Analytics</Text>
+            <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+            onPress={() => router.push('/partner-subscription')}
+          >
+            <Ionicons name="card-outline" size={22} color={colors.primary} />
+            <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Assinatura</Text>
+            <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+          </TouchableOpacity>
+
+          <View style={[styles.thanksBox, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
+            <Ionicons name="heart" size={22} color={colors.primary} style={styles.thanksIcon} />
+            <Text style={[styles.thanksText, { color: colors.textPrimary }]}>
+              Obrigado por fazer parte dessa rede. Sua parceria ajuda a conectar mais pets a um lar.
+            </Text>
+          </View>
+        </ScrollView>
+      </PartnerPanelLayout>
     </ScreenContainer>
   );
 }
@@ -152,4 +167,16 @@ const styles = StyleSheet.create({
   },
   menuLabel: { flex: 1, fontSize: 16 },
   menuArrow: { fontSize: 20 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: spacing.xl },
+  thanksBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: spacing.xl,
+    padding: spacing.lg,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  thanksIcon: { marginRight: spacing.sm, marginTop: 2 },
+  thanksText: { flex: 1, fontSize: 15, lineHeight: 22, fontStyle: 'italic' },
 });

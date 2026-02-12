@@ -148,6 +148,11 @@ export default function FeedScreen() {
       if (variables.action === 'LIKE') {
         trackEvent({ name: 'like', properties: { petId: variables.petId } });
         lastLikedPetRef.current = null;
+        queryClient.refetchQueries({ queryKey: ['favorites'] });
+      }
+      if (variables.action === 'PASS') {
+        queryClient.invalidateQueries({ queryKey: ['swipes', 'passed'] });
+        queryClient.refetchQueries({ queryKey: ['swipes', 'passed'] });
       }
     },
     onError: (_, variables) => {
@@ -168,6 +173,7 @@ export default function FeedScreen() {
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: FEED_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
+      queryClient.invalidateQueries({ queryKey: ['swipes', 'passed'] });
     },
   });
 

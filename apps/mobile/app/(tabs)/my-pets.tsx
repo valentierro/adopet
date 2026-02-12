@@ -5,7 +5,7 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, Act
 import { Image } from 'expo-image';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, EmptyState, LoadingLogo } from '../../src/components';
+import { ScreenContainer, EmptyState, LoadingLogo, StatusBadge, VerifiedBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { getMinePets, type PetStatus } from '../../src/api/pets';
 import { spacing } from '../../src/theme';
@@ -71,6 +71,7 @@ export default function MyPetsScreen() {
       }),
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     initialPageParam: undefined as string | undefined,
+    staleTime: 0,
   });
 
   useFocusEffect(
@@ -241,10 +242,27 @@ export default function MyPetsScreen() {
               style={styles.thumb}
             />
             <View style={styles.cardBody}>
-              <Text style={[styles.cardName, { color: colors.textPrimary }]}>{item.name}</Text>
+              <View style={styles.cardTitleRow}>
+                <Text style={[styles.cardName, { color: colors.textPrimary }]} numberOfLines={1}>{item.name}</Text>
+                {item.verified && <VerifiedBadge size={16} iconBackgroundColor={colors.primary} />}
+              </View>
               <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
                 {item.species === 'dog' ? 'Cachorro' : 'Gato'} • {item.age} anos
               </Text>
+              <View style={styles.badgesRow}>
+                {item.partner && (
+                  <View style={[styles.partnerBadge, { backgroundColor: (item.partner as { isPaidPartner?: boolean }).isPaidPartner ? (colors.warning || '#d97706') + '30' : (colors.primary + '25') }]}>
+                    <Ionicons name={(item.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={10} color={(item.partner as { isPaidPartner?: boolean }).isPaidPartner ? (colors.warning || '#d97706') : colors.primary} />
+                    <Text style={[styles.partnerBadgeText, { color: (item.partner as { isPaidPartner?: boolean }).isPaidPartner ? (colors.warning || '#d97706') : colors.primary }]}>
+                      {(item.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'Patrocinado' : 'Parceiro'}
+                    </Text>
+                  </View>
+                )}
+                <StatusBadge label={item.vaccinated ? 'Vacinado' : 'Não vacinado'} variant={item.vaccinated ? 'success' : 'warning'} />
+                {typeof item.neutered === 'boolean' && (
+                  <StatusBadge label={item.neutered ? 'Castrado' : 'Não castrado'} variant={item.neutered ? 'success' : 'warning'} />
+                )}
+              </View>
               <View style={[styles.statusBadge, { backgroundColor: (item.publicationStatus === 'PENDING' ? PUBLICATION_STATUS_COLOR.PENDING : STATUS_COLOR[item.status as string] ?? colors.background) + '25' }]}>
                 <View style={[styles.statusDot, { backgroundColor: item.publicationStatus === 'PENDING' ? PUBLICATION_STATUS_COLOR.PENDING : STATUS_COLOR[item.status as string] ?? colors.textSecondary }]} />
                 <Text style={[styles.statusText, { color: item.publicationStatus === 'PENDING' ? PUBLICATION_STATUS_COLOR.PENDING : STATUS_COLOR[item.status as string] ?? colors.textSecondary }]}>
@@ -316,10 +334,21 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   thumb: { width: 56, height: 56, borderRadius: 8 },
-  cardBody: { flex: 1, marginLeft: spacing.md },
-  cardName: { fontSize: 16, fontWeight: '600' },
+  cardBody: { flex: 1, marginLeft: spacing.md, minWidth: 0 },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  cardName: { fontSize: 16, fontWeight: '600', flex: 1 },
   cardMeta: { fontSize: 13, marginTop: 2 },
-  statusBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 4 },
+  badgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 6 },
+  partnerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+  },
+  partnerBadgeText: { fontSize: 10, fontWeight: '600' },
+  statusBadge: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 6 },
   statusDot: { width: 6, height: 6, borderRadius: 3 },
   statusText: { fontSize: 12, fontWeight: '600' },
   adminBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },

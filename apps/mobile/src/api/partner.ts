@@ -126,6 +126,7 @@ export type PartnerService = {
   name: string;
   description?: string;
   priceDisplay?: string;
+  imageUrl?: string | null;
   active: boolean;
   validUntil?: string | null;
   createdAt: string;
@@ -141,6 +142,7 @@ export type CreatePartnerServiceBody = {
   description?: string;
   priceDisplay?: string;
   validUntil?: string;
+  imageUrl?: string;
 };
 
 export async function createPartnerService(body: CreatePartnerServiceBody): Promise<PartnerService> {
@@ -153,6 +155,7 @@ export type UpdatePartnerServiceBody = {
   priceDisplay?: string;
   validUntil?: string | null;
   active?: boolean;
+  imageUrl?: string | null;
 };
 
 export async function updatePartnerService(id: string, body: UpdatePartnerServiceBody): Promise<PartnerService> {

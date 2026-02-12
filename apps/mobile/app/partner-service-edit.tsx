@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, ScrollView, TouchableOpacity } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, TextInput, StyleSheet, Alert, ScrollView, TouchableOpacity, Image } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PrimaryButton, LoadingLogo, PartnerPanelLayout } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMyPartnerServices, createPartnerService, updatePartnerService } from '../src/api/partner';
+import { presign } from '../src/api/uploads';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
 import { spacing } from '../src/theme';
 
@@ -25,6 +28,8 @@ export default function PartnerServiceEditScreen() {
   const [priceDisplay, setPriceDisplay] = useState('');
   const [validUntil, setValidUntil] = useState('');
   const [active, setActive] = useState(true);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   useEffect(() => {
     if (existing) {
@@ -33,8 +38,44 @@ export default function PartnerServiceEditScreen() {
       setPriceDisplay(existing.priceDisplay ?? '');
       setValidUntil(existing.validUntil ? existing.validUntil.slice(0, 10) : '');
       setActive(existing.active);
+      setImageUrl(existing.imageUrl ?? null);
     }
   }, [existing]);
+
+  const pickAndUploadPhoto = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão', 'Precisamos acessar suas fotos para adicionar uma imagem ao serviço.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.8,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    setUploadingPhoto(true);
+    try {
+      const uri = result.assets[0].uri;
+      const ext = uri.split('.').pop()?.toLowerCase() || 'jpg';
+      const filename = `partner-service-${Date.now()}.${ext === 'jpg' ? 'jpg' : ext}`;
+      const { uploadUrl, publicUrl } = await presign(filename, `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const putRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: blob,
+        headers: { 'Content-Type': blob.type || 'image/jpeg' },
+      });
+      if (!putRes.ok) throw new Error('Falha no upload');
+      setImageUrl(publicUrl);
+    } catch (e) {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível enviar a foto.'));
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }, []);
 
   const createMutation = useMutation({
     mutationFn: createPartnerService,
@@ -70,6 +111,7 @@ export default function PartnerServiceEditScreen() {
           priceDisplay: priceDisplay.trim() || undefined,
           validUntil: validUntil.trim() || null,
           active,
+          imageUrl: imageUrl?.trim() || null,
         },
       });
     } else {
@@ -78,6 +120,7 @@ export default function PartnerServiceEditScreen() {
         description: description.trim() || undefined,
         priceDisplay: priceDisplay.trim() || undefined,
         validUntil: validUntil.trim() || undefined,
+        imageUrl: imageUrl?.trim() || undefined,
       });
     }
   };
@@ -97,6 +140,27 @@ export default function PartnerServiceEditScreen() {
     <ScreenContainer scroll={false}>
       <PartnerPanelLayout>
         <ScrollView style={styles.scrollWrap} contentContainerStyle={styles.form} showsVerticalScrollIndicator={false}>
+        <Text style={labelStyle}>Foto do serviço (opcional)</Text>
+        <TouchableOpacity
+          style={[styles.photoWrap, { backgroundColor: colors.surface, borderColor: colors.primary + '40' }]}
+          onPress={pickAndUploadPhoto}
+          disabled={uploadingPhoto}
+        >
+          {imageUrl ? (
+            <Image source={{ uri: imageUrl }} style={styles.photoPreview} resizeMode="cover" />
+          ) : (
+            <View style={styles.photoPlaceholder}>
+              {uploadingPhoto ? (
+                <Text style={[styles.photoPlaceholderText, { color: colors.textSecondary }]}>Enviando...</Text>
+              ) : (
+                <>
+                  <Ionicons name="image-outline" size={32} color={colors.textSecondary} />
+                  <Text style={[styles.photoPlaceholderText, { color: colors.textSecondary }]}>Toque para adicionar foto</Text>
+                </>
+              )}
+            </View>
+          )}
+        </TouchableOpacity>
         <Text style={labelStyle}>Nome do serviço *</Text>
         <TextInput style={inputStyle} placeholder="Ex: Banho e tosa" placeholderTextColor={colors.textSecondary} value={name} onChangeText={setName} />
         <Text style={labelStyle}>Preço ou valor (opcional)</Text>
@@ -130,6 +194,10 @@ const styles = StyleSheet.create({
   label: { fontSize: 14, fontWeight: '600', marginTop: spacing.sm },
   input: { padding: spacing.md, borderRadius: 12, borderWidth: 1, fontSize: 16 },
   textArea: { minHeight: 80, paddingTop: spacing.md },
+  photoWrap: { width: '100%', height: 160, borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+  photoPreview: { width: '100%', height: '100%' },
+  photoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  photoPlaceholderText: { fontSize: 14 },
   activeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.md },
   activeLabel: { fontSize: 16 },
   checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },

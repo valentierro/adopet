@@ -31,6 +31,7 @@ export default function MapScreen() {
   const { data: prefs } = useQuery({
     queryKey: ['me', 'preferences'],
     queryFn: getPreferences,
+    staleTime: 5 * 60_000,
   });
   const radiusKm = prefs?.radiusKm ?? 50;
 
@@ -43,6 +44,7 @@ export default function MapScreen() {
         radiusKm,
       }),
     enabled: locationGranted === true,
+    staleTime: 60_000,
   });
 
   useFocusEffect(
@@ -83,6 +85,17 @@ export default function MapScreen() {
           message="Ative a localização para ver pets no mapa."
           icon={<Ionicons name="map-outline" size={56} color={colors.textSecondary} />}
         />
+      </ScreenContainer>
+    );
+  }
+
+  if (locationGranted === null) {
+    return (
+      <ScreenContainer>
+        <View style={styles.loadingWrap}>
+          <LoadingLogo size={160} />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Verificando localização...</Text>
+        </View>
       </ScreenContainer>
     );
   }
@@ -163,6 +176,8 @@ export default function MapScreen() {
 const MARKER_SIZE = 30;
 
 const styles = StyleSheet.create({
+  loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.md },
+  loadingText: { fontSize: 16 },
   mapWrap: { flex: 1, position: 'relative' },
   map: { width: '100%', height: '100%' },
   markerWrap: {

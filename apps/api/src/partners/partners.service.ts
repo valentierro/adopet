@@ -144,6 +144,7 @@ export class PartnersService {
         description: dto.description?.trim() || null,
         priceDisplay: dto.priceDisplay?.trim() || null,
         validUntil: dto.validUntil ? new Date(dto.validUntil) : null,
+        imageUrl: dto.imageUrl?.trim() || null,
       },
     });
     return this.toServiceDto(service);
@@ -157,12 +158,13 @@ export class PartnersService {
       where: { id: serviceId, partnerId: partner.id },
     });
     if (!service) throw new NotFoundException('Serviço não encontrado');
-    const data: { name?: string; description?: string | null; priceDisplay?: string | null; validUntil?: Date | null; active?: boolean } = {};
+    const data: { name?: string; description?: string | null; priceDisplay?: string | null; validUntil?: Date | null; active?: boolean; imageUrl?: string | null } = {};
     if (dto.name !== undefined) data.name = dto.name.trim();
     if (dto.description !== undefined) data.description = dto.description?.trim() || null;
     if (dto.priceDisplay !== undefined) data.priceDisplay = dto.priceDisplay?.trim() || null;
     if (dto.validUntil !== undefined) data.validUntil = dto.validUntil ? new Date(dto.validUntil) : null;
     if (dto.active !== undefined) data.active = dto.active;
+    if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl?.trim() || null;
     const updated = await this.prisma.partnerService.update({
       where: { id: serviceId },
       data,
@@ -504,6 +506,7 @@ export class PartnersService {
     name: string;
     description: string | null;
     priceDisplay: string | null;
+    imageUrl: string | null;
     active: boolean;
     validUntil: Date | null;
     createdAt: Date;
@@ -515,6 +518,7 @@ export class PartnersService {
       name: s.name,
       description: s.description ?? undefined,
       priceDisplay: s.priceDisplay ?? undefined,
+      imageUrl: s.imageUrl ?? undefined,
       active: s.active,
       validUntil: s.validUntil?.toISOString() ?? undefined,
       createdAt: s.createdAt.toISOString(),

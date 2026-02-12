@@ -214,3 +214,24 @@ export async function createAdminPartner(body: CreatePartnerBody): Promise<Partn
 export async function updateAdminPartner(id: string, body: UpdatePartnerBody): Promise<PartnerAdminItem> {
   return api.patch<PartnerAdminItem>(`/admin/partners/${id}`, body);
 }
+
+// --- Indicações de parceiros (usuários indicam ONGs/clínicas/lojas) ---
+
+export type PartnerRecommendationItem = {
+  id: string;
+  indicadorUserId: string;
+  indicadorName?: string | null;
+  indicadorEmail?: string | null;
+  suggestedName: string;
+  suggestedType: string;
+  suggestedCity?: string | null;
+  suggestedEmail?: string | null;
+  suggestedPhone?: string | null;
+  message?: string | null;
+  createdAt: string;
+};
+
+/** [Admin] Listar indicações de parceiros */
+export async function getAdminPartnerRecommendations(): Promise<PartnerRecommendationItem[]> {
+  return api.get<PartnerRecommendationItem[]>('/admin/partner-recommendations');
+}

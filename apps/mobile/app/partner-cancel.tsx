@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PrimaryButton } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
@@ -7,7 +9,13 @@ import { spacing } from '../src/theme';
 
 export default function PartnerPaymentCancelScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { colors } = useTheme();
+
+  useEffect(() => {
+    queryClient.invalidateQueries({ queryKey: ['me'] });
+    queryClient.invalidateQueries({ queryKey: ['me', 'partner'] });
+  }, [queryClient]);
 
   return (
     <ScreenContainer>

@@ -41,6 +41,7 @@ export default function SavedSearchesScreen() {
   const { data: list = [], isLoading, refetch } = useQuery({
     queryKey: ['saved-searches'],
     queryFn: getSavedSearches,
+    staleTime: 0,
   });
 
   useFocusEffect(

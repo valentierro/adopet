@@ -43,6 +43,7 @@ model User {
   petsPendingAsAdopter Pet[]    @relation("PetPendingAdopter")
   bugReports          BugReport[]
   partner             Partner?  // conta parceiro (se for parceiro pago)
+  partnerRecommendations PartnerRecommendation[]
 }
 
 model UserPreferences {
@@ -148,6 +149,7 @@ model PartnerService {
   name        String    // ex: "Banho e tosa"
   description String?
   priceDisplay String?  // ex: "A partir de R$ 50" ou "Sob consulta"
+  imageUrl    String?   // foto do serviço (opcional)
   active      Boolean   @default(true)
   validUntil  DateTime?
   createdAt   DateTime  @default(now())
@@ -329,5 +331,20 @@ model BugReport {
   screen      String?
   userComment String?
   createdAt   DateTime @default(now())
+  @@index([createdAt])
+}
+
+model PartnerRecommendation {
+  id               String   @id @default(uuid())
+  indicadorUserId  String
+  indicador        User     @relation(fields: [indicadorUserId], references: [id], onDelete: Cascade)
+  suggestedName    String   // nome do estabelecimento/ONG indicado
+  suggestedType    String   // ONG | CLINIC | STORE
+  suggestedCity    String?
+  suggestedEmail   String?
+  suggestedPhone   String?
+  message         String?  // comentário do indicador
+  createdAt       DateTime @default(now())
+  @@index([indicadorUserId])
   @@index([createdAt])
 }

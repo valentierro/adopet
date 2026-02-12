@@ -17,6 +17,8 @@ export function setAuthProvider(
   refreshAndRetry = onRefresh;
 }
 
+const REQUEST_TIMEOUT_MS = 20000;
+
 async function request<T>(
   endpoint: string,
   config: RequestConfig = {},
@@ -39,7 +41,25 @@ async function request<T>(
   if (!skipAuth && tokenGetter?.()) {
     headers['Authorization'] = `Bearer ${tokenGetter()}`;
   }
-  const res = await fetch(url.toString(), { ...init, headers });
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), {
+      ...init,
+      headers,
+      signal: init.signal ?? controller.signal,
+    });
+  } catch (e) {
+    clearTimeout(timeoutId);
+    const err = e instanceof Error ? e : new Error(String(e));
+    if (err.name === 'AbortError') {
+      throw new Error('request timeout');
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
 
   if (res.status === 401 && !isRetry && refreshAndRetry) {
     const ok = await refreshAndRetry();

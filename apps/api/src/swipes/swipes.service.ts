@@ -31,7 +31,10 @@ export class SwipesService {
       orderBy: { createdAt: 'desc' },
       include: {
         pet: {
-          include: { media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }], take: 5 } },
+          include: {
+            media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }], take: 5 },
+            partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+          },
         },
       },
     });
@@ -71,6 +74,7 @@ export class SwipesService {
     createdAt: Date;
     updatedAt: Date;
     media: { url: string }[];
+    partner?: { id: string; name: string; slug: string; logoUrl: string | null; isPaidPartner: boolean } | null;
   }): PetResponseDto {
     return {
       id: pet.id,
@@ -89,6 +93,15 @@ export class SwipesService {
       updatedAt: pet.updatedAt.toISOString(),
       ...(pet.breed != null && { breed: pet.breed }),
       ...(pet.adoptionReason != null && { adoptionReason: pet.adoptionReason }),
+      ...(pet.partner != null && {
+        partner: {
+          id: pet.partner.id,
+          name: pet.partner.name,
+          slug: pet.partner.slug,
+          logoUrl: pet.partner.logoUrl ?? undefined,
+          isPaidPartner: pet.partner.isPaidPartner,
+        },
+      }),
     };
   }
 }

@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
@@ -10,13 +11,13 @@ import { spacing } from '../theme';
 const LogoLight = require('../../assets/brand/logo/logo_horizontal_light.png');
 const LogoDark = require('../../assets/brand/logo/logo_dark.png');
 
-/** Menu principal do app (mesmas abas da tab bar). */
-const MAIN_TABS: { route: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { route: '/(tabs)/index', label: 'Início', icon: 'home' },
-  { route: '/(tabs)/favorites', label: 'Favoritos', icon: 'heart' },
-  { route: '/(tabs)/add-pet', label: 'Anunciar', icon: 'add-circle' },
-  { route: '/(tabs)/chats', label: 'Conversas', icon: 'chatbubbles' },
-  { route: '/(tabs)/profile', label: 'Perfil', icon: 'person' },
+/** Menu do rodapé no mesmo padrão das outras páginas do app (tab bar). Início usa /(tabs) para evitar Unmatched Route. */
+const MAIN_TABS: { href: string; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { href: '/(tabs)', label: 'Início', icon: 'home' },
+  { href: '/(tabs)/favorites', label: 'Favoritos', icon: 'heart' },
+  { href: '/(tabs)/add-pet', label: 'Anunciar', icon: 'add-circle' },
+  { href: '/(tabs)/chats', label: 'Conversas', icon: 'chatbubbles' },
+  { href: '/(tabs)/profile', label: 'Perfil', icon: 'person' },
 ];
 
 type PartnerPanelLayoutProps = {
@@ -27,6 +28,7 @@ type PartnerPanelLayoutProps = {
 
 export function PartnerPanelLayout({ children, showHeader = true, showFooter = true }: PartnerPanelLayoutProps) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { data: partner, isLoading } = useQuery({
     queryKey: ['me', 'partner'],
@@ -52,16 +54,28 @@ export function PartnerPanelLayout({ children, showHeader = true, showFooter = t
       <View style={styles.content}>{children}</View>
 
       {showFooter && (
-        <View style={[styles.footer, { backgroundColor: colors.tabBarBg ?? colors.surface, borderTopColor: colors.primary + '25' }]}>
+        <View
+          style={[
+            styles.footer,
+            {
+              backgroundColor: colors.tabBarBg ?? colors.surface,
+              paddingTop: 6,
+              paddingBottom: Math.max(insets.bottom, 8),
+              minHeight: 49 + Math.max(insets.bottom, 8),
+            },
+          ]}
+        >
           {MAIN_TABS.map((tab) => (
             <TouchableOpacity
-              key={tab.route}
+              key={tab.href}
               style={styles.footerItem}
-              onPress={() => router.replace(tab.route as any)}
+              onPress={() => router.replace(tab.href as any)}
               activeOpacity={0.7}
             >
               <Ionicons name={tab.icon} size={24} color={colors.textSecondary} />
-              <Text style={[styles.footerLabel, { color: colors.textSecondary }]} numberOfLines={1}>{tab.label}</Text>
+              <Text style={[styles.footerLabel, { color: colors.textSecondary }]} numberOfLines={1}>
+                {tab.label}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -86,16 +100,14 @@ const styles = StyleSheet.create({
   content: { flex: 1, minHeight: 0 },
   footer: {
     flexDirection: 'row',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    borderTopWidth: 1,
-    gap: spacing.xs,
+    alignItems: 'center',
+    paddingHorizontal: 4,
   },
   footerItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.xs,
+    paddingVertical: 6,
   },
-  footerLabel: { fontSize: 10, fontWeight: '600', marginTop: 2 },
+  footerLabel: { fontSize: 10, fontWeight: '500', marginTop: 2 },
 });

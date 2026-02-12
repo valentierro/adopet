@@ -54,11 +54,27 @@ export default function PartnersAreaScreen() {
           <LoadingLogo size={120} />
         </View>
       ) : filteredByCity.length === 0 ? (
-        <EmptyState
-          title="Nenhum parceiro nesta categoria"
-          message="Altere o filtro ou confira outras categorias."
-          icon={<Ionicons name="pricetag-outline" size={48} color={colors.textSecondary} />}
-        />
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.emptyScrollContent} showsVerticalScrollIndicator={false}>
+          <EmptyState
+            title="Nenhum parceiro nesta categoria"
+            message="Altere o filtro ou confira outras categorias."
+            icon={<Ionicons name="pricetag-outline" size={48} color={colors.textSecondary} />}
+          />
+          <View style={[styles.ctaWrap, { backgroundColor: (colors.warning || '#d97706') + '18', borderColor: (colors.warning || '#d97706') + '40' }]}>
+            <Text style={[styles.ctaTitle, { color: colors.textPrimary }]}>Indique um parceiro</Text>
+            <Text style={[styles.ctaSub, { color: colors.textSecondary }]}>
+              Conhece uma ONG, clínica ou loja que poderia ser parceira? Envie a indicação.
+            </Text>
+            <TouchableOpacity
+              style={[styles.ctaBtn, { backgroundColor: colors.warning || '#d97706' }]}
+              onPress={() => router.push('/indique-parceiro')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="megaphone-outline" size={20} color="#fff" />
+              <Text style={styles.ctaBtnText}>Indicar parceiro</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       ) : (
         <ScrollView
           style={styles.scroll}
@@ -71,6 +87,20 @@ export default function PartnersAreaScreen() {
           {filteredByCity.map((p) => (
             <PartnerOfferCard key={p.id} partner={p} colors={colors} onPress={() => router.push(`/partners/${p.id}`)} />
           ))}
+          <View style={[styles.ctaWrap, { backgroundColor: (colors.warning || '#d97706') + '18', borderColor: (colors.warning || '#d97706') + '40' }]}>
+            <Text style={[styles.ctaTitle, { color: colors.textPrimary }]}>Indique um parceiro</Text>
+            <Text style={[styles.ctaSub, { color: colors.textSecondary }]}>
+              Conhece uma ONG, clínica ou loja que poderia ser parceira? Envie a indicação.
+            </Text>
+            <TouchableOpacity
+              style={[styles.ctaBtn, { backgroundColor: colors.warning || '#d97706' }]}
+              onPress={() => router.push('/indique-parceiro')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="megaphone-outline" size={20} color="#fff" />
+              <Text style={styles.ctaBtnText}>Indicar parceiro</Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       )}
     </ScreenContainer>
@@ -133,7 +163,27 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 14, fontWeight: '600' },
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 200 },
   scroll: { flex: 1 },
-  list: { padding: spacing.lg, paddingBottom: spacing.xl * 2 },
+  list: { padding: spacing.lg, paddingBottom: spacing.xl },
+  emptyScrollContent: { padding: spacing.lg, paddingBottom: spacing.xl },
+  ctaWrap: {
+    marginTop: spacing.xl,
+    padding: spacing.lg,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  ctaTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.xs },
+  ctaSub: { fontSize: 14, lineHeight: 20, marginBottom: spacing.md },
+  ctaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+  },
+  ctaBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   card: {
     padding: spacing.lg,
     borderRadius: 16,

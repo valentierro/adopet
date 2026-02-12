@@ -23,6 +23,7 @@ import { getMe, getTutorStats, getMyAdoptions, getPreferences } from '../../src/
 import { getMinePets } from '../../src/api/pets';
 import { getFavorites } from '../../src/api/favorites';
 import { getConversations } from '../../src/api/conversations';
+import { getPassedPets } from '../../src/api/swipes';
 import { fetchFeed } from '../../src/api/feed';
 import { spacing } from '../../src/theme';
 
@@ -87,20 +88,26 @@ function useDashboardData() {
     queryFn: getMyAdoptions,
     staleTime: 60_000,
   });
+  const { data: passedData, refetch: refetchPassed } = useQuery({
+    queryKey: ['swipes', 'passed'],
+    queryFn: getPassedPets,
+    staleTime: 60_000,
+  });
 
   const myPets = minePage?.items ?? [];
   const myAdoptionsCount = adoptionsData?.items?.length ?? 0;
   const favoritesCount = Array.isArray(favoritesPage?.items) ? favoritesPage.items.length : 0;
   const unreadTotal = conversations.reduce((s, c) => s + (c.unreadCount ?? 0), 0);
+  const passedCount = passedData?.items?.length ?? 0;
   const feedPreviewItems = feedData?.items ?? [];
   const feedTotalCount = feedData?.totalCount;
 
   const [refreshing, setRefreshing] = useState(false);
   const refetchAll = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refetchMine(), refetchFav(), refetchConv(), refetchFeed(), refetchAdoptions()]);
+    await Promise.all([refetchMine(), refetchFav(), refetchConv(), refetchFeed(), refetchAdoptions(), refetchPassed()]);
     setRefreshing(false);
-  }, [refetchMine, refetchFav, refetchConv, refetchFeed, refetchAdoptions]);
+  }, [refetchMine, refetchFav, refetchConv, refetchFeed, refetchAdoptions, refetchPassed]);
 
   return {
     user,
@@ -110,6 +117,7 @@ function useDashboardData() {
     favoritesCount,
     conversationsCount: conversations.length,
     unreadTotal,
+    passedCount,
     feedPreviewItems,
     feedTotalCount,
     refetchAll,
@@ -133,6 +141,7 @@ export default function DashboardScreen() {
     favoritesCount,
     conversationsCount,
     unreadTotal,
+    passedCount,
     feedPreviewItems,
     feedTotalCount,
     refetchAll,
@@ -234,9 +243,10 @@ export default function DashboardScreen() {
     {
       id: 'passed',
       title: 'Pets que passou',
-      subtitle: 'Rever lista',
+      subtitle: passedCount === 0 ? 'Nenhum na lista' : `${passedCount} pet${passedCount !== 1 ? 's' : ''} para rever`,
       icon: 'arrow-undo',
       route: '/passed-pets',
+      badge: passedCount > 0 ? passedCount : undefined,
     },
     {
       id: 'map',
@@ -314,6 +324,9 @@ export default function DashboardScreen() {
                 resizeMode="contain"
               />
             </View>
+            <Text style={[styles.heroTagline, { color: colors.textSecondary }]}>
+              Encontre seu próximo companheiro
+            </Text>
             {tutorStats && (tutorStats.points > 0 || tutorStats.adoptedCount > 0) ? (
               <View style={[styles.statsRow, { backgroundColor: colors.surface }]}>
                 <View style={styles.stat}>
@@ -514,6 +527,7 @@ const styles = StyleSheet.create({
   heroLogo: { height: 26, width: 90 },
   hello: { fontSize: 14, marginBottom: 2 },
   name: { fontSize: 22, fontWeight: '700', letterSpacing: 0.3, flex: 1, minWidth: 0 },
+  heroTagline: { fontSize: 13, marginTop: 4 },
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',

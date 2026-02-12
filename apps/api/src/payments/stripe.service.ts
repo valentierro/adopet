@@ -92,11 +92,41 @@ export class StripeService {
     const partner = await this.prisma.partner.findUnique({
       where: { userId },
     });
-    if (!partner?.stripeCustomerId) {
-      throw new BadRequestException('Nenhuma assinatura encontrada. Conclua o pagamento primeiro.');
+    if (!partner) {
+      throw new BadRequestException('Parceiro não encontrado.');
+    }
+    let customerId = partner.stripeCustomerId;
+    if (!customerId && partner.stripeSubscriptionId) {
+      try {
+        const subscription = await this.stripe.subscriptions.retrieve(partner.stripeSubscriptionId);
+        customerId = typeof subscription.customer === 'string' ? subscription.customer : subscription.customer?.id;
+        if (customerId) {
+          await this.prisma.partner.update({
+            where: { id: partner.id },
+            data: { stripeCustomerId: customerId },
+          });
+        }
+      } catch (err: unknown) {
+        const isNotFound =
+          err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'resource_missing_invalid';
+        if (isNotFound) {
+          throw new BadRequestException(
+            'Assinatura não encontrada no Stripe. Verifique no .env se STRIPE_SECRET_KEY está no mesmo modo (teste ou produção) em que o pagamento foi feito.',
+          );
+        }
+        throw new BadRequestException('Nenhuma assinatura encontrada. Conclua o pagamento primeiro.');
+      }
+    }
+    if (!customerId) {
+      const hasActiveFlag = partner.isPaidPartner || partner.subscriptionStatus === 'active';
+      throw new BadRequestException(
+        hasActiveFlag
+          ? 'ASSINATURA_NAO_VINCULADA_STRIPE'
+          : 'Nenhuma assinatura encontrada. Conclua o pagamento primeiro.',
+      );
     }
     const session = await this.stripe.billingPortal.sessions.create({
-      customer: partner.stripeCustomerId,
+      customer: customerId,
       return_url: returnUrl,
     });
     const url = session.url;
@@ -139,16 +169,15 @@ export class StripeService {
     }
     if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
       const subscription = event.data.object as Stripe.Subscription;
-      const partnerId = subscription.metadata?.partnerId as string | undefined;
-      if (!partnerId) return;
       const status = subscription.status;
       const isActive = status === 'active' || status === 'trialing';
+      const planId = (subscription.metadata?.planId as string) || undefined;
       await this.prisma.partner.updateMany({
         where: { stripeSubscriptionId: subscription.id },
         data: {
           subscriptionStatus: status,
           isPaidPartner: isActive,
-          planId: subscription.metadata?.planId as string | undefined || undefined,
+          ...(planId && { planId }),
         },
       });
     }

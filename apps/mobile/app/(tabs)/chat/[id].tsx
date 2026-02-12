@@ -93,6 +93,7 @@ export default function ChatRoomScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['messages', id] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.refetchQueries({ queryKey: ['conversations'] });
     },
   });
   const reportUserMutation = useMutation({

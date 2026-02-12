@@ -15,7 +15,7 @@ export class FavoritesService {
       where: { id: petId },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
         owner: { select: { city: true } },
       },
     });
@@ -30,7 +30,7 @@ export class FavoritesService {
         pet: {
           include: {
             media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-            partner: { select: { id: true, name: true, slug: true, logoUrl: true } },
+            partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
             owner: { select: { city: true } },
           },
         },
@@ -63,7 +63,7 @@ export class FavoritesService {
         pet: {
           include: {
             media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-            partner: { select: { id: true, name: true, slug: true, logoUrl: true } },
+            partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
             owner: { select: { city: true } },
           },
         },
@@ -99,7 +99,7 @@ export class FavoritesService {
         createdAt: Date;
         status: string;
         media?: { url: string }[];
-        partner?: { id: string; name: string; slug: string; logoUrl: string | null } | null;
+        partner?: { id: string; name: string; slug: string; logoUrl: string | null; isPaidPartner: boolean } | null;
         owner?: { city: string | null } | null;
       } | null;
     },
@@ -132,6 +132,7 @@ export class FavoritesService {
             name: pet.partner.name,
             slug: pet.partner.slug,
             logoUrl: pet.partner.logoUrl ?? undefined,
+            isPaidPartner: pet.partner.isPaidPartner,
           },
         }),
       },

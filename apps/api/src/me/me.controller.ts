@@ -214,7 +214,7 @@ export class MeController {
   }
 
   @Put('deactivate')
-  @ApiOperation({ summary: 'Desativar conta (soft delete)' })
+  @ApiOperation({ summary: 'Desativar conta e excluir/anonimizar dados (LGPD)' })
   async deactivate(@CurrentUser() user: { id: string }): Promise<{ message: string }> {
     return this.meService.deactivate(user.id);
   }

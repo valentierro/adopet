@@ -55,26 +55,28 @@ export function PetCard({
           </View>
         )}
         {pet.partner && (
-          <View style={[styles.partnerBadge, { backgroundColor: 'rgba(217, 119, 6, 0.92)' }]}>
-            <Ionicons name="heart" size={12} color="#fff" />
-            <Text style={styles.partnerBadgeText}>Parceiro</Text>
+          <View style={[styles.partnerBadge, { backgroundColor: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'rgba(251, 191, 36, 0.95)' : 'rgba(217, 119, 6, 0.92)' }]}>
+            <Ionicons name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={12} color="#fff" />
+            <Text style={styles.partnerBadgeText}>{(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'Patrocinado' : 'Parceiro'}</Text>
           </View>
         )}
         <View style={styles.badges}>
-          <StatusBadge
-            label={
-              pet.distanceKm != null
-                ? `${pet.distanceKm.toFixed(1)} km`
-                : pet.city
-                  ? pet.city
-                  : '—'
-            }
-            variant="neutral"
-          />
+          {pet.distanceKm != null && (
+            <StatusBadge label={`${pet.distanceKm.toFixed(1)} km`} variant="neutral" />
+          )}
+          {pet.city && pet.distanceKm == null && (
+            <StatusBadge label={pet.city} variant="neutral" />
+          )}
           <StatusBadge
             label={pet.vaccinated ? 'Vacinado' : 'Não vacinado'}
             variant={pet.vaccinated ? 'success' : 'warning'}
           />
+          {typeof pet.neutered === 'boolean' && (
+            <StatusBadge
+              label={pet.neutered ? 'Castrado' : 'Não castrado'}
+              variant={pet.neutered ? 'success' : 'warning'}
+            />
+          )}
         </View>
       </View>
       <View style={[styles.content, { borderTopColor: colors.surface }]}>
@@ -84,7 +86,7 @@ export function PetCard({
         <Text style={[styles.meta, { color: colors.textSecondary }]}>
           {speciesLabel[pet.species]} • {pet.age} ano(s) • {sizeLabel[pet.size]} • {sexLabel[pet.sex]}
         </Text>
-        {(pet.createdAt || pet.city || typeof pet.neutered === 'boolean') && (
+        {(pet.createdAt || pet.city) && (
           <View style={styles.summaryRow}>
             {pet.createdAt ? (
               <View style={styles.summaryItem}>
@@ -102,11 +104,6 @@ export function PetCard({
                 </Text>
               </View>
             ) : null}
-            {typeof pet.neutered === 'boolean' && (
-              <Text style={[styles.summaryText, { color: colors.textSecondary }]}>
-                {pet.neutered ? 'Castrado' : 'Não castrado'}
-              </Text>
-            )}
           </View>
         )}
         {pet.description ? (
