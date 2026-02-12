@@ -5,15 +5,16 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createApp } from '../src/app-bootstrap';
 
-let cachedHandler: ((req: VercelRequest, res: VercelResponse) => void) | null = null;
+type HttpHandler = (req: VercelRequest, res: VercelResponse) => void;
+let cachedHandler: HttpHandler | null = null;
 
-async function getHandler(): Promise<(req: VercelRequest, res: VercelResponse) => void> {
+async function getHandler(): Promise<HttpHandler> {
   if (cachedHandler) return cachedHandler;
   const app = await createApp();
   await app.init();
-  const handler = app.getHttpAdapter().getInstance();
-  cachedHandler = handler;
-  return handler;
+  const expressApp = app.getHttpAdapter().getInstance();
+  cachedHandler = expressApp as unknown as HttpHandler;
+  return cachedHandler;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {

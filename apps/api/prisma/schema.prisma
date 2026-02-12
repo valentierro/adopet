@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -181,6 +182,8 @@ model Pet {
   neutered        Boolean
   description     String
   adoptionReason  String?   // por que está doando (opcional)
+  feedingType     String?   // seca, úmida, mista, natural, outra (opcional)
+  feedingNotes    String?   // alergias, dieta especial, observações (opcional)
   status          String    @default("AVAILABLE") // AVAILABLE | IN_PROCESS | ADOPTED
   markedAdoptedAt DateTime? // quando o tutor marcou como adotado; após 48h sem registro manual, sistema auto-valida
   pendingAdopterId String?  // adotante indicado pelo tutor ao marcar como adotado (lista de conversas ou @username)

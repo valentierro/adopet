@@ -18,7 +18,9 @@
     "forceConsistentCasingInFileNames": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@/*": ["src/*"]
-    }
+      "@/*": ["src/*"],
+      "@prisma/client": ["./node_modules/.prisma/client"]
+    },
+    "preserveSymlinks": true
   }
 }
