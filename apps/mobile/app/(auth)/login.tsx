@@ -51,15 +51,15 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       style={[styles.screen, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : insets.top}
     >
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
           {
             paddingTop: insets.top + spacing.md,
-            paddingBottom: insets.bottom + spacing.xl,
+            paddingBottom: insets.bottom + spacing.xl + 80,
             paddingHorizontal: spacing.md + insets.left,
           },
         ]}
@@ -77,6 +77,8 @@ export default function LoginScreen() {
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
+            accessibilityLabel="Email"
+            accessibilityHint="Digite seu endereço de email para entrar"
           />
           <View style={styles.passwordWrap}>
             <TextInput
@@ -87,6 +89,8 @@ export default function LoginScreen() {
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
               autoComplete="password"
+              accessibilityLabel="Senha"
+              accessibilityHint="Digite sua senha"
             />
             <TouchableOpacity
               style={styles.eyeBtn}
@@ -100,7 +104,16 @@ export default function LoginScreen() {
             title={isLoading ? 'Entrando...' : 'Entrar'}
             onPress={handleSubmit}
             disabled={isLoading}
+            accessibilityLabel={isLoading ? 'Entrando' : 'Entrar'}
+            accessibilityHint="Toque duas vezes para fazer login na sua conta"
           />
+          <TouchableOpacity
+            style={styles.forgotLink}
+            onPress={() => router.push('/(auth)/forgot-password')}
+            disabled={isLoading}
+          >
+            <Text style={[styles.forgotText, { color: colors.primary }]}>Esqueci minha senha</Text>
+          </TouchableOpacity>
           <View style={[styles.welcomeCard, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
             <View style={styles.welcomeIcons}>
               <View style={[styles.welcomeIconCircle, { backgroundColor: colors.primary + '22' }]}>
@@ -176,6 +189,8 @@ const styles = StyleSheet.create({
   passwordWrap: { position: 'relative' },
   passwordInput: { paddingRight: 48 },
   eyeBtn: { position: 'absolute', right: 12, top: 0, bottom: 0, justifyContent: 'center' },
+  forgotLink: { alignSelf: 'center', marginTop: spacing.sm },
+  forgotText: { fontSize: 15, fontWeight: '600' },
   input: {
     padding: spacing.md,
     borderRadius: 12,

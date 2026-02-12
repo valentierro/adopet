@@ -36,3 +36,9 @@ export async function refresh(refreshToken: string): Promise<AuthResponse> {
 export async function logout(refreshToken: string): Promise<void> {
   await api.post('/auth/logout', { refreshToken }, noAuth);
 }
+
+export type ForgotPasswordResponse = { message: string };
+
+export async function forgotPassword(email: string): Promise<ForgotPasswordResponse> {
+  return api.post<ForgotPasswordResponse>('/auth/forgot-password', { email: email.trim().toLowerCase() }, noAuth);
+}
