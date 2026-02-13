@@ -9,7 +9,7 @@
  * Ou com .env de produção carregado:
  *   pnpm run db:reset-keep-admin
  */
-import { PrismaClient } from '../src/generated/prisma';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
