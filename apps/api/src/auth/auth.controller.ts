@@ -68,7 +68,6 @@ export class AuthController {
   </div>
 </body>
 </html>`;
-    // @ts-expect-error Nest @Res() types as generic; runtime is Express Response with .type()
     res.type('text/html').send(html);
   }
 }
