@@ -1,4 +1,5 @@
 import { Controller, Post, Get, Body, Query, Res, HttpCode, HttpStatus } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
@@ -55,7 +56,7 @@ export class AuthController {
 
   @Get('confirm-reset-password')
   @ApiOperation({ summary: 'Página do link do e-mail: valida token, envia senha temporária e exibe resultado' })
-  async confirmResetPasswordPage(@Query('token') token: string, @Res() res: import('express').Response): Promise<void> {
+  async confirmResetPasswordPage(@Query('token') token: string, @Res() res: Response): Promise<void> {
     const result = await this.authService.confirmResetPassword(typeof token === 'string' ? token : '');
     const isSuccess = result.success;
     const html = `<!DOCTYPE html>
@@ -68,6 +69,6 @@ export class AuthController {
   </div>
 </body>
 </html>`;
-    res.type('text/html').send(html);
+    (res as any).set('Content-Type', 'text/html').send(html);
   }
 }

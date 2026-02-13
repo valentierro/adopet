@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Pet } from '@prisma/client';
+import type { Pet } from '../../api/prisma-generated';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportsService } from '../moderation/reports.service';
 import { BlocksService } from '../moderation/blocks.service';

@@ -1,7 +1,7 @@
 generator client {
   provider = "prisma-client-js"
-  // Raiz do monorepo: em runtime na Vercel /var/task = root, node_modules fica lá
-  output   = "../../node_modules/.prisma/client"
+  // Dentro de api/ para a função serverless incluir no bundle (Vercel não remove)
+  output   = "../api/prisma-generated"
 }
 
 datasource db {
