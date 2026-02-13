@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "prisma generate --schema=./prisma/schema.prisma && nest build",
+    "postinstall": "prisma generate --schema=./prisma/schema.prisma",
     "dev": "nest start --watch",
     "start": "nest start",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",

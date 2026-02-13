@@ -18,6 +18,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { PrimaryButton } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuthStore } from '../../src/stores/authStore';
+import { getApiUrlConfigIssue } from '../../src/api/client';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { spacing } from '../../src/theme';
 
@@ -44,7 +45,9 @@ export default function LoginScreen() {
       await queryClient.invalidateQueries({ queryKey: ['me'] });
       router.replace('/');
     } catch (e: unknown) {
-      Alert.alert('Não foi possível entrar', getFriendlyErrorMessage(e, 'Verifique seu email e senha e tente novamente.'));
+      const configMsg = getApiUrlConfigIssue();
+      const msg = configMsg ?? getFriendlyErrorMessage(e, 'Verifique seu email e senha e tente novamente.');
+      Alert.alert('Não foi possível entrar', msg);
     }
   };
 

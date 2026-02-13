@@ -3,13 +3,24 @@
   "version": "1.0.0",
   "private": true,
   "main": "index.js",
+  "expo": {
+    "install": {
+      "exclude": [
+        "@react-native-community/netinfo",
+        "@sentry/react-native",
+        "@react-navigation/bottom-tabs",
+        "@react-navigation/native",
+        "@react-navigation/native-stack"
+      ]
+    }
+  },
   "scripts": {
     "postinstall": "node scripts/patch-expo-router-getDevServer.js",
     "dev": "expo start",
     "dev:clear": "expo start --clear",
     "reset-cache": "node scripts/patch-expo-router-getDevServer.js && rm -rf .expo node_modules/.cache 2>/dev/null; expo start --clear",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "build": "expo export",
     "lint": "expo lint",
     "test": "echo \"No tests yet\"",
@@ -18,7 +29,7 @@
   "dependencies": {
     "@adopet/shared": "workspace:*",
     "@expo/vector-icons": "^15.0.3",
-    "@react-native-async-storage/async-storage": "1.23.1",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "^11.5.2",
     "@react-navigation/bottom-tabs": "^7.12.0",
     "@react-navigation/native": "^7.1.28",
@@ -32,13 +43,13 @@
     "expo-constants": "~18.0.13",
     "expo-device": "^8.0.10",
     "expo-font": "~14.0.11",
-    "expo-image": "~2.0.0",
-    "expo-file-system": "~18.0.10",
+    "expo-image": "~3.0.11",
+    "expo-file-system": "~19.0.21",
     "expo-image-picker": "^17.0.10",
-    "expo-media-library": "~17.0.4",
+    "expo-media-library": "~18.2.1",
     "expo-linear-gradient": "^15.0.8",
     "expo-linking": "~8.0.11",
-    "expo-location": "~18.0.10",
+    "expo-location": "~19.0.8",
     "expo-notifications": "^0.32.16",
     "expo-router": "~6.0.23",
     "expo-secure-store": "^15.0.8",
@@ -46,7 +57,7 @@
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
     "react-native": "0.81.5",
-    "react-native-maps": "1.20.0",
+    "react-native-maps": "1.20.1",
     "react-native-safe-area-context": "5.6.2",
     "react-native-screens": "~4.16.0",
     "zod": "^3.23.8",
@@ -55,7 +66,6 @@
   "devDependencies": {
     "@babel/core": "^7.25.0",
     "@types/react": "~19.1.17",
-    "eas-cli": ">= 12.0.0",
     "typescript": "~5.9.3"
   }
 }

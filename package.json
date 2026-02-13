@@ -4,9 +4,6 @@
   "private": true,
   "description": "Adopet - Adoção de pets no Brasil",
   "pnpm": {
-    "patchedDependencies": {
-      "expo-image@2.0.7": "patches/expo-image@2.0.7.patch"
-    },
     "overrides": {
       "react": "19.1.0",
       "react-dom": "19.1.0"

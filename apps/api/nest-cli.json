@@ -5,5 +5,11 @@
   "compilerOptions": {
     "deleteOutDir": true,
     "builder": "tsc"
-  }
+  },
+  "assets": [
+    {
+      "include": "generated/**/*",
+      "outDir": "dist"
+    }
+  ]
 }
