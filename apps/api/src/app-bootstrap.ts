@@ -6,14 +6,20 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import * as express from 'express';
 import { AppModule } from './app.module';
 
-// compression é CommonJS; import default falha em runtime
-const compression = require('compression') as () => express.RequestHandler;
+// compression é opcional: na Vercel o módulo pode não estar no bundle
+let compressionMiddleware: express.RequestHandler | null = null;
+try {
+  const compression = require('compression') as () => express.RequestHandler;
+  compressionMiddleware = compression();
+} catch {
+  // ignora em ambiente serverless onde compression não está disponível
+}
 
 /** Cria a aplicação Nest (sem listen). Usado por main.ts e pelo handler serverless da Vercel. */
 export async function createApp(): Promise<NestExpressApplication> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
-  // CORS é aplicado via vercel.json (headers) para evitar impacto no bootstrap serverless
-  app.use(compression());
+  if (compressionMiddleware) app.use(compressionMiddleware);
+  // CORS é aplicado no handler da Vercel (api/index.ts) e em vercel.json
   app.setGlobalPrefix('v1');
   app.use('/v1/payments/stripe-webhook', express.raw({ type: 'application/json' }));
   app.use(express.json({ limit: '10mb' }));
