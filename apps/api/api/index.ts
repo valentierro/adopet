@@ -22,13 +22,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     const expressHandler = await getHandler();
     expressHandler(req, res);
   } catch (err) {
-    // Log completo para aparecer em Vercel → Project → Logs (evita 500 genérico sem detalhe)
+    // Log completo para aparecer em Vercel → Project → Logs
     console.error('[api] FUNCTION_INVOCATION_FAILED', err);
     if (!res.headersSent) {
-      res.status(500).json({
+      const payload: Record<string, string> = {
         error: 'FUNCTION_INVOCATION_FAILED',
         message: err instanceof Error ? err.message : 'Internal Server Error',
-      });
+      };
+      // Incluir stack na resposta para debug (ver no Network do browser ou em /v1/health)
+      if (err instanceof Error && err.stack) payload.stack = err.stack;
+      res.status(500).json(payload);
     }
   }
 }
