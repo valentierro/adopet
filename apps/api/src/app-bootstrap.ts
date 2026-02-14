@@ -12,20 +12,7 @@ const compression = require('compression') as () => express.RequestHandler;
 /** Cria a aplicação Nest (sem listen). Usado por main.ts e pelo handler serverless da Vercel. */
 export async function createApp(): Promise<NestExpressApplication> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
-  try {
-    const raw = process.env.CORS_ORIGINS;
-    const corsOrigins = typeof raw === 'string'
-      ? raw.split(',').map((o) => o.trim()).filter(Boolean)
-      : [];
-    if (corsOrigins.length > 0) {
-      app.enableCors({ origin: corsOrigins, credentials: true });
-    } else {
-      app.enableCors({ origin: true, credentials: true });
-    }
-  } catch (e) {
-    console.warn('[app-bootstrap] CORS config failed, allowing all origins', e);
-    app.enableCors({ origin: true, credentials: true });
-  }
+  // CORS é aplicado via vercel.json (headers) para evitar impacto no bootstrap serverless
   app.use(compression());
   app.setGlobalPrefix('v1');
   app.use('/v1/payments/stripe-webhook', express.raw({ type: 'application/json' }));
