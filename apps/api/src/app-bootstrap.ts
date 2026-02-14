@@ -12,10 +12,18 @@ const compression = require('compression') as () => express.RequestHandler;
 /** Cria a aplicação Nest (sem listen). Usado por main.ts e pelo handler serverless da Vercel. */
 export async function createApp(): Promise<NestExpressApplication> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
-  const corsOrigins = process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean) ?? [];
-  if (corsOrigins.length > 0) {
-    app.enableCors({ origin: corsOrigins, credentials: true });
-  } else {
+  try {
+    const raw = process.env.CORS_ORIGINS;
+    const corsOrigins = typeof raw === 'string'
+      ? raw.split(',').map((o) => o.trim()).filter(Boolean)
+      : [];
+    if (corsOrigins.length > 0) {
+      app.enableCors({ origin: corsOrigins, credentials: true });
+    } else {
+      app.enableCors({ origin: true, credentials: true });
+    }
+  } catch (e) {
+    console.warn('[app-bootstrap] CORS config failed, allowing all origins', e);
     app.enableCors({ origin: true, credentials: true });
   }
   app.use(compression());
