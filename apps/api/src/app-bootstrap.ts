@@ -6,9 +6,19 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import * as express from 'express';
 import { AppModule } from './app.module';
 
+// compression é CommonJS; import default falha em runtime
+const compression = require('compression') as () => express.RequestHandler;
+
 /** Cria a aplicação Nest (sem listen). Usado por main.ts e pelo handler serverless da Vercel. */
 export async function createApp(): Promise<NestExpressApplication> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+  const corsOrigins = process.env.CORS_ORIGINS?.split(',').map((o) => o.trim()).filter(Boolean) ?? [];
+  if (corsOrigins.length > 0) {
+    app.enableCors({ origin: corsOrigins, credentials: true });
+  } else {
+    app.enableCors({ origin: true, credentials: true });
+  }
+  app.use(compression());
   app.setGlobalPrefix('v1');
   app.use('/v1/payments/stripe-webhook', express.raw({ type: 'application/json' }));
   app.use(express.json({ limit: '10mb' }));
