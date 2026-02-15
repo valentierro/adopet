@@ -39,6 +39,7 @@ coverage/
 apps/api/prisma/migrations/
 apps/api/src/generated/
 apps/api/api/prisma-generated/
+apps/api/src/prisma-generated/
 
 # Misc
 *.local
