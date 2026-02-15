@@ -100,6 +100,12 @@ export type BugReportItem = {
   createdAt: string;
 };
 
+export type FeatureFlagItem = {
+  key: string;
+  enabled: boolean;
+  description: string | null;
+};
+
 export const adminApi = {
   getStats: () => api.get<AdminStats>('/admin/stats'),
   getPendingPets: () => api.get<Pet[]>('/pets/pending'),
@@ -135,4 +141,7 @@ export const adminApi = {
   getPartnerRecommendations: () =>
     api.get<PartnerRecommendationItem[]>('/admin/partner-recommendations'),
   getBugReports: () => api.get<BugReportItem[]>('/admin/bug-reports'),
+  getFeatureFlags: () => api.get<FeatureFlagItem[]>('/admin/feature-flags'),
+  setFeatureFlag: (key: string, enabled: boolean) =>
+    api.patch<{ key: string; enabled: boolean }>(`/admin/feature-flags/${encodeURIComponent(key)}`, { enabled }),
 };

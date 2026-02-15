@@ -432,22 +432,40 @@ export class AdminService {
     }));
   }
 
-  /** [Admin] Listar feature flags (key, enabled, description). */
+  /** Flags conhecidas que aparecem no portal mesmo sem registro no banco (enabled = env até o primeiro toggle). */
+  private static readonly KNOWN_FLAGS: Array<{ key: string; description: string }> = [
+    {
+      key: 'REQUIRE_EMAIL_VERIFICATION',
+      description: 'Quando ligada, o cadastro exige confirmação de e-mail antes do login; signup envia link de confirmação.',
+    },
+  ];
+
+  /** [Admin] Listar feature flags (key, enabled, description). Inclui flags conhecidas ainda não persistidas. */
   async getFeatureFlags(): Promise<{ key: string; enabled: boolean; description: string | null }[]> {
     const list = await this.prisma.featureFlag.findMany({
       orderBy: { key: 'asc' },
       select: { key: true, enabled: true, description: true },
     });
-    return list;
+    const byKey = new Map(list.map((f) => [f.key, f]));
+    for (const known of AdminService.KNOWN_FLAGS) {
+      if (!byKey.has(known.key)) {
+        const fromEnv = this.config.get<string>('REQUIRE_EMAIL_VERIFICATION');
+        const enabled = fromEnv === 'true' || fromEnv === '1';
+        byKey.set(known.key, { key: known.key, enabled, description: known.description });
+      }
+    }
+    return Array.from(byKey.values()).sort((a, b) => a.key.localeCompare(b.key));
   }
 
   /** [Admin] Habilitar ou desabilitar uma feature flag (cria se não existir). */
   async setFeatureFlag(key: string, enabled: boolean): Promise<{ key: string; enabled: boolean }> {
     const keyNorm = key.trim();
     if (!keyNorm) throw new BadRequestException('Key é obrigatória');
+    const known = AdminService.KNOWN_FLAGS.find((f) => f.key === keyNorm);
+    const description = known?.description ?? null;
     const flag = await this.prisma.featureFlag.upsert({
       where: { key: keyNorm },
-      create: { key: keyNorm, enabled },
+      create: { key: keyNorm, enabled, description },
       update: { enabled },
       select: { key: true, enabled: true },
     });

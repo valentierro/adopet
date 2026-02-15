@@ -1038,6 +1038,23 @@ async function main() {
     }
   }
 
+  // Feature flags iniciais (aparecem no painel admin; valor inicial pode ser alterado pelo toggle)
+  const defaultFlags: Array<{ key: string; enabled: boolean; description: string }> = [
+    {
+      key: 'REQUIRE_EMAIL_VERIFICATION',
+      enabled: false,
+      description: 'Quando ligada, o cadastro exige confirmação de e-mail antes do login; signup envia link de confirmação.',
+    },
+  ];
+  for (const f of defaultFlags) {
+    await prisma.featureFlag.upsert({
+      where: { key: f.key },
+      create: { key: f.key, enabled: f.enabled, description: f.description },
+      update: {}, // não sobrescreve se já existir (preserva valor escolhido no painel)
+    });
+    console.log('Feature flag garantida:', f.key);
+  }
+
   // Para cada usuário cadastrado na base: pets com possível vínculo a ONG
   await seedPetsForExistingUsers();
 

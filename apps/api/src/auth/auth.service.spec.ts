@@ -23,6 +23,7 @@ describe('AuthService', () => {
   let prisma: {
     user: { findUnique: jest.Mock; findFirst: jest.Mock; create: jest.Mock };
     refreshToken: { findFirst: jest.Mock; delete: jest.Mock; create: jest.Mock; deleteMany: jest.Mock };
+    featureFlag: { findUnique: jest.Mock };
   };
   let configGet: jest.Mock;
   let jwtSign: jest.Mock;
@@ -36,6 +37,8 @@ describe('AuthService', () => {
         create: jest.fn(),
         deleteMany: jest.fn(),
       },
+      // AuthService lê REQUIRE_EMAIL_VERIFICATION do banco primeiro; null = fallback para env
+      featureFlag: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     configGet = jest.fn();
     jwtSign = jest.fn(() => 'token');

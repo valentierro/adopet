@@ -29,8 +29,8 @@ const CONFIRM_RESET_TOKEN_EXPIRES = '1h';
 /** Tolerância (segundos) na verificação do exp para evitar "expirado" por diferença de relógio entre envio do e-mail e o servidor que processa o clique. */
 const CONFIRM_RESET_CLOCK_TOLERANCE_SEC = 300;
 
-/** Feature flag: quando true, signup envia e-mail de confirmação e não retorna tokens; login exige e-mail confirmado. Configure REQUIRE_EMAIL_VERIFICATION=true em produção para ativar. */
-function isRequireEmailVerification(config: ConfigService): boolean {
+/** Fallback: valor da env quando a flag não existe no banco. */
+function isRequireEmailVerificationFromEnv(config: ConfigService): boolean {
   const v = config.get<string>('REQUIRE_EMAIL_VERIFICATION');
   return v === 'true' || v === '1';
 }
@@ -45,8 +45,18 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
+  /** Lê do banco (FeatureFlag) primeiro; se não existir, usa env REQUIRE_EMAIL_VERIFICATION. Assim o painel admin pode ligar/desligar. */
+  private async getRequireEmailVerification(): Promise<boolean> {
+    const flag = await this.prisma.featureFlag.findUnique({
+      where: { key: 'REQUIRE_EMAIL_VERIFICATION' },
+      select: { enabled: true },
+    });
+    if (flag !== null) return flag.enabled;
+    return isRequireEmailVerificationFromEnv(this.config);
+  }
+
   async signup(dto: SignupDto): Promise<AuthResponseDto | { message: string; requiresEmailVerification: true; userId: string }> {
-    const requireVerification = isRequireEmailVerification(this.config);
+    const requireVerification = await this.getRequireEmailVerification();
     const emailLower = dto.email.trim().toLowerCase();
     const phoneNormalized = String(dto.phone).replace(/\D/g, '').slice(-11);
     const usernameNormalized = dto.username?.trim().toLowerCase().replace(/^@/, '') ?? '';
@@ -198,7 +208,7 @@ export class AuthService {
       throw new UnauthorizedException('Conta desativada. Entre em contato para reativar.');
     }
     const emailVerificationToken = (user as { emailVerificationToken?: string }).emailVerificationToken;
-    if (isRequireEmailVerification(this.config) && emailVerificationToken) {
+    if (await this.getRequireEmailVerification() && emailVerificationToken) {
       throw new UnauthorizedException('Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada e clique no link que enviamos.');
     }
     const valid = await bcrypt.compare(dto.password, user.passwordHash);

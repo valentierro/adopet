@@ -14,6 +14,7 @@ import { PendingAdoptionsByTutor } from '@/routes/PendingAdoptionsByTutor';
 import { Partners } from '@/routes/Partners';
 import { PartnerRecommendations } from '@/routes/PartnerRecommendations';
 import { BugReports } from '@/routes/BugReports';
+import { FeatureFlags } from '@/routes/FeatureFlags';
 import { Users } from '@/routes/Users';
 import { About } from '@/routes/About';
 
@@ -59,6 +60,7 @@ function AppRoutes() {
         <Route path="partners" element={<Partners />} />
         <Route path="partner-recommendations" element={<PartnerRecommendations />} />
         <Route path="bug-reports" element={<BugReports />} />
+        <Route path="feature-flags" element={<FeatureFlags />} />
         <Route path="users" element={<Users />} />
         <Route path="about" element={<About />} />
       </Route>
