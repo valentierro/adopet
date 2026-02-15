@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { MeService } from './me.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { VerificationService } from '../verification/verification.service';
 
 describe('MeService', () => {
   let service: MeService;
@@ -18,6 +20,8 @@ describe('MeService', () => {
       providers: [
         MeService,
         { provide: PrismaService, useValue: prisma },
+        { provide: VerificationService, useValue: { assertUser: jest.fn().mockResolvedValue(undefined) } },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
       ],
     }).compile();
     service = module.get<MeService>(MeService);
@@ -31,7 +35,14 @@ describe('MeService', () => {
     it('should return default when no preferences', async () => {
       prisma.userPreferences.findUnique.mockResolvedValue(null);
       const res = await service.getPreferences('user-1');
-      expect(res).toEqual({ species: 'BOTH', radiusKm: 50 });
+      expect(res).toEqual({
+        species: 'BOTH',
+        radiusKm: 50,
+        notifyNewPets: true,
+        notifyMessages: true,
+        notifyReminders: true,
+        notifyListingReminders: true,
+      });
     });
 
     it('should return stored preferences', async () => {

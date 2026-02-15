@@ -1,4 +1,5 @@
-import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,7 +20,7 @@ export default function WelcomeScreen() {
   return (
     <ScreenContainer>
       <View style={[styles.content, { paddingTop: insets.top + spacing.sm }]}>
-        <Image source={LogoSplash} style={styles.logo} resizeMode="contain" />
+        <Image source={LogoSplash} style={styles.logo} contentFit="contain" />
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
           Encontre seu novo melhor amigo
         </Text>

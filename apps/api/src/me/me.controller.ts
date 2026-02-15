@@ -48,6 +48,12 @@ export class MeController {
     return this.meService.getMe(user.id);
   }
 
+  @Get('pending-adoption-confirmations')
+  @ApiOperation({ summary: 'Pets em que o usuário foi indicado como adotante e ainda não confirmou' })
+  async getPendingAdoptionConfirmations(@CurrentUser() user: { id: string }) {
+    return this.meService.getPendingAdoptionConfirmations(user.id);
+  }
+
   @Get('partner')
   @ApiOperation({ summary: 'Dados do estabelecimento parceiro (portal do parceiro)' })
   async getMyPartner(@CurrentUser() user: { id: string }): Promise<PartnerMeDto | null> {

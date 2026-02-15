@@ -3,11 +3,18 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CreateReportDto } from './dto/create-report.dto';
 import type { ReportResponseDto } from './dto/report-response.dto';
 
+const REPORTED_PET_IDS_CACHE_TTL_MS = 2 * 60 * 1000;
+
 @Injectable()
 export class ReportsService {
   private readonly logger = new Logger(ReportsService.name);
+  private reportedPetIdsCache: { ids: string[]; expiresAt: number } | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
+
+  private invalidateReportedPetIdsCache(): void {
+    this.reportedPetIdsCache = null;
+  }
 
   async create(reporterId: string, dto: CreateReportDto): Promise<ReportResponseDto> {
     const report = await this.prisma.report.create({
@@ -19,6 +26,7 @@ export class ReportsService {
         description: dto.description ?? undefined,
       },
     });
+    this.invalidateReportedPetIdsCache();
     this.logger.log({
       event: 'report_created',
       reportId: report.id,
@@ -47,17 +55,24 @@ export class ReportsService {
         ...(resolutionFeedback != null && resolutionFeedback.trim() !== '' && { resolutionFeedback: resolutionFeedback.trim() }),
       },
     });
+    this.invalidateReportedPetIdsCache();
     return this.toDto(report);
   }
 
-  /** Retorna IDs de pets que têm pelo menos uma denúncia não resolvida (para filtrar do feed). */
+  /** Retorna IDs de pets que têm pelo menos uma denúncia não resolvida (para filtrar do feed). Cache 2 min. */
   async getReportedPetIds(): Promise<string[]> {
+    const now = Date.now();
+    if (this.reportedPetIdsCache && this.reportedPetIdsCache.expiresAt > now) {
+      return this.reportedPetIdsCache.ids;
+    }
     const rows = await this.prisma.report.findMany({
       where: { targetType: 'PET', resolvedAt: null },
       select: { targetId: true },
       distinct: ['targetId'],
     });
-    return rows.map((r) => r.targetId);
+    const ids = rows.map((r) => r.targetId);
+    this.reportedPetIdsCache = { ids, expiresAt: now + REPORTED_PET_IDS_CACHE_TTL_MS };
+    return ids;
   }
 
   private toDto(r: {

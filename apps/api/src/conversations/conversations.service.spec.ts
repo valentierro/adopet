@@ -1,6 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { BlocksService } from '../moderation/blocks.service';
+import { TypingService } from './typing.service';
+import { PushService } from '../notifications/push.service';
 import { ConversationsService } from './conversations.service';
 
 describe('ConversationsService', () => {
@@ -10,6 +13,8 @@ describe('ConversationsService', () => {
     favorite: { findUnique: jest.Mock };
     conversation: { findUnique: jest.Mock; create: jest.Mock; findMany: jest.Mock };
     message: { groupBy: jest.Mock };
+    user: { findUnique: jest.Mock };
+    userPreferences: { findUnique: jest.Mock };
   };
 
   const adopterId = 'user-adopter';
@@ -22,11 +27,23 @@ describe('ConversationsService', () => {
       favorite: { findUnique: jest.fn() },
       conversation: { findUnique: jest.fn(), create: jest.fn(), findMany: jest.fn() },
       message: { groupBy: jest.fn().mockResolvedValue([]) },
+      user: { findUnique: jest.fn() },
+      userPreferences: { findUnique: jest.fn() },
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ConversationsService,
         { provide: PrismaService, useValue: prisma },
+        {
+          provide: BlocksService,
+          useValue: {
+            isBlockedBetween: jest.fn().mockResolvedValue(false),
+            getBlockedUserIds: jest.fn().mockResolvedValue([]),
+            getBlockedByUserIds: jest.fn().mockResolvedValue([]),
+          },
+        },
+        { provide: TypingService, useValue: { setTyping: jest.fn() } },
+        { provide: PushService, useValue: { sendToUser: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
     service = module.get<ConversationsService>(ConversationsService);
@@ -73,15 +90,21 @@ describe('ConversationsService', () => {
         petId,
         adopterId,
       });
+      prisma.user.findUnique.mockResolvedValue({ name: 'Adopter' });
+      prisma.userPreferences.findUnique.mockResolvedValue({ notifyMessages: true });
       const result = await service.createOrGet(adopterId, petId);
       expect(result).toEqual({ id: 'conv-new' });
       expect(prisma.conversation.create).toHaveBeenCalledWith({
         data: {
           petId,
           adopterId,
+          type: 'NORMAL',
           participants: {
             create: [{ userId: ownerId }, { userId: adopterId }],
           },
+        },
+        include: {
+          pet: { select: { name: true } },
         },
       });
     });

@@ -5,29 +5,48 @@ const projectRoot = __dirname;
 const monorepoRoot = path.resolve(projectRoot, '../..');
 
 const config = getDefaultConfig(projectRoot);
-// Incluir pastas padrão do Expo e raiz do monorepo (expo doctor)
+
+// WebSocket polyfill no início do bundle (Expo Go + Hermes: "constructor is not callable" em createWebSocketConnection)
+const websocketPolyfillPath = path.resolve(projectRoot, 'websocket-polyfill.js');
+const originalGetPolyfills = config.serializer?.getPolyfills;
+config.serializer = config.serializer || {};
+config.serializer.getPolyfills = function (platform) {
+  const base = originalGetPolyfills ? originalGetPolyfills(platform) : [];
+  return [websocketPolyfillPath].concat(Array.isArray(base) ? base : []);
+};
+
+// Incluir pastas padrão do Expo e raiz do monorepo (expo doctor).
+// Incluir store do pnpm para Metro resolver pacotes symlinkados (ex.: @shopify/flash-list).
+const pnpmStore = path.resolve(monorepoRoot, 'node_modules', '.pnpm');
 const defaultWatchFolders = config.watchFolders || [projectRoot];
-config.watchFolders = [...new Set([...defaultWatchFolders, monorepoRoot])];
+config.watchFolders = [...new Set([...defaultWatchFolders, monorepoRoot, pnpmStore])];
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(monorepoRoot, 'node_modules'),
 ];
 
-// Shim para getDevServer: no Expo Go o módulo do RN pode exportar objeto em vez de função.
-// Interceptar qualquer resolução do módulo getDevServer do RN (incl. .native).
+// Shim para getDevServer e para WebSocket do RN (evitar "constructor is not callable").
+const websocketModuleShimPath = path.resolve(projectRoot, 'websocket-module-shim.js');
+const getDevServerShimPath = path.resolve(projectRoot, 'getDevServerShim.js');
 const originalResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  const shimPath = path.resolve(projectRoot, 'getDevServerShim.js');
+  const name = typeof moduleName === 'string' ? moduleName : '';
   const isGetDevServer =
-    typeof moduleName === 'string' &&
-    (moduleName === 'getDevServerShim' ||
-      moduleName === 'react-native/Libraries/Core/Devtools/getDevServer' ||
-      moduleName === 'react-native/Libraries/Core/Devtools/getDevServer.native' ||
-      moduleName.endsWith('getDevServer') ||
-      moduleName.includes('Devtools/getDevServer') ||
-      moduleName.includes('Libraries/Core/Devtools/getDevServer'));
+    name === 'getDevServerShim' ||
+    name === 'react-native/Libraries/Core/Devtools/getDevServer' ||
+    name === 'react-native/Libraries/Core/Devtools/getDevServer.native' ||
+    name.endsWith('getDevServer') ||
+    name.includes('Devtools/getDevServer') ||
+    name.includes('Libraries/Core/Devtools/getDevServer');
   if (isGetDevServer) {
-    return { filePath: shimPath, type: 'sourceFile' };
+    return { filePath: getDevServerShimPath, type: 'sourceFile' };
+  }
+  const isWebSocket =
+    name.includes('Libraries/WebSocket') ||
+    name === 'react-native/Libraries/WebSocket/WebSocket' ||
+    name === 'react-native/Libraries/WebSocket/WebSocket.js';
+  if (isWebSocket) {
+    return { filePath: websocketModuleShimPath, type: 'sourceFile' };
   }
   if (originalResolveRequest) {
     return originalResolveRequest(context, moduleName, platform);

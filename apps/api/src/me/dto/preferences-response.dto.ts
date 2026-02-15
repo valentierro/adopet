@@ -24,4 +24,7 @@ export class PreferencesResponseDto {
 
   @ApiProperty({ description: 'Receber lembretes de conversas pendentes' })
   notifyReminders: boolean;
+
+  @ApiProperty({ description: 'Receber lembretes para atualizar anúncios (a cada ~30 dias)' })
+  notifyListingReminders: boolean;
 }

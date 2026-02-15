@@ -21,6 +21,8 @@ export async function createConversation(petId: string): Promise<{ id: string }>
 
 export type ConversationDetail = {
   id: string;
+  type?: 'NORMAL' | 'ADOPTION_CONFIRMATION';
+  petId?: string;
   otherUser: {
     id: string;
     name: string;
@@ -32,7 +34,7 @@ export type ConversationDetail = {
     hasChildren?: boolean;
     timeAtHome?: string;
   };
-  pet?: { name: string; photoUrl?: string; adoptionFinalized?: boolean };
+  pet?: { name: string; photoUrl?: string; adoptionFinalized?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string };
   otherUserTyping?: boolean;
 };
 

@@ -114,6 +114,28 @@ export default function SejaParceiroScreen() {
           </Text>
         </LinearGradient>
 
+        <View style={[styles.section, { paddingHorizontal: spacing.lg }]}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Por que ser parceiro?</Text>
+          <Text style={[styles.sectionIntro, { color: colors.textSecondary }]}>
+            Parceria pensada para quem cuida de animais e quer aumentar as chances de adoção.
+          </Text>
+
+          {BENEFITS.map((item, index) => (
+            <View
+              key={index}
+              style={[styles.benefitCard, { backgroundColor: colors.surface, borderColor: colors.background }]}
+            >
+              <View style={[styles.benefitIconWrap, { backgroundColor: colors.primary + '18' }]}>
+                <Ionicons name={item.icon} size={28} color={colors.primary} />
+              </View>
+              <View style={styles.benefitText}>
+                <Text style={[styles.benefitTitle, { color: colors.textPrimary }]}>{item.title}</Text>
+                <Text style={[styles.benefitDescription, { color: colors.textSecondary }]}>{item.description}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
         {stats.length > 0 && (
           <View style={[styles.metricsSection, { paddingHorizontal: spacing.lg }]}>
             <Text style={[styles.metricsTitle, { color: colors.textPrimary }]}>Adopet em números</Text>
@@ -151,28 +173,6 @@ export default function SejaParceiroScreen() {
             </View>
           </View>
         )}
-
-        <View style={[styles.section, { paddingHorizontal: spacing.lg }]}>
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Por que ser parceiro?</Text>
-          <Text style={[styles.sectionIntro, { color: colors.textSecondary }]}>
-            Parceria pensada para quem cuida de animais e quer aumentar as chances de adoção.
-          </Text>
-
-          {BENEFITS.map((item, index) => (
-            <View
-              key={index}
-              style={[styles.benefitCard, { backgroundColor: colors.surface, borderColor: colors.background }]}
-            >
-              <View style={[styles.benefitIconWrap, { backgroundColor: colors.primary + '18' }]}>
-                <Ionicons name={item.icon} size={28} color={colors.primary} />
-              </View>
-              <View style={styles.benefitText}>
-                <Text style={[styles.benefitTitle, { color: colors.textPrimary }]}>{item.title}</Text>
-                <Text style={[styles.benefitDescription, { color: colors.textSecondary }]}>{item.description}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
 
         <View style={[styles.ctaSection, { paddingHorizontal: spacing.lg }]}>
           <View style={[styles.ctaCard, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>

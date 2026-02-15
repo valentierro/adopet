@@ -52,6 +52,8 @@ export interface Pet {
   adopterUsername?: string;
   /** Data em que um admin rejeitou a marcação de adoção; exibe badge "Rejeitado pelo Adopet" */
   adoptionRejectedAt?: string;
+  /** True quando a Adopet confirmou a adoção (admin ou 48h); apenas para pet adotado (GET /pets/mine) */
+  confirmedByAdopet?: boolean;
   /** Status de moderação do anúncio: PENDING = Em análise, APPROVED = aprovado, REJECTED = rejeitado */
   publicationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
   createdAt: string;

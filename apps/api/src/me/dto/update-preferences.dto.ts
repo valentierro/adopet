@@ -48,4 +48,9 @@ export class UpdatePreferencesDto {
   @IsOptional()
   @IsBoolean()
   notifyReminders?: boolean;
+
+  @ApiPropertyOptional({ description: 'Receber lembretes para atualizar anúncios (a cada ~30 dias)' })
+  @IsOptional()
+  @IsBoolean()
+  notifyListingReminders?: boolean;
 }

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Image, Animated, StyleSheet } from 'react-native';
+import { View, Animated, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 
 const LogoSplash = require('../../assets/brand/logo/logo_splash.png');
 
@@ -48,7 +49,7 @@ export function LoadingLogo({ size = 180 }: Props) {
         <Image
           source={LogoSplash}
           style={[styles.logo, { width: size, height: size * 1.2 }]}
-          resizeMode="contain"
+          contentFit="contain"
         />
       </Animated.View>
     </View>

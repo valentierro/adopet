@@ -13,6 +13,7 @@ import { Footer } from './sections/Footer';
 import { TermosPage } from './pages/Termos';
 import { PrivacidadePage } from './pages/Privacidade';
 import { ExclusaoContaPage } from './pages/ExclusaoConta';
+import { PetPage } from './pages/Pet';
 
 function LandingContent() {
   return (
@@ -34,14 +35,26 @@ function LandingContent() {
 
 export default function App() {
   const [hash, setHash] = useState(() => window.location.hash || '');
+  const [pathname, setPathname] = useState(() => window.location.pathname || '/');
 
   useEffect(() => {
     const onHashChange = () => setHash(window.location.hash || '');
+    const onPopState = () => {
+      setPathname(window.location.pathname || '/');
+      setHash(window.location.hash || '');
+    };
     window.addEventListener('hashchange', onHashChange);
+    window.addEventListener('popstate', onPopState);
     setHash(window.location.hash || '');
-    return () => window.removeEventListener('hashchange', onHashChange);
+    setPathname(window.location.pathname || '/');
+    return () => {
+      window.removeEventListener('hashchange', onHashChange);
+      window.removeEventListener('popstate', onPopState);
+    };
   }, []);
 
+  // Rota /pet/:id (link de compartilhamento do app)
+  if (pathname.startsWith('/pet/')) return <PetPage />;
   if (hash === '#termos') return <TermosPage />;
   if (hash === '#privacidade') return <PrivacidadePage />;
   if (hash === '#exclusao-conta') return <ExclusaoContaPage />;

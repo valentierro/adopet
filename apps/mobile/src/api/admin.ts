@@ -6,6 +6,8 @@ export type VerificationPendingItem = {
   type: string;
   status: string;
   petId?: string;
+  userName?: string;
+  petName?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -73,6 +75,7 @@ export type AdminStats = {
   pendingPetsCount: number;
   pendingReportsCount: number;
   pendingAdoptionsByTutorCount: number;
+  pendingVerificationsCount: number;
 };
 
 export type PendingAdoptionByTutorItem = {
@@ -98,6 +101,8 @@ export type AdoptionItem = {
   adopterId: string;
   adopterName: string;
   adoptedAt: string;
+  /** true quando a Adopet confirmou (admin ou 48h); false quando só o adotante confirmou */
+  confirmedByAdopet: boolean;
 };
 
 export type UserSearchItem = { id: string; name: string; email: string };
@@ -113,6 +118,16 @@ export async function getAdminAdoptions(): Promise<AdoptionItem[]> {
 
 export async function createAdoption(petId: string, adopterUserId?: string): Promise<AdoptionItem> {
   return api.post<AdoptionItem>('/admin/adoptions', adopterUserId != null ? { petId, adopterUserId } : { petId });
+}
+
+/** [Admin] Marcar adoção como confirmada pela Adopet (badge "Confirmado pelo Adopet"). */
+export async function confirmAdoptionByAdopet(petId: string): Promise<void> {
+  return api.post<void>(`/admin/adoptions/${petId}/confirm-by-adopet`, {});
+}
+
+/** [Admin] Rejeitar adoção pela Adopet (badge "Rejeitado pelo Adopet"). */
+export async function rejectAdoptionByAdopet(petId: string): Promise<void> {
+  return api.post<void>(`/admin/adoptions/${petId}/reject-by-adopet`, {});
 }
 
 export async function searchAdminUsers(search: string): Promise<UserSearchItem[]> {
@@ -139,6 +154,7 @@ export type BugReportItem = {
   userId?: string | null;
   userName?: string | null;
   userEmail?: string | null;
+  type?: string;
   message: string;
   stack?: string | null;
   screen?: string | null;

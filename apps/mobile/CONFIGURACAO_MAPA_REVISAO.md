@@ -50,16 +50,32 @@ O app na **Play Store** é assinado com um certificado diferente do emulador/deb
 - [ ] Se já existir uma API key para o app, **edite**. Senão: **Create credentials** → **API key**.
 - [ ] A documentação do Google recomenda **restringir a chave antes de usar em produção** (próximos passos).
 
-### 3.2 Restrições de aplicativo (Android)
+### 3.2 Onde fica “Application restrictions”
+- [ ] No Google Cloud, vá em **APIs & Services** → **Credentials** (Credenciais).
+- [ ] Na lista, **clique no nome** da sua API key (não em “Create credentials”).
+- [ ] Abre a tela de edição da chave. Role até a seção **Application restrictions**.
+- [ ] Ali você escolhe **um** tipo: **None**, **HTTP referrers**, **IP addresses**, **Android apps** ou **iOS apps**.
+- [ ] **Importante:** cada API key só pode ter **um** tipo de restrição por vez. Se a chave já estiver em **Android apps**, não dá para colocar iOS na mesma chave — use uma **segunda** chave para iOS (veja 3.3 Android e 3.4 iOS abaixo).
+
+### 3.3 Restrições de aplicativo (Android)
 - [ ] Em **Application restrictions** → selecione **Android apps**.
 - [ ] **Add an item** e preencha:
   - **Package name:** `br.com.adopet.app` (igual ao `android.package` do `app.json`).
   - **SHA-1 certificate fingerprint:** o valor copiado no passo 2 (App signing da Play Console).
 - [ ] Salve.
 
-### 3.3 Restrições de API (recomendado)
-- [ ] Em **API restrictions** → **Restrict key**.
-- [ ] Selecione **Maps SDK for Android** (e **Maps SDK for iOS** se tiver app iOS).
+### 3.4 Restrições de aplicativo (iOS)
+- [ ] Se você já usa a **mesma** chave com restrição **Android apps**, crie **outra** API key só para iOS (Credentials → Create credentials → API key).
+- [ ] Edite a chave que vai ser usada no **iOS** (clique no nome dela).
+- [ ] Em **Application restrictions** → selecione **iOS apps**.
+- [ ] Em **Accept requests from an iOS application with one of these bundle identifiers**, clique em **Add an item**.
+- [ ] Preencha o **Bundle ID:** `br.com.adopet.app` (igual ao `ios.bundleIdentifier` do app).
+- [ ] Salve. Use o **valor dessa chave** no EAS como `GOOGLE_MAPS_API_KEY_IOS` (e deixe `GOOGLE_MAPS_API_KEY` para Android).
+
+### 3.5 Restrições de API (recomendado)
+- [ ] Na mesma tela da chave, role até **API restrictions**.
+- [ ] Selecione **Restrict key**.
+- [ ] Clique em **Select APIs** e marque **Maps SDK for Android** e **Maps SDK for iOS** (se for usar os dois).
 - [ ] Salve e **copie o valor da API Key** para o próximo passo.
 
 ---
@@ -71,11 +87,15 @@ As variáveis são injetadas no **build**; não vêm do `.env` do seu computador
 - [ ] Acesse [expo.dev](https://expo.dev) → projeto **Adopet**.
 - [ ] **Project settings** → **Secrets** (ou **Environment variables**).
 
-### 4.1 GOOGLE_MAPS_API_KEY
+### 4.1 GOOGLE_MAPS_API_KEY (Android)
 - [ ] Existe um secret com **Name** = `GOOGLE_MAPS_API_KEY`?
-- [ ] O **Value** é exatamente a API key copiada do Google Cloud (sem espaços no início/fim)?
+- [ ] O **Value** é a API key do Google Cloud restrita a **Android apps** (sem espaços no início/fim)?
 - [ ] O ambiente **Production** está marcado (e Preview se quiser testar builds de preview)?
 - [ ] Se alterou o valor, é necessário **gerar um novo build** para o app passar a usar a chave nova.
+
+### 4.1b GOOGLE_MAPS_API_KEY_IOS (iOS, opcional)
+- [ ] Se você usa **uma segunda** API key restrita a **iOS apps**, crie um secret **Name** = `GOOGLE_MAPS_API_KEY_IOS` e **Value** = essa chave.
+- [ ] Se não criar esse secret, o app usa `GOOGLE_MAPS_API_KEY` no iOS também (só funciona se essa chave não tiver restrição de app ou tiver restrição “None”).
 
 ### 4.2 EXPO_PUBLIC_API_URL (para o backend e pins do mapa)
 - [ ] Existe um secret com **Name** = `EXPO_PUBLIC_API_URL`?
@@ -90,8 +110,11 @@ As variáveis são injetadas no **build**; não vêm do `.env` do seu computador
 Só para conferência; não precisa mudar se estiver assim.
 
 ### 5.1 app.config.js
-- [ ] O arquivo `apps/mobile/app.config.js` usa `process.env.GOOGLE_MAPS_API_KEY` dentro de `expo.android.config.googleMaps.apiKey`.
+- [ ] O arquivo `apps/mobile/app.config.js` usa `process.env.GOOGLE_MAPS_API_KEY` em:
+  - `expo.android.config.googleMaps.apiKey` (Android)
+  - `expo.ios.config.googleMapsApiKey` (iOS, quando usar Google no mapa).
 - [ ] A chave só é injetada quando a variável existe no momento do build (EAS passa os Secrets como env).
+- [ ] **iOS:** no Google Cloud, ative **Maps SDK for iOS**. Use uma chave com restrição **iOS apps** e bundle ID `br.com.adopet.app`; se a chave do Android já for restrita a Android apps, crie outra chave e configure no EAS como `GOOGLE_MAPS_API_KEY_IOS` (ver seção 3.4 e 4.1b).
 
 ### 5.2 app.json / package name
 - [ ] Em `apps/mobile/app.json` → `expo.android.package` está **`br.com.adopet.app`**.

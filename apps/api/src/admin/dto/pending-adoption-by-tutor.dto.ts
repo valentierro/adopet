@@ -31,4 +31,9 @@ export class PendingAdoptionByTutorDto {
 
   @ApiPropertyOptional({ description: 'Username do adotante indicado (ex.: maria.silva)' })
   pendingAdopterUsername?: string;
+
+  @ApiPropertyOptional({
+    description: 'Quando o adotante confirmou no app que realizou a adoção; só então entra no fluxo de validação/admin',
+  })
+  adopterConfirmedAt?: string;
 }

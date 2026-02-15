@@ -71,7 +71,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   login: async (email: string, password: string) => {
     set({ isLoading: true, user: null });
     try {
-      const res = await authApi.login({ email, password });
+      const res = await authApi.login({
+        email: email.trim().toLowerCase(),
+        password: typeof password === 'string' ? password.trim() : password,
+      });
       set({
         accessToken: res.accessToken,
         refreshToken: res.refreshToken,
@@ -94,20 +97,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const usernameNorm = username.trim().toLowerCase().replace(/^@/, '');
       const res = await authApi.signup({ email, password, name, phone, username: usernameNorm });
-      set({
-        accessToken: res.accessToken,
-        refreshToken: res.refreshToken,
-        isLoading: false,
-      });
-      await setStoredTokens(res.accessToken, res.refreshToken);
-      try {
-        const me = await getMe();
-        set({ user: me });
-      } catch {
-        set({ user: null });
-      }
-    } finally {
       set({ isLoading: false });
+      if ('accessToken' in res) {
+        try {
+          set({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+          await setStoredTokens(res.accessToken, res.refreshToken);
+          const me = await getMe();
+          set({ user: me });
+        } catch {
+          set({ user: null });
+        }
+      }
+      return res;
+    } catch (e) {
+      set({ isLoading: false });
+      throw e;
     }
   },
 
@@ -119,20 +123,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         ...body,
         username: usernameNorm,
       });
-      set({
-        accessToken: res.accessToken,
-        refreshToken: res.refreshToken,
-        isLoading: false,
-      });
-      await setStoredTokens(res.accessToken, res.refreshToken);
-      try {
-        const me = await getMe();
-        set({ user: me });
-      } catch {
-        set({ user: null });
-      }
-    } finally {
       set({ isLoading: false });
+      if ('accessToken' in res) {
+        set({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+        await setStoredTokens(res.accessToken, res.refreshToken);
+        try {
+          const me = await getMe();
+          set({ user: me });
+        } catch {
+          set({ user: null });
+        }
+      }
+      return res;
+    } catch (e) {
+      set({ isLoading: false });
+      throw e;
     }
   },
 

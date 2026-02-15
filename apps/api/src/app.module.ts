@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { SlowRequestLoggerInterceptor } from './common/slow-request-logger.interceptor';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
 import { FeedModule } from './feed/feed.module';
@@ -25,6 +27,9 @@ import { PaymentsModule } from './payments/payments.module';
 import { EmailModule } from './email/email.module';
 
 @Module({
+  providers: [
+    { provide: APP_INTERCEPTOR, useClass: SlowRequestLoggerInterceptor },
+  ],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,

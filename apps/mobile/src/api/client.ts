@@ -1,10 +1,18 @@
-const rawBase = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+import { Platform } from 'react-native';
+
+const rawBaseFromEnv = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+/** No emulador Android, localhost é o próprio emulador; 10.0.2.2 é o localhost da máquina host. */
+const rawBase =
+  typeof __DEV__ !== 'undefined' && __DEV__ && Platform.OS === 'android' &&
+  (rawBaseFromEnv.includes('localhost') || rawBaseFromEnv.includes('127.0.0.1'))
+    ? rawBaseFromEnv.replace(/localhost/i, '10.0.2.2').replace(/127\.0\.0\.1/g, '10.0.2.2')
+    : rawBaseFromEnv;
 const BASE_URL = rawBase.endsWith('/v1') ? rawBase : rawBase.replace(/\/?$/, '') + '/v1';
 
 /** Em build de produção, localhost não funciona no celular. */
 export function getApiUrlConfigIssue(): string | null {
   if (typeof __DEV__ !== 'undefined' && __DEV__) return null;
-  const u = rawBase.toLowerCase();
+  const u = rawBaseFromEnv.toLowerCase();
   if (u.includes('localhost') || u.includes('127.0.0.1')) {
     return 'A URL da API está como localhost. No app de produção defina EXPO_PUBLIC_API_URL no EAS (expo.dev) para a URL da sua API e gere um novo build.';
   }
@@ -98,7 +106,7 @@ export const api = {
   post: <T>(
     path: string,
     body: unknown,
-    options?: { skipAuth?: boolean },
+    options?: { skipAuth?: boolean; timeoutMs?: number },
   ) =>
     request<T>(path, {
       method: 'POST',

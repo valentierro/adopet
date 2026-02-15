@@ -15,7 +15,7 @@ const SPECIES_OPTIONS: { value: 'DOG' | 'CAT' | 'BOTH'; label: string }[] = [
   { value: 'BOTH', label: 'Cachorros e gatos' },
 ];
 
-const RADIUS_OPTIONS = [10, 25, 50, 100, 200];
+const RADIUS_OPTIONS = [10, 25, 50, 100, 200, 300, 400, 500];
 const SIZE_OPTIONS: { value: 'BOTH' | 'small' | 'medium' | 'large' | 'xlarge'; label: string }[] = [
   { value: 'BOTH', label: 'Qualquer' },
   { value: 'small', label: 'Pequeno' },
@@ -43,6 +43,7 @@ export default function PreferencesScreen() {
   const [notifyNewPets, setNotifyNewPets] = useState(true);
   const [notifyMessages, setNotifyMessages] = useState(true);
   const [notifyReminders, setNotifyReminders] = useState(true);
+  const [notifyListingReminders, setNotifyListingReminders] = useState(true);
   const [sizePref, setSizePref] = useState<'BOTH' | 'small' | 'medium' | 'large' | 'xlarge'>('BOTH');
 
   useEffect(() => {
@@ -53,6 +54,7 @@ export default function PreferencesScreen() {
       setNotifyNewPets(prefs.notifyNewPets);
       setNotifyMessages(prefs.notifyMessages);
       setNotifyReminders(prefs.notifyReminders);
+      setNotifyListingReminders(prefs.notifyListingReminders ?? true);
     }
   }, [prefs]);
 
@@ -68,16 +70,17 @@ export default function PreferencesScreen() {
   });
 
   const handleSave = () => {
-    mutation.mutate({ species, radiusKm, sizePref, notifyNewPets, notifyMessages, notifyReminders });
+    mutation.mutate({ species, radiusKm, sizePref, notifyNewPets, notifyMessages, notifyReminders, notifyListingReminders });
   };
 
   const updateNotificationPref = (
-    key: 'notifyNewPets' | 'notifyMessages' | 'notifyReminders',
+    key: 'notifyNewPets' | 'notifyMessages' | 'notifyReminders' | 'notifyListingReminders',
     value: boolean,
   ) => {
     if (key === 'notifyNewPets') setNotifyNewPets(value);
     else if (key === 'notifyMessages') setNotifyMessages(value);
-    else setNotifyReminders(value);
+    else if (key === 'notifyReminders') setNotifyReminders(value);
+    else setNotifyListingReminders(value);
     mutation.mutate({
       species,
       radiusKm,
@@ -85,6 +88,7 @@ export default function PreferencesScreen() {
       notifyNewPets: key === 'notifyNewPets' ? value : notifyNewPets,
       notifyMessages: key === 'notifyMessages' ? value : notifyMessages,
       notifyReminders: key === 'notifyReminders' ? value : notifyReminders,
+      notifyListingReminders: key === 'notifyListingReminders' ? value : notifyListingReminders,
     });
   };
 
@@ -236,6 +240,25 @@ export default function PreferencesScreen() {
           <Switch
             value={notifyReminders}
             onValueChange={(v) => updateNotificationPref('notifyReminders', v)}
+            trackColor={{ false: colors.background, true: colors.primary }}
+            thumbColor="#fff"
+          />
+        </View>
+        <View style={[styles.notifRow, { backgroundColor: colors.background }]}>
+          <View style={styles.notifRowContent}>
+            <Ionicons name="document-text-outline" size={20} color={colors.primary} style={styles.notifIcon} />
+            <View>
+              <Text style={[styles.notifLabel, { color: colors.textPrimary }]}>
+                Lembretes para atualizar anúncios
+              </Text>
+              <Text style={[styles.notifDesc, { color: colors.textSecondary }]}>
+                Mensagem periódica (a cada ~30 dias) para conferir se seus anúncios estão em dia
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={notifyListingReminders}
+            onValueChange={(v) => updateNotificationPref('notifyListingReminders', v)}
             trackColor={{ false: colors.background, true: colors.primary }}
             thumbColor="#fff"
           />

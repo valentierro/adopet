@@ -1,6 +1,7 @@
 import { api } from './client';
 
 export type CreateBugReportBody = {
+  type?: 'BUG' | 'SUGGESTION';
   message: string;
   stack?: string;
   screen?: string;

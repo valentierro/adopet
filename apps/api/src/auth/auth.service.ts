@@ -16,7 +16,9 @@ import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
 import { getTempPasswordEmailHtml, getTempPasswordEmailText } from '../email/templates/temp-password.email';
 import { getConfirmResetEmailHtml, getConfirmResetEmailText } from '../email/templates/confirm-reset.email';
+import { getConfirmEmailHtml, getConfirmEmailText } from '../email/templates/confirm-email.email';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
+import type { ChangePasswordDto } from './dto/change-password.dto';
 import * as crypto from 'crypto';
 
 const ACCESS_TOKEN_EXPIRES = '15m';
@@ -24,6 +26,14 @@ const REFRESH_TOKEN_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const SALT_ROUNDS = 10;
 const TEMP_PASSWORD_LENGTH = 12;
 const CONFIRM_RESET_TOKEN_EXPIRES = '1h';
+/** Tolerância (segundos) na verificação do exp para evitar "expirado" por diferença de relógio entre envio do e-mail e o servidor que processa o clique. */
+const CONFIRM_RESET_CLOCK_TOLERANCE_SEC = 300;
+
+/** Feature flag: quando true, signup envia e-mail de confirmação e não retorna tokens; login exige e-mail confirmado. Configure REQUIRE_EMAIL_VERIFICATION=true em produção para ativar. */
+function isRequireEmailVerification(config: ConfigService): boolean {
+  const v = config.get<string>('REQUIRE_EMAIL_VERIFICATION');
+  return v === 'true' || v === '1';
+}
 
 @Injectable()
 export class AuthService {
@@ -35,7 +45,8 @@ export class AuthService {
     private readonly config: ConfigService,
   ) {}
 
-  async signup(dto: SignupDto): Promise<AuthResponseDto> {
+  async signup(dto: SignupDto): Promise<AuthResponseDto | { message: string; requiresEmailVerification: true; userId: string }> {
+    const requireVerification = isRequireEmailVerification(this.config);
     const emailLower = dto.email.trim().toLowerCase();
     const phoneNormalized = String(dto.phone).replace(/\D/g, '').slice(-11);
     const usernameNormalized = dto.username?.trim().toLowerCase().replace(/^@/, '') ?? '';
@@ -61,20 +72,73 @@ export class AuthService {
       throw new ConflictException('Telefone já cadastrado');
     }
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
-    const user = await this.prisma.user.create({
-      data: {
-        email: emailLower,
-        passwordHash,
-        name: dto.name.trim(),
-        phone: phoneNormalized.length >= 10 ? phoneNormalized : dto.phone,
-        username: usernameNormalized,
-      },
-    });
+    let user: { id: string; email: string; emailVerificationToken?: string | null };
+    if (requireVerification) {
+      const emailVerificationToken = crypto.randomBytes(32).toString('hex');
+      user = await this.prisma.user.create({
+        data: {
+          email: emailLower,
+          passwordHash,
+          name: dto.name.trim(),
+          phone: phoneNormalized.length >= 10 ? phoneNormalized : dto.phone,
+          username: usernameNormalized,
+          emailVerificationToken,
+        },
+      });
+    } else {
+      user = await this.prisma.user.create({
+        data: {
+          email: emailLower,
+          passwordHash,
+          name: dto.name.trim(),
+          phone: phoneNormalized.length >= 10 ? phoneNormalized : dto.phone,
+          username: usernameNormalized,
+        },
+      });
+    }
+    if (requireVerification) {
+      const emailVerificationToken = (user as { emailVerificationToken?: string }).emailVerificationToken;
+      const apiUrl = this.config.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ?? '';
+      if (apiUrl && this.emailService.isConfigured() && emailVerificationToken) {
+        const confirmLink = `${apiUrl}/v1/auth/confirm-email?token=${encodeURIComponent(emailVerificationToken)}`;
+        const logoUrl = (this.config.get<string>('LOGO_URL') || apiUrl + '/logo.png').trim();
+        await this.emailService.sendMail({
+          to: user.email,
+          subject: 'Confirme seu e-mail - Adopet',
+          text: getConfirmEmailText(confirmLink),
+          html: getConfirmEmailHtml(confirmLink, logoUrl),
+        }).catch(() => { /* não falhar signup se e-mail falhar */ });
+      }
+      return {
+        message: 'Enviamos um e-mail de confirmação. Clique no link para ativar sua conta.',
+        requiresEmailVerification: true as const,
+        userId: user.id,
+      };
+    }
     return this.issueTokens(user.id, user.email);
   }
 
-  /** Cadastro de parceiro comercial: cria usuário + parceiro (STORE). Após pagamento, assinatura é ativada. */
-  async partnerSignup(dto: PartnerSignupDto): Promise<AuthResponseDto> {
+  /** Confirma o e-mail do usuário via token enviado no cadastro. */
+  async confirmEmail(token: string): Promise<{ success: boolean; message: string }> {
+    if (!token?.trim()) {
+      return { success: false, message: 'Link inválido ou expirado.' };
+    }
+    const user = await this.prisma.user.findFirst({
+      where: { emailVerificationToken: token.trim() },
+      select: { id: true },
+    });
+    if (!user) {
+      return { success: false, message: 'Link inválido ou já utilizado.' };
+    }
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerifiedAt: new Date(), emailVerificationToken: null },
+    });
+    return { success: true, message: 'E-mail confirmado com sucesso. Sua conta está ativa.' };
+  }
+
+  /** Cadastro de parceiro comercial: cria usuário + parceiro (STORE). Com REQUIRE_EMAIL_VERIFICATION=true, exige confirmação de e-mail antes do login. */
+  async partnerSignup(dto: PartnerSignupDto): Promise<AuthResponseDto | { message: string; requiresEmailVerification: true }> {
     let documentType: 'CPF' | 'CNPJ' | null = null;
     let document: string | null = null;
     if (dto.personType === 'PF' && dto.cpf) {
@@ -95,11 +159,17 @@ export class AuthService {
       phone: dto.phone,
       username: dto.username,
     };
-    const tokens = await this.signup(signupData);
-    const payload = this.jwtService.decode(tokens.accessToken) as { sub: string } | null;
-    if (!payload?.sub) throw new BadRequestException('Falha ao obter usuário criado');
+    const signupResult = await this.signup(signupData);
+    let userId: string;
+    if ('userId' in signupResult) {
+      userId = signupResult.userId;
+    } else {
+      const payload = this.jwtService.decode((signupResult as AuthResponseDto).accessToken) as { sub: string } | null;
+      if (!payload?.sub) throw new BadRequestException('Falha ao obter usuário criado');
+      userId = payload.sub;
+    }
     await this.partnersService.createForUser(
-      payload.sub,
+      userId,
       dto.establishmentName,
       dto.planId,
       dto.address?.trim() || null,
@@ -108,18 +178,28 @@ export class AuthService {
       dto.legalName?.trim() || null,
       dto.tradeName?.trim() || null,
     );
-    return tokens;
+    if ('accessToken' in signupResult) return signupResult as AuthResponseDto;
+    return { message: (signupResult as { message: string }).message, requiresEmailVerification: true as const };
   }
 
   async login(dto: LoginDto): Promise<AuthResponseDto> {
+    const emailNorm = (dto.email ?? '').trim().toLowerCase();
+    if (!emailNorm) {
+      throw new UnauthorizedException('Email ou senha inválidos');
+    }
     const user = await this.prisma.user.findUnique({
-      where: { email: dto.email.toLowerCase() },
+      where: { email: emailNorm },
+      select: { id: true, email: true, passwordHash: true, deactivatedAt: true, emailVerificationToken: true },
     });
     if (!user?.passwordHash) {
       throw new UnauthorizedException('Email ou senha inválidos');
     }
     if (user.deactivatedAt) {
       throw new UnauthorizedException('Conta desativada. Entre em contato para reativar.');
+    }
+    const emailVerificationToken = (user as { emailVerificationToken?: string }).emailVerificationToken;
+    if (isRequireEmailVerification(this.config) && emailVerificationToken) {
+      throw new UnauthorizedException('Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada e clique no link que enviamos.');
     }
     const valid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!valid) {
@@ -193,11 +273,21 @@ export class AuthService {
    * Valida o token do link de confirmação, gera senha temporária, atualiza o usuário e envia por e-mail.
    */
   async confirmResetPassword(token: string): Promise<{ success: boolean; message: string }> {
+    const raw = typeof token === 'string' ? token.trim() : '';
+    if (!raw) {
+      return { success: false, message: 'Link inválido. Use o link completo que veio no e-mail ou solicite uma nova redefinição de senha.' };
+    }
     let payload: { sub?: string; type?: string };
     try {
-      payload = this.jwtService.verify(token) as { sub?: string; type?: string };
-    } catch {
-      return { success: false, message: 'Link inválido ou expirado. Solicite uma nova redefinição de senha.' };
+      payload = this.jwtService.verify(raw, {
+        clockTolerance: CONFIRM_RESET_CLOCK_TOLERANCE_SEC,
+      } as object) as { sub?: string; type?: string };
+    } catch (err: unknown) {
+      const isExpired = err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'TokenExpiredError';
+      if (isExpired) {
+        return { success: false, message: 'Este link já expirou. O link é válido por 1 hora. Solicite uma nova redefinição de senha no app.' };
+      }
+      return { success: false, message: 'Link inválido. Verifique se abriu o link completo do e-mail (evite copiar só parte). Ou solicite uma nova redefinição de senha.' };
     }
     if (payload.type !== 'confirm-reset' || !payload.sub) {
       return { success: false, message: 'Link inválido. Solicite uma nova redefinição de senha.' };
@@ -262,5 +352,26 @@ export class AuthService {
   private hashRefreshToken(token: string): string {
     const crypto = require('crypto');
     return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  /** Altera a senha do usuário logado (requer senha atual). */
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { passwordHash: true, deactivatedAt: true },
+    });
+    if (!user?.passwordHash || user.deactivatedAt) {
+      throw new UnauthorizedException('Conta desativada ou sem senha definida.');
+    }
+    const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!valid) {
+      throw new UnauthorizedException('Senha atual incorreta.');
+    }
+    const passwordHash = await bcrypt.hash(dto.newPassword, SALT_ROUNDS);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+    return { message: 'Senha alterada com sucesso.' };
   }
 }

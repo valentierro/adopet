@@ -15,4 +15,7 @@ export class AdminStatsDto {
 
   @ApiProperty({ description: 'Pets marcados como adotados pelo tutor (ainda não registrados pela admin)' })
   pendingAdoptionsByTutorCount: number;
+
+  @ApiProperty({ description: 'Solicitações de verificação (selo) pendentes' })
+  pendingVerificationsCount: number;
 }

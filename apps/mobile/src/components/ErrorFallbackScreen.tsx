@@ -10,6 +10,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { useTheme } from '../hooks/useTheme';
 import { spacing } from '../theme';
@@ -22,9 +23,10 @@ type Props = {
   stack?: string | null;
   onReport: (payload: { message: string; stack?: string; screen?: string; userComment?: string }) => Promise<void>;
   onRetry?: () => void;
+  onGoHome?: () => void;
 };
 
-export function ErrorFallbackScreen({ errorMessage, stack, onReport, onRetry }: Props) {
+export function ErrorFallbackScreen({ errorMessage, stack, onReport, onRetry, onGoHome }: Props) {
   const { colors, isDark } = useTheme();
   const [userComment, setUserComment] = useState('');
   const [sending, setSending] = useState(false);
@@ -41,9 +43,14 @@ export function ErrorFallbackScreen({ errorMessage, stack, onReport, onRetry }: 
       });
       setSent(true);
     } catch {
+      Alert.alert(
+        'Erro ao enviar',
+        'Não foi possível enviar o reporte. Verifique sua conexão e tente novamente.',
+        [{ text: 'OK' }],
+      );
+    } finally {
       setSending(false);
     }
-    setSending(false);
   };
 
   return (
@@ -53,7 +60,7 @@ export function ErrorFallbackScreen({ errorMessage, stack, onReport, onRetry }: 
     >
       <ScrollView
         contentContainerStyle={styles.scroll}
-        keyboardShouldPersistTaps="handled"
+        keyboardShouldPersistTaps="always"
         showsVerticalScrollIndicator={false}
       >
         <Image
@@ -124,6 +131,17 @@ export function ErrorFallbackScreen({ errorMessage, stack, onReport, onRetry }: 
           >
             <Text style={[styles.retryBtnText, { color: colors.primary }]}>
               Tentar novamente
+            </Text>
+          </TouchableOpacity>
+        )}
+        {onGoHome && (
+          <TouchableOpacity
+            style={[styles.retryBtn, { borderColor: colors.primary, marginTop: spacing.sm }]}
+            onPress={onGoHome}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.retryBtnText, { color: colors.primary }]}>
+              Ir para início
             </Text>
           </TouchableOpacity>
         )}

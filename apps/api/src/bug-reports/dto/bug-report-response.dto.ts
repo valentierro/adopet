@@ -13,6 +13,9 @@ export class BugReportResponseDto {
   @ApiPropertyOptional({ description: 'Email do usuário (para admin)' })
   userEmail?: string | null;
 
+  @ApiProperty({ description: 'BUG ou SUGGESTION', enum: ['BUG', 'SUGGESTION'] })
+  type: string;
+
   @ApiProperty()
   message: string;
 

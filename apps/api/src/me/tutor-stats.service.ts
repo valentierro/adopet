@@ -30,23 +30,26 @@ export class TutorStatsService {
       where: { ownerId: userId },
       select: { id: true, status: true },
     });
-    if (pets.length === 0) {
-      return this.toStats(0, 0, 0);
-    }
 
-    const petIds = pets.map((p) => p.id);
-    const verifiedIds = await this.verificationService.getVerifiedPetIds(petIds);
-    const verifiedCount = verifiedIds.size;
-    // Pontos só contam quando a adoção foi validada (registro em Adoption), não só status ADOPTED
-    const adoptedCount = await this.prisma.adoption.count({
-      where: { tutorId: userId },
+    const petIds = pets.length > 0 ? pets.map((p) => p.id) : [];
+    const verifiedCount =
+      petIds.length > 0 ? (await this.verificationService.getVerifiedPetIds(petIds)).size : 0;
+
+    // Só contam adoções confirmadas pela Adopet (admin ou 48h)
+    const adoptedCountAsTutor = await this.prisma.adoption.count({
+      where: { tutorId: userId, pet: { adopetConfirmedAt: { not: null } } },
     });
+    const adoptedCountAsAdopter = await this.prisma.adoption.count({
+      where: { adopterId: userId, pet: { adopetConfirmedAt: { not: null } } },
+    });
+    const totalAdoptedCount = adoptedCountAsTutor + adoptedCountAsAdopter;
+    // adoptedCount no retorno = pets que doou com adoção confirmada (para exibir "X adoções" no perfil)
+    const adoptedCount = adoptedCountAsTutor;
 
-    let points =
-      verifiedCount * POINTS_PER_VERIFIED_PET + adoptedCount * POINTS_PER_ADOPTED_PET;
-    if (adoptedCount >= 1) points += BONUS_FIRST_ADOPTION;
+    let points = verifiedCount * POINTS_PER_VERIFIED_PET + totalAdoptedCount * POINTS_PER_ADOPTED_PET;
+    if (totalAdoptedCount >= 1) points += BONUS_FIRST_ADOPTION;
     for (const at of MILESTONE_AT) {
-      if (adoptedCount >= at) points += MILESTONE_BONUS;
+      if (totalAdoptedCount >= at) points += MILESTONE_BONUS;
     }
     points = Math.max(0, Math.round(points));
     if (Number.isNaN(points)) points = 0;

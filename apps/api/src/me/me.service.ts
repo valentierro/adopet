@@ -83,6 +83,54 @@ export class MeService {
     return { id: user.id, name: user.name, username: user.username };
   }
 
+  /** Lista de pets que o usuário foi indicado como adotante e ainda não confirmou (para tela "Confirmar adoção"). */
+  async getPendingAdoptionConfirmations(userId: string): Promise<{
+    items: Array<{
+      petId: string;
+      petName: string;
+      tutorName: string;
+      photos: string[];
+      species: string;
+      breed?: string;
+      age: number;
+      vaccinated: boolean;
+      neutered: boolean;
+      verified: boolean;
+      partner?: { isPaidPartner?: boolean };
+    }>;
+  }> {
+    const pets = await this.prisma.pet.findMany({
+      where: {
+        status: 'ADOPTED',
+        pendingAdopterId: userId,
+        adopterConfirmedAt: null,
+        adoptionRejectedAt: null,
+      },
+      include: {
+        owner: { select: { name: true } },
+        media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+        partner: { select: { isPaidPartner: true } },
+      },
+    });
+    const petIds = pets.map((p) => p.id);
+    const verifiedIds = petIds.length > 0 ? await this.verificationService.getVerifiedPetIds(petIds) : new Set<string>();
+    return {
+      items: pets.map((p) => ({
+        petId: p.id,
+        petName: p.name,
+        tutorName: p.owner.name,
+        photos: (p.media ?? []).map((m) => m.url),
+        species: p.species,
+        breed: p.breed ?? undefined,
+        age: p.age,
+        vaccinated: p.vaccinated,
+        neutered: p.neutered,
+        verified: verifiedIds.has(p.id),
+        partner: p.partner ? { isPaidPartner: p.partner.isPaidPartner ?? false } : undefined,
+      })),
+    };
+  }
+
   async getMyAdoptions(userId: string, species?: 'BOTH' | 'DOG' | 'CAT'): Promise<{
     items: Array<{
       adoptionId: string;
@@ -116,7 +164,7 @@ export class MeService {
       },
     });
     const items = adoptions.map((a) => {
-      const pet = a.pet as { adoptionRejectedAt?: Date | null };
+      const pet = a.pet as { adoptionRejectedAt?: Date | null; adopetConfirmedAt?: Date | null };
       const partner = a.pet.partner as { isPaidPartner?: boolean } | null;
       return {
         adoptionId: a.id,
@@ -126,7 +174,7 @@ export class MeService {
         photos: (a.pet.media ?? []).map((m) => m.url),
         adoptedAt: a.adoptedAt.toISOString(),
         tutorName: a.tutor.name,
-        confirmedByAdopet: !pet.adoptionRejectedAt,
+        confirmedByAdopet: !pet.adoptionRejectedAt && !!pet.adopetConfirmedAt,
         ...(pet.adoptionRejectedAt && { adoptionRejectedAt: pet.adoptionRejectedAt.toISOString() }),
         vaccinated: a.pet.vaccinated,
         neutered: a.pet.neutered,
@@ -147,6 +195,7 @@ export class MeService {
         notifyNewPets: true,
         notifyMessages: true,
         notifyReminders: true,
+        notifyListingReminders: true,
       };
     }
     return {
@@ -158,6 +207,7 @@ export class MeService {
       notifyNewPets: prefs.notifyNewPets,
       notifyMessages: prefs.notifyMessages,
       notifyReminders: prefs.notifyReminders,
+      notifyListingReminders: prefs.notifyListingReminders,
     };
   }
 
@@ -174,6 +224,7 @@ export class MeService {
         notifyNewPets: dto.notifyNewPets ?? true,
         notifyMessages: dto.notifyMessages ?? true,
         notifyReminders: dto.notifyReminders ?? true,
+        notifyListingReminders: dto.notifyListingReminders ?? true,
       },
       update: {
         ...(dto.species !== undefined && { species: dto.species }),
@@ -184,6 +235,7 @@ export class MeService {
         ...(dto.notifyNewPets !== undefined && { notifyNewPets: dto.notifyNewPets }),
         ...(dto.notifyMessages !== undefined && { notifyMessages: dto.notifyMessages }),
         ...(dto.notifyReminders !== undefined && { notifyReminders: dto.notifyReminders }),
+        ...(dto.notifyListingReminders !== undefined && { notifyListingReminders: dto.notifyListingReminders }),
       },
     });
     return {
@@ -195,6 +247,7 @@ export class MeService {
       notifyNewPets: prefs.notifyNewPets,
       notifyMessages: prefs.notifyMessages,
       notifyReminders: prefs.notifyReminders,
+      notifyListingReminders: prefs.notifyListingReminders,
     };
   }
 

@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, TouchableOpacity, Image, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, PrimaryButton, LoadingLogo } from '../src/components';
+import { ScreenContainer, PrimaryButton, LoadingLogo, ProfileMenuFooter } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMe, updateMe } from '../src/api/me';
 import { presign, confirmAvatarUpload } from '../src/api/uploads';
@@ -140,7 +141,7 @@ export default function ProfileEditScreen() {
         <View style={styles.avatarRow}>
           <TouchableOpacity onPress={pickAndUploadAvatar} disabled={uploadAvatarMutation.isPending} style={styles.avatarTouch}>
             {user?.avatarUrl ? (
-              <Image source={{ uri: user.avatarUrl }} style={styles.avatarImg} />
+              <Image source={{ uri: user.avatarUrl }} style={styles.avatarImg} contentFit="cover" />
             ) : (
               <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface }]}>
                 <Ionicons name="person" size={48} color={colors.textSecondary} />
@@ -286,6 +287,7 @@ export default function ProfileEditScreen() {
           disabled={updateMutation.isPending}
         />
       </View>
+      <ProfileMenuFooter />
     </ScreenContainer>
   );
 }

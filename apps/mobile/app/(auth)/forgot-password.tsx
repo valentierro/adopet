@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { PrimaryButton } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { forgotPassword } from '../../src/api/auth';
+import { getApiUrlConfigIssue } from '../../src/api/client';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { spacing } from '../../src/theme';
 
@@ -38,7 +39,9 @@ export default function ForgotPasswordScreen() {
         { text: 'OK', onPress: () => router.replace('/(auth)/login') },
       ]);
     } catch (e: unknown) {
-      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível enviar o e-mail. Tente novamente.'));
+      const configMsg = getApiUrlConfigIssue();
+      const msg = configMsg ?? getFriendlyErrorMessage(e, 'Não foi possível enviar o e-mail. Tente novamente.');
+      Alert.alert('Erro', msg);
     } finally {
       setLoading(false);
     }

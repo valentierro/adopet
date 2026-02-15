@@ -23,7 +23,9 @@ import { ScreenContainer, PrimaryButton, SecondaryButton, StatusBadge, LoadingLo
 import { useTheme } from '../../../src/hooks/useTheme';
 import { useAuthStore } from '../../../src/stores/authStore';
 import { getPetById } from '../../../src/api/pet';
+import { getSimilarPets } from '../../../src/api/pets';
 import { addFavorite, removeFavorite, getFavorites } from '../../../src/api/favorites';
+import { undoPass } from '../../../src/api/swipes';
 import { createConversation } from '../../../src/api/conversations';
 import { createReport } from '../../../src/api/reports';
 import { requestVerification, getVerificationStatus } from '../../../src/api/verification';
@@ -42,18 +44,29 @@ const REPORT_REASONS: { label: string; value: string }[] = [
 const speciesLabel = { dog: 'Cachorro', cat: 'Gato' };
 const sizeLabel = { small: 'Pequeno', medium: 'Médio', large: 'Grande', xlarge: 'Muito grande' };
 
-function PetPhotoGallery({ photos }: { photos: string[] }) {
+function PetPhotoGallery({ photos, onPhotoPress }: { photos: string[]; onPhotoPress?: (uri: string) => void }) {
   const { width } = useWindowDimensions();
   const [index, setIndex] = useState(0);
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const i = Math.round(e.nativeEvent.contentOffset.x / width);
     setIndex(Math.min(i, photos.length - 1));
   };
+  const slide = (uri: string) => (
+    <TouchableOpacity
+      style={[styles.imageSlide, { width }]}
+      onPress={() => onPhotoPress?.(uri)}
+      activeOpacity={1}
+    >
+      <Image source={{ uri }} style={styles.image} contentFit="cover" />
+    </TouchableOpacity>
+  );
   if (photos.length === 0) return null;
   if (photos.length === 1) {
     return (
       <View style={styles.imageWrap}>
-        <Image source={{ uri: photos[0] }} style={styles.image} contentFit="cover" />
+        <TouchableOpacity onPress={() => onPhotoPress?.(photos[0])} activeOpacity={1}>
+          <Image source={{ uri: photos[0] }} style={styles.image} contentFit="cover" />
+        </TouchableOpacity>
       </View>
     );
   }
@@ -67,11 +80,7 @@ function PetPhotoGallery({ photos }: { photos: string[] }) {
         onMomentumScrollEnd={onScroll}
         style={styles.galleryList}
         keyExtractor={(uri, i) => `${i}-${uri.slice(-20)}`}
-        renderItem={({ item }) => (
-          <View style={[styles.imageSlide, { width }]}>
-            <Image source={{ uri: item }} style={styles.image} contentFit="cover" />
-          </View>
-        )}
+        renderItem={({ item }) => slide(item)}
       />
       <View style={styles.dots}>
         {photos.map((_, i) => (
@@ -105,7 +114,7 @@ export default function PetDetailsScreen() {
     }
   }, [from, navigation, colors.textPrimary, router]);
   const userId = useAuthStore((s) => s.user?.id);
-  const { data: pet, isLoading, refetch: refetchPet } = useQuery({
+  const { data: pet, isLoading, isError, refetch: refetchPet } = useQuery({
     queryKey: ['pet', id],
     queryFn: () => getPetById(id!),
     enabled: !!id,
@@ -124,7 +133,15 @@ export default function PetDetailsScreen() {
   const isFavorited = !!id && favorites.some((f) => f.petId === id);
   const addFavMutation = useMutation({
     mutationFn: () => addFavorite(id!),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['favorites'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['favorites'] });
+      if (from === 'passed-pets') {
+        undoPass(id!).then(() => {
+          queryClient.invalidateQueries({ queryKey: ['swipes', 'passed'] });
+          queryClient.invalidateQueries({ queryKey: ['feed'] });
+        }).catch(() => {});
+      }
+    },
   });
   const removeFavMutation = useMutation({
     mutationFn: () => removeFavorite(id!),
@@ -157,6 +174,11 @@ export default function PetDetailsScreen() {
     },
   });
   const isOwner = !!userId && !!pet && userId === pet.ownerId;
+  const { data: similarPets = [] } = useQuery({
+    queryKey: ['pet', id, 'similar'],
+    queryFn: () => getSimilarPets(id!),
+    enabled: !!id && !!pet,
+  });
   const petVerificationRequest = verificationStatus?.requests?.find(
     (r) => r.type === 'PET_VERIFIED' && r.petId === id,
   );
@@ -172,6 +194,7 @@ export default function PetDetailsScreen() {
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [reportReason, setReportReason] = useState<string | null>(null);
   const [reportDescription, setReportDescription] = useState('');
+  const [fullScreenPhoto, setFullScreenPhoto] = useState<string | null>(null);
 
   const handleDenunciar = () => {
     Alert.alert(
@@ -216,7 +239,7 @@ export default function PetDetailsScreen() {
 
   const handleCompartilhar = async () => {
     try {
-      const url = `https://adopet.app/pet/${id}`;
+      const url = `https://appadopet.com.br/pet/${id}`;
       await Share.share({
         message: `${pet?.name} está disponível para adoção no Adopet. ${url}`,
         title: `Adopet – ${pet?.name}`,
@@ -228,6 +251,21 @@ export default function PetDetailsScreen() {
   };
 
   if (isLoading || !pet) {
+    if (isError && !pet) {
+      return (
+        <ScreenContainer>
+          <View style={styles.errorWrap}>
+            <Ionicons name="warning-outline" size={48} color={colors.textSecondary} style={{ marginBottom: spacing.md }} />
+            <Text style={[styles.errorTitle, { color: colors.textPrimary }]}>Não foi possível carregar este anúncio</Text>
+            <Text style={[styles.errorSub, { color: colors.textSecondary }]}>
+              O anúncio pode não existir ou você está sem conexão. Tente novamente ou volte ao início.
+            </Text>
+            <PrimaryButton title="Tentar novamente" onPress={() => refetchPet()} style={{ marginBottom: spacing.sm }} />
+            <SecondaryButton title="Ir ao início" onPress={() => router.replace('/(tabs)')} />
+          </View>
+        </ScreenContainer>
+      );
+    }
     return (
       <ScreenContainer>
         <LoadingLogo size={160} />
@@ -239,11 +277,23 @@ export default function PetDetailsScreen() {
 
   return (
     <ScreenContainer scroll>
-      <PetPhotoGallery photos={photos} />
+      <PetPhotoGallery photos={photos} onPhotoPress={setFullScreenPhoto} />
+      <Modal
+        visible={!!fullScreenPhoto}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFullScreenPhoto(null)}
+      >
+        <Pressable style={styles.fullScreenOverlay} onPress={() => setFullScreenPhoto(null)}>
+          {fullScreenPhoto ? (
+            <Image source={{ uri: fullScreenPhoto }} style={styles.fullScreenImage} contentFit="contain" />
+          ) : null}
+        </Pressable>
+      </Modal>
       <Text style={[styles.name, { color: colors.textPrimary }]}>{pet.name}</Text>
       <Text style={[styles.meta, { color: colors.textSecondary }]}>
         {speciesLabel[String(pet.species).toLowerCase()] ?? pet.species}
-        {pet.breed ? ` • ${pet.breed}` : ''} • {pet.age} ano(s) • {sizeLabel[pet.size]} •{' '}
+        {pet.breed ? ` • ${pet.breed}` : ''} • {pet.age} ano(s) • {sizeLabel[pet.size] ?? pet.size ?? ''} •{' '}
         {pet.sex === 'male' ? 'Macho' : 'Fêmea'}
       </Text>
       <View style={styles.badges}>
@@ -341,13 +391,13 @@ export default function PetDetailsScreen() {
               ) : (
                 <View style={[styles.ownerAvatarPlaceholder, { backgroundColor: colors.background }]}>
                   <Text style={[styles.ownerAvatarText, { color: colors.textSecondary }]}>
-                    {pet.owner.name.charAt(0).toUpperCase()}
+                    {(pet.owner?.name ?? '?').charAt(0).toUpperCase()}
                   </Text>
                 </View>
               )}
               <View style={styles.ownerInfo}>
                 <Text style={[styles.ownerLabel, { color: colors.textSecondary }]}>Tutor</Text>
-                <Text style={[styles.ownerName, { color: colors.textPrimary }]}>{pet.owner.name}</Text>
+                <Text style={[styles.ownerName, { color: colors.textPrimary }]}>{pet.owner?.name ?? 'Tutor'}</Text>
                 {(pet.owner.verified || pet.owner.tutorStats) && (
                   <View style={styles.ownerBadgesRow}>
                     {pet.owner.verified && <VerifiedBadge size={20} showLabel backgroundColor={colors.primary} />}
@@ -355,7 +405,7 @@ export default function PetDetailsScreen() {
                   </View>
                 )}
                 <Text style={[styles.ownerPets, { color: colors.textSecondary }]}>
-                  {pet.owner.petsCount} pet(s) anunciados
+                  {(pet.owner?.petsCount ?? 0)} pet(s) anunciados
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
@@ -375,11 +425,11 @@ export default function PetDetailsScreen() {
                 ) : (
                   <View style={[styles.modalAvatarPlaceholder, { backgroundColor: colors.background }]}>
                     <Text style={[styles.modalAvatarText, { color: colors.textSecondary }]}>
-                      {pet.owner.name.charAt(0).toUpperCase()}
+                      {(pet.owner?.name ?? '?').charAt(0).toUpperCase()}
                     </Text>
                   </View>
                 )}
-                <Text style={[styles.modalName, { color: colors.textPrimary }]}>{pet.owner.name}</Text>
+                <Text style={[styles.modalName, { color: colors.textPrimary }]}>{pet.owner?.name ?? 'Tutor'}</Text>
                 {(pet.owner.verified || pet.owner.tutorStats) && (
                   <View style={styles.modalBadgesRow}>
                     {pet.owner.verified && <VerifiedBadge size={20} showLabel backgroundColor={colors.primary} />}
@@ -387,7 +437,7 @@ export default function PetDetailsScreen() {
                   </View>
                 )}
                 <Text style={[styles.modalPets, { color: colors.textSecondary }]}>
-                  {pet.owner.petsCount} pet(s) anunciados
+                  {pet.owner?.petsCount ?? 0} pet(s) anunciados
                 </Text>
                 <View style={styles.modalActions}>
                   <SecondaryButton
@@ -409,6 +459,42 @@ export default function PetDetailsScreen() {
               </Pressable>
             </Pressable>
           </Modal>
+        </>
+      )}
+      {similarPets.length > 0 && (
+        <>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.lg }]}>
+            Quem viu este pet também viu
+          </Text>
+          <FlatList
+            data={similarPets}
+            horizontal
+            keyExtractor={(p) => p.id}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.similarList}
+            renderItem={({ item: similar }) => {
+              const photo = similar.photos?.[0];
+              return (
+                <TouchableOpacity
+                  style={[styles.similarCard, { backgroundColor: colors.surface }]}
+                  onPress={() => router.push(`/pet/${similar.id}`)}
+                  activeOpacity={0.8}
+                >
+                  <Image
+                    source={{ uri: photo ?? 'https://placedog.net/200/200' }}
+                    style={styles.similarThumb}
+                  />
+                  <Text style={[styles.similarName, { color: colors.textPrimary }]} numberOfLines={1}>
+                    {similar.name}
+                  </Text>
+                  <Text style={[styles.similarMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+                    {speciesLabel[String(similar.species).toLowerCase()] ?? similar.species}
+                    {similar.breed ? ` • ${similar.breed}` : ''} • {similar.age} ano(s)
+                  </Text>
+                </TouchableOpacity>
+              );
+            }}
+          />
         </>
       )}
       <View style={styles.cta}>
@@ -558,6 +644,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: spacing.xs,
   },
+  errorWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xl,
+  },
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  errorSub: {
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
@@ -610,6 +714,16 @@ const styles = StyleSheet.create({
   ownerPets: {
     fontSize: 13,
     marginTop: 2,
+  },
+  fullScreenOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenImage: {
+    width: '100%',
+    height: '100%',
   },
   modalOverlay: {
     flex: 1,
@@ -704,6 +818,33 @@ const styles = StyleSheet.create({
   reportLinkText: {
     fontSize: 14,
     textDecorationLine: 'underline',
+  },
+  similarList: {
+    paddingVertical: spacing.sm,
+    gap: spacing.md,
+    paddingRight: spacing.md,
+  },
+  similarCard: {
+    width: 140,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginRight: spacing.md,
+  },
+  similarThumb: {
+    width: '100%',
+    height: 120,
+    backgroundColor: '#eee',
+  },
+  similarName: {
+    fontSize: 14,
+    fontWeight: '600',
+    paddingHorizontal: spacing.sm,
+    paddingTop: spacing.xs,
+  },
+  similarMeta: {
+    fontSize: 12,
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   loading: {
     fontSize: 16,

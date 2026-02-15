@@ -14,16 +14,25 @@ const LogoDark = require('../../assets/brand/logo/logo_dark.png');
 
 const BENEFITS_COMERCIAL = [
   { icon: 'storefront' as const, title: 'Visibilidade para seu negócio', description: 'Sua clínica, consultório ou loja aparece na página de parceiros do Adopet, com logo e link para seu site. Alcance tutores que buscam adoção e cuidados.' },
-  { icon: 'star' as const, title: 'Planos com destaque no app', description: 'Planos que incluem selo de parceiro nos anúncios vinculados e opção de destaque na lista de parceiros e no feed.' },
+  { icon: 'star' as const, title: 'Destaque no app', description: 'Selo de parceiro nos anúncios vinculados e destaque na lista de parceiros e no feed.' },
   { icon: 'people' as const, title: 'Público engajado', description: 'Milhares de usuários ativos em busca de pets e serviços. Parceria para clínicas veterinárias, pet shops e lojas do segmento.' },
   { icon: 'paw' as const, title: 'Rede pela causa animal', description: 'Associe sua marca à adoção responsável e ao bem-estar animal, reforçando sua imagem perante clientes.' },
 ];
 
-const PLANOS = [
-  { id: 'basico', nome: 'Básico', preco: 'R$ 99', periodo: '/mês', descricao: 'Ideal para começar', itens: ['Página de parceiros com sua marca', 'Selo "Parceiro" nos anúncios vinculados', 'Até 2 usuários da sua equipe'], destaque: false },
-  { id: 'destaque', nome: 'Destaque', preco: 'R$ 199', periodo: '/mês', descricao: 'Mais visibilidade', itens: ['Tudo do plano Básico', 'Destaque na lista de parceiros', 'Selo "Patrocinado" no feed', 'Até 5 usuários'], destaque: true },
-  { id: 'premium', nome: 'Premium', preco: 'Sob consulta', periodo: '', descricao: 'Solução sob medida', itens: ['Tudo do plano Destaque', 'Posicionamento prioritário', 'Suporte dedicado', 'Usuários ilimitados'], destaque: false },
-];
+const PLANO_UNICO = {
+  id: 'parceiro',
+  nome: 'Parceria comercial',
+  preco: 'R$ 50',
+  periodo: '/mês',
+  descricao: 'Plano único para clínicas, pet shops e lojas',
+  itens: [
+    'Página de parceiros com sua marca (logo, nome, cidade, site)',
+    'Selo "Parceiro" nos anúncios vinculados ao seu estabelecimento',
+    'Destaque na lista de parceiros do app',
+    'Cupons de desconto para usuários do Adopet',
+    'Publicação de serviços (ex.: banho, consulta)',
+  ],
+};
 
 export default function SejaParceiroComercialScreen() {
   const router = useRouter();
@@ -60,11 +69,25 @@ export default function SejaParceiroComercialScreen() {
             <View style={styles.heroTextWrap}>
               <Text style={styles.heroTitle}>Parceria para clínicas, veterinários e lojas</Text>
               <Text style={styles.heroSubtitle}>
-                Leve sua clínica veterinária, pet shop ou loja do segmento para milhares de tutores. Planos com preços a partir de R$ 99/mês e opção de destaque no app.
+                Leve sua clínica veterinária, pet shop ou loja do segmento para milhares de tutores. Plano único de R$ 50/mês com destaque no app.
               </Text>
             </View>
           </View>
         </LinearGradient>
+        <View style={[styles.section, { paddingHorizontal: spacing.lg }]}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Por que ser parceiro?</Text>
+          {BENEFITS_COMERCIAL.map((item, index) => (
+            <View key={index} style={[styles.benefitCard, { backgroundColor: colors.surface, borderColor: colors.background }]}>
+              <View style={[styles.benefitIconWrap, { backgroundColor: colors.primary + '18' }]}>
+                <Ionicons name={item.icon} size={28} color={colors.primary} />
+              </View>
+              <View style={styles.benefitText}>
+                <Text style={[styles.benefitTitle, { color: colors.textPrimary }]}>{item.title}</Text>
+                <Text style={[styles.benefitDescription, { color: colors.textSecondary }]}>{item.description}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
         {stats.length > 0 && (
           <View style={[styles.metricsSection, { paddingHorizontal: spacing.lg }]}>
             <Text style={[styles.metricsTitle, { color: colors.textPrimary }]}>Adopet em números</Text>
@@ -85,58 +108,34 @@ export default function SejaParceiroComercialScreen() {
           </View>
         )}
         <View style={[styles.section, { paddingHorizontal: spacing.lg }]}>
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Por que ser parceiro?</Text>
-          {BENEFITS_COMERCIAL.map((item, index) => (
-            <View key={index} style={[styles.benefitCard, { backgroundColor: colors.surface, borderColor: colors.background }]}>
-              <View style={[styles.benefitIconWrap, { backgroundColor: colors.primary + '18' }]}>
-                <Ionicons name={item.icon} size={28} color={colors.primary} />
-              </View>
-              <View style={styles.benefitText}>
-                <Text style={[styles.benefitTitle, { color: colors.textPrimary }]}>{item.title}</Text>
-                <Text style={[styles.benefitDescription, { color: colors.textSecondary }]}>{item.description}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
-        <View style={[styles.section, { paddingHorizontal: spacing.lg }]}>
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Planos de parceria</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Plano de parceria</Text>
           <Text style={[styles.sectionIntro, { color: colors.textSecondary }]}>
-            Escolha o plano que melhor se encaixa no seu negócio. Valores podem variar conforme região e pacote.
+            Um único plano com tudo que você precisa para divulgar seu negócio no Adopet.
           </Text>
-          {PLANOS.map((plano) => (
-            <View
-              key={plano.id}
-              style={[styles.planCard, { backgroundColor: colors.surface, borderColor: colors.background }, plano.destaque && { borderColor: colors.primary, borderWidth: 2 }]}
-            >
-              {plano.destaque && (
-                <View style={[styles.planBadge, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.planBadgeText}>Recomendado</Text>
-                </View>
-              )}
-              <View style={styles.planHeader}>
-                <Text style={[styles.planNome, { color: colors.textPrimary }]}>{plano.nome}</Text>
-                <View style={styles.planPrecoRow}>
-                  <Text style={[styles.planPreco, { color: colors.primary }]}>{plano.preco}</Text>
-                  <Text style={[styles.planPeriodo, { color: colors.textSecondary }]}>{plano.periodo}</Text>
-                </View>
-                <Text style={[styles.planDescricao, { color: colors.textSecondary }]}>{plano.descricao}</Text>
+          <View style={[styles.planCard, { backgroundColor: colors.surface, borderColor: colors.primary, borderWidth: 2 }]}>
+            <View style={styles.planHeader}>
+              <Text style={[styles.planNome, { color: colors.textPrimary }]}>{PLANO_UNICO.nome}</Text>
+              <View style={styles.planPrecoRow}>
+                <Text style={[styles.planPreco, { color: colors.primary }]}>{PLANO_UNICO.preco}</Text>
+                <Text style={[styles.planPeriodo, { color: colors.textSecondary }]}>{PLANO_UNICO.periodo}</Text>
               </View>
-              <View style={styles.planItens}>
-                {plano.itens.map((item, i) => (
-                  <View key={i} style={styles.planItemRow}>
-                    <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
-                    <Text style={[styles.planItemText, { color: colors.textPrimary }]}>{item}</Text>
-                  </View>
-                ))}
-              </View>
+              <Text style={[styles.planDescricao, { color: colors.textSecondary }]}>{PLANO_UNICO.descricao}</Text>
             </View>
-          ))}
+            <View style={styles.planItens}>
+              {PLANO_UNICO.itens.map((item, i) => (
+                <View key={i} style={styles.planItemRow}>
+                  <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+                  <Text style={[styles.planItemText, { color: colors.textPrimary }]}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
         </View>
         <View style={[styles.ctaSection, { paddingHorizontal: spacing.lg }]}>
           <View style={[styles.ctaCard, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
-            <Text style={[styles.ctaTitle, { color: colors.textPrimary }]}>Interessado em um plano?</Text>
+            <Text style={[styles.ctaTitle, { color: colors.textPrimary }]}>Quer ser parceiro?</Text>
             <Text style={[styles.ctaSubtitle, { color: colors.textSecondary }]}>
-              Envie sua solicitação pelo formulário. Nossa equipe entra em contato com valores e condições para sua região.
+              Cadastre seu estabelecimento pelo formulário. Após a aprovação, assine o plano de R$ 50/mês e ative seu espaço no app.
             </Text>
             <PrimaryButton title="Realizar cadastro" onPress={() => router.push('/solicitar-parceria?tipo=comercial')} style={styles.ctaButtonFull} />
           </View>
@@ -178,9 +177,7 @@ const styles = StyleSheet.create({
   benefitText: { flex: 1, minWidth: 0 },
   benefitTitle: { fontSize: 16, fontWeight: '700', marginBottom: spacing.xs },
   benefitDescription: { fontSize: 14, lineHeight: 20 },
-  planCard: { padding: spacing.lg, borderRadius: 16, borderWidth: 1, marginBottom: spacing.md, position: 'relative' },
-  planBadge: { position: 'absolute', top: -10, right: spacing.md, paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: 8 },
-  planBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  planCard: { padding: spacing.lg, borderRadius: 16, borderWidth: 1, marginBottom: spacing.md },
   planHeader: { marginBottom: spacing.md },
   planNome: { fontSize: 18, fontWeight: '700', marginBottom: spacing.xs },
   planPrecoRow: { flexDirection: 'row', alignItems: 'baseline', gap: 2 },

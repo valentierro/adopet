@@ -46,7 +46,7 @@ export default function LoginScreen() {
       router.replace('/');
     } catch (e: unknown) {
       const configMsg = getApiUrlConfigIssue();
-      const msg = configMsg ?? getFriendlyErrorMessage(e, 'Verifique seu email e senha e tente novamente.');
+      const msg = configMsg ?? getFriendlyErrorMessage(e, 'E-mail ou senha incorretos. Tente novamente.');
       Alert.alert('Não foi possível entrar', msg);
     }
   };
@@ -80,6 +80,7 @@ export default function LoginScreen() {
             autoCapitalize="none"
             keyboardType="email-address"
             autoComplete="email"
+            textContentType="emailAddress"
             accessibilityLabel="Email"
             accessibilityHint="Digite seu endereço de email para entrar"
           />
@@ -92,8 +93,9 @@ export default function LoginScreen() {
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
               autoComplete="password"
+              textContentType="password"
               accessibilityLabel="Senha"
-              accessibilityHint="Digite sua senha"
+              accessibilityHint="Digite sua senha. O sistema pode oferecer salvar para preencher depois."
             />
             <TouchableOpacity
               style={styles.eyeBtn}

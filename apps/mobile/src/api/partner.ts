@@ -22,8 +22,16 @@ export type AuthResponse = {
   expiresIn: number;
 };
 
-export async function partnerSignup(body: PartnerSignupBody): Promise<AuthResponse> {
-  return api.post<AuthResponse>('/auth/partner-signup', body, { skipAuth: true });
+export type SignupResponse = {
+  message: string;
+  requiresEmailVerification: true;
+};
+
+/** Resposta do partner-signup: tokens ou pedido de confirmação de e-mail, conforme feature flag da API. */
+export type PartnerSignupResponseUnion = AuthResponse | SignupResponse;
+
+export async function partnerSignup(body: PartnerSignupBody): Promise<PartnerSignupResponseUnion> {
+  return api.post<PartnerSignupResponseUnion>('/auth/partner-signup', body, { skipAuth: true });
 }
 
 export type PartnerMe = {

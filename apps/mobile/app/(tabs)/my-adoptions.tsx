@@ -1,14 +1,20 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, EmptyState, LoadingLogo, StatusBadge, VerifiedBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useListViewMode } from '../../src/hooks/useListViewMode';
 import { getMyAdoptions, type MyAdoptionItem } from '../../src/api/me';
 import { spacing } from '../../src/theme';
+import { gridLayout } from '../../src/theme/grid';
+
+const { cellWidth, gap, padding: gridPadding, aspectRatio } = gridLayout;
+const GRID_ITEM_MARGIN = gap / 2;
 
 const SPECIES_OPTIONS: { value: 'BOTH' | 'DOG' | 'CAT'; label: string }[] = [
   { value: 'BOTH', label: 'Todos' },
@@ -20,6 +26,7 @@ export default function MyAdoptionsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const [speciesFilter, setSpeciesFilter] = useState<'BOTH' | 'DOG' | 'CAT'>('BOTH');
+  const { viewMode, setViewMode } = useListViewMode('myAdoptionsViewMode', { persist: false });
 
   const { data, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['me', 'adoptions', speciesFilter],
@@ -100,7 +107,23 @@ export default function MyAdoptionsScreen() {
   return (
     <ScreenContainer scroll={false}>
       <View style={[styles.filtersWrap, { borderBottomColor: colors.surface }]}>
-        <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Espécie</Text>
+        <View style={styles.filterHeaderRow}>
+          <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Espécie</Text>
+          <View style={styles.viewModeRow}>
+            <TouchableOpacity
+              style={[styles.viewModeBtn, viewMode === 'list' && { backgroundColor: colors.primary }]}
+              onPress={() => setViewMode('list')}
+            >
+              <Ionicons name="list" size={22} color={viewMode === 'list' ? '#fff' : colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.viewModeBtn, viewMode === 'grid' && { backgroundColor: colors.primary }]}
+              onPress={() => setViewMode('grid')}
+            >
+              <Ionicons name="grid-outline" size={22} color={viewMode === 'grid' ? '#fff' : colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        </View>
         <View style={styles.chipRow}>
           {SPECIES_OPTIONS.map((opt) => (
             <TouchableOpacity
@@ -118,40 +141,40 @@ export default function MyAdoptionsScreen() {
           ))}
         </View>
       </View>
-      <FlatList
+      <FlashList
         data={items}
         keyExtractor={(item) => item.adoptionId}
-        contentContainerStyle={styles.list}
+        key={viewMode}
+        numColumns={viewMode === 'grid' ? 2 : 1}
+        estimatedItemSize={viewMode === 'grid' ? 220 : 100}
+        contentContainerStyle={[styles.list, viewMode === 'grid' && styles.gridList]}
+        onRefresh={() => refetch()}
+        refreshing={isRefetching}
         refreshControl={
           <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.primary} />
         }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.card, { backgroundColor: colors.surface }]}
-            onPress={() => router.push(`/pet/${item.petId}`)}
-            activeOpacity={0.7}
-          >
-            <Image
-              source={{ uri: item.photos?.[0] ?? 'https://placehold.co/80?text=Pet' }}
-              style={styles.thumb}
-            />
-            <View style={styles.cardBody}>
-              <View style={styles.cardTitleRow}>
-                <Text style={[styles.cardName, { color: colors.textPrimary }]} numberOfLines={1}>{item.petName}</Text>
-                {item.verified && <VerifiedBadge size={16} iconBackgroundColor={colors.primary} />}
-              </View>
-              <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
-                {item.species === 'dog' ? 'Cachorro' : 'Gato'}
-              </Text>
-              <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
-                Ex-tutor: {item.tutorName}
-              </Text>
-              {(item.partner != null || item.vaccinated !== undefined || typeof item.neutered === 'boolean') && (
-                <View style={styles.badgesRow}>
+        renderItem={({ item }) =>
+          viewMode === 'grid' ? (
+            <TouchableOpacity
+              style={[styles.gridCard, { backgroundColor: colors.surface, marginHorizontal: GRID_ITEM_MARGIN, marginBottom: gap }]}
+              onPress={() => router.push(`/pet/${item.petId}`)}
+              activeOpacity={0.7}
+            >
+              <Image
+                source={{ uri: item.photos?.[0] ?? 'https://placehold.co/80?text=Pet' }}
+                style={[styles.gridThumb, { width: cellWidth, height: cellWidth / aspectRatio }]}
+                contentFit="cover"
+              />
+              <View style={styles.gridCardInfo}>
+                <View style={styles.gridCardTitleRow}>
+                  <Text style={[styles.gridCardName, { color: colors.textPrimary }]} numberOfLines={1}>{item.petName}</Text>
+                  {item.verified && <VerifiedBadge size={14} iconBackgroundColor={colors.primary} />}
+                </View>
+                <View style={styles.gridBadgesRow}>
                   {item.partner != null && (
-                    <View style={[styles.partnerBadge, { backgroundColor: item.partner?.isPaidPartner ? (colors.warning || '#d97706') + '30' : (colors.primary + '25') }]}>
-                      <Ionicons name={item.partner?.isPaidPartner ? 'star' : 'heart'} size={10} color={item.partner?.isPaidPartner ? (colors.warning || '#d97706') : colors.primary} />
-                      <Text style={[styles.partnerBadgeText, { color: item.partner?.isPaidPartner ? (colors.warning || '#d97706') : colors.primary }]}>
+                    <View style={[styles.gridPartnerBadge, { backgroundColor: item.partner?.isPaidPartner ? (colors.warning || '#d97706') + '30' : (colors.primary + '25') }]}>
+                      <Ionicons name={item.partner?.isPaidPartner ? 'star' : 'heart'} size={9} color={item.partner?.isPaidPartner ? (colors.warning || '#d97706') : colors.primary} />
+                      <Text style={[styles.gridPartnerBadgeText, { color: item.partner?.isPaidPartner ? (colors.warning || '#d97706') : colors.primary }]} numberOfLines={1}>
                         {item.partner?.isPaidPartner ? 'Patrocinado' : 'Parceiro'}
                       </Text>
                     </View>
@@ -162,24 +185,88 @@ export default function MyAdoptionsScreen() {
                   {typeof item.neutered === 'boolean' && (
                     <StatusBadge label={item.neutered ? 'Castrado' : 'Não castrado'} variant={item.neutered ? 'success' : 'warning'} />
                   )}
+                  {item.adoptionRejectedAt ? (
+                    <View style={[styles.gridStatusBadge, { backgroundColor: (colors.error || '#DC2626') + '25' }]}>
+                      <Text style={[styles.gridStatusText, { color: colors.error || '#DC2626' }]} numberOfLines={1}>Rejeitado</Text>
+                    </View>
+                  ) : item.confirmedByAdopet ? (
+                    <View style={[styles.gridStatusBadge, { backgroundColor: '#0D9488' + '25' }]}>
+                      <Text style={[styles.gridStatusText, { color: '#0D9488' }]} numberOfLines={1}>Confirmado</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.gridStatusBadge, { backgroundColor: (colors.textSecondary || '#78716c') + '20' }]}>
+                      <Text style={[styles.gridStatusText, { color: colors.textSecondary || '#78716c' }]} numberOfLines={1}>Aguardando</Text>
+                    </View>
+                  )}
                 </View>
-              )}
-              {item.confirmedByAdopet ? (
-                <View style={[styles.badge, { backgroundColor: '#0D9488' + '25', marginTop: 8 }]}>
-                  <Text style={[styles.badgeText, { color: '#0D9488' }]}>Confirmado pelo Adopet</Text>
+                <Text style={[styles.gridCardMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+                  Ex-tutor: {item.tutorName}
+                </Text>
+                <Text style={[styles.gridAdoptedAt, { color: colors.primary }]}>
+                  {adoptedDate(item.adoptedAt)}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.card, { backgroundColor: colors.surface }]}
+              onPress={() => router.push(`/pet/${item.petId}`)}
+              activeOpacity={0.7}
+            >
+              <Image
+                source={{ uri: item.photos?.[0] ?? 'https://placehold.co/80?text=Pet' }}
+                style={styles.thumb}
+              />
+              <View style={styles.cardBody}>
+                <View style={styles.cardTitleRow}>
+                  <Text style={[styles.cardName, { color: colors.textPrimary }]} numberOfLines={1}>{item.petName}</Text>
+                  {item.verified && <VerifiedBadge size={16} iconBackgroundColor={colors.primary} />}
                 </View>
-              ) : (
-                <View style={[styles.badge, { backgroundColor: (colors.error || '#DC2626') + '25', marginTop: 8 }]}>
-                  <Text style={[styles.badgeText, { color: colors.error || '#DC2626' }]}>Rejeitado pelo Adopet</Text>
-                </View>
-              )}
-              <Text style={[styles.adoptedAt, { color: colors.primary }]}>
-                Adotado em {adoptedDate(item.adoptedAt)}
-              </Text>
-            </View>
-            <Text style={[styles.arrow, { color: colors.textSecondary }]}>›</Text>
-          </TouchableOpacity>
-        )}
+                <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
+                  {item.species === 'dog' ? 'Cachorro' : 'Gato'}
+                </Text>
+                <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
+                  Ex-tutor: {item.tutorName}
+                </Text>
+                {(item.partner != null || item.vaccinated !== undefined || typeof item.neutered === 'boolean') && (
+                  <View style={styles.badgesRow}>
+                    {item.partner != null && (
+                      <View style={[styles.partnerBadge, { backgroundColor: item.partner?.isPaidPartner ? (colors.warning || '#d97706') + '30' : (colors.primary + '25') }]}>
+                        <Ionicons name={item.partner?.isPaidPartner ? 'star' : 'heart'} size={10} color={item.partner?.isPaidPartner ? (colors.warning || '#d97706') : colors.primary} />
+                        <Text style={[styles.partnerBadgeText, { color: item.partner?.isPaidPartner ? (colors.warning || '#d97706') : colors.primary }]}>
+                          {item.partner?.isPaidPartner ? 'Patrocinado' : 'Parceiro'}
+                        </Text>
+                      </View>
+                    )}
+                    {item.vaccinated !== undefined && (
+                      <StatusBadge label={item.vaccinated ? 'Vacinado' : 'Não vacinado'} variant={item.vaccinated ? 'success' : 'warning'} />
+                    )}
+                    {typeof item.neutered === 'boolean' && (
+                      <StatusBadge label={item.neutered ? 'Castrado' : 'Não castrado'} variant={item.neutered ? 'success' : 'warning'} />
+                    )}
+                  </View>
+                )}
+                {item.adoptionRejectedAt ? (
+                  <View style={[styles.badge, { backgroundColor: (colors.error || '#DC2626') + '25', marginTop: 8 }]}>
+                    <Text style={[styles.badgeText, { color: colors.error || '#DC2626' }]}>Rejeitado pelo Adopet</Text>
+                  </View>
+                ) : item.confirmedByAdopet ? (
+                  <View style={[styles.badge, { backgroundColor: '#0D9488' + '25', marginTop: 8 }]}>
+                    <Text style={[styles.badgeText, { color: '#0D9488' }]}>Confirmado pelo Adopet</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.badge, { backgroundColor: (colors.textSecondary || '#78716c') + '20', marginTop: 8 }]}>
+                    <Text style={[styles.badgeText, { color: colors.textSecondary || '#78716c' }]}>Aguardando confirmação Adopet</Text>
+                  </View>
+                )}
+                <Text style={[styles.adoptedAt, { color: colors.primary }]}>
+                  Adotado em {adoptedDate(item.adoptedAt)}
+                </Text>
+              </View>
+              <Text style={[styles.arrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+          )
+        }
       />
     </ScreenContainer>
   );
@@ -237,4 +324,28 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 11, fontWeight: '600' },
   adoptedAt: { fontSize: 13, marginTop: 4, fontWeight: '600' },
   arrow: { fontSize: 24 },
+  filterHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm },
+  viewModeRow: { flexDirection: 'row', gap: 4 },
+  viewModeBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  gridList: { paddingHorizontal: gridPadding, gap },
+  gridRow: { gap, marginBottom: gap },
+  gridCard: { width: cellWidth, borderRadius: 12, overflow: 'hidden' },
+  gridThumb: { borderTopLeftRadius: 12, borderTopRightRadius: 12 },
+  gridCardInfo: { padding: spacing.sm },
+  gridCardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  gridCardName: { fontSize: 14, fontWeight: '700', flex: 1 },
+  gridBadgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 },
+  gridPartnerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 1,
+    paddingHorizontal: 4,
+    borderRadius: 6,
+  },
+  gridPartnerBadgeText: { fontSize: 9, fontWeight: '600' },
+  gridStatusBadge: { paddingHorizontal: 4, paddingVertical: 2, borderRadius: 6 },
+  gridStatusText: { fontSize: 9, fontWeight: '600' },
+  gridCardMeta: { fontSize: 12, marginTop: 2 },
+  gridAdoptedAt: { fontSize: 12, marginTop: 4, fontWeight: '600' },
 });

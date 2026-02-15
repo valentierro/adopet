@@ -27,6 +27,7 @@ import {
   deletePet,
   deletePetMedia,
   reorderPetMedia,
+  isUuid,
   type PetStatus,
 } from '../../../src/api/pets';
 import { getPartners } from '../../../src/api/partners';
@@ -144,34 +145,47 @@ export default function PetEditScreen() {
         pendingAdopterUsername: args.pendingAdopterUsername,
       }),
     onSuccess: (_data, args) => {
-      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['pet', id] });
+      queryClient.invalidateQueries({ queryKey: ['pets', 'mine'] });
+      // Pontuação só muda quando adoção é confirmada (admin ou automático); não invalidar tutor-stats ao alternar Em andamento/Disponível
+      if (args.status === 'ADOPTED') {
+        queryClient.invalidateQueries({ queryKey: ['me', 'tutor-stats'] });
+      }
       setShowAdopterModal(false);
       setSelectedAdopter(null);
       setUsernameSearch('');
       if (args.status === 'ADOPTED') {
         Alert.alert('Informações atualizadas', 'As informações foram atualizadas. Um administrador será informado.');
       } else {
-        Alert.alert('Status atualizado.', 'Sua pontuação de tutor foi atualizada.');
+        Alert.alert('Status atualizado', 'O status do pet foi alterado.');
       }
     },
     onError: (e: unknown) =>
       Alert.alert('Não foi possível atualizar', getFriendlyErrorMessage(e, 'Tente novamente.')),
   });
 
-  const { data: conversationPartners = [], isLoading: loadingPartners } = useQuery({
+  const { data: rawPartners = [], isLoading: loadingPartners } = useQuery({
     queryKey: ['pets', id, 'conversation-partners'],
     queryFn: () => getConversationPartners(id!),
     enabled: !!id && showAdopterModal,
   });
+  const conversationPartners = rawPartners.filter((p) => isUuid(p.id));
 
   const handleStatusPress = (status: PetStatus) => {
     if (status === 'ADOPTED') {
       Alert.alert(
         'Marcar como adotado?',
-        'O pet sairá da lista de disponíveis (feed e mapa). Em seguida, indique quem adotou (quem conversou com você no app ou pelo @nome de usuário). Um administrador confirmará a adoção.',
+        'O pet sairá da lista de disponíveis (feed e mapa). Escolha como deseja registrar: quem adotou pelo app ou se a adoção foi feita fora da plataforma.',
         [
           { text: 'Cancelar', style: 'cancel' },
-          { text: 'Continuar', onPress: () => { setSelectedAdopter(null); setShowAdopterModal(true); } },
+          {
+            text: 'Adoção fora do app',
+            onPress: () => statusMutation.mutate({ status: 'ADOPTED' }),
+          },
+          {
+            text: 'Quem adotou (pelo app)',
+            onPress: () => { setSelectedAdopter(null); setShowAdopterModal(true); },
+          },
         ]
       );
       return;
@@ -185,6 +199,10 @@ export default function PetEditScreen() {
       return;
     }
     if (selectedAdopter.type === 'id') {
+      if (!isUuid(selectedAdopter.id)) {
+        Alert.alert('Erro', 'Dados do adotante inválidos. Tente novamente ou use "Adoção fora do app".');
+        return;
+      }
       statusMutation.mutate({ status: 'ADOPTED', pendingAdopterId: selectedAdopter.id });
     } else if (selectedAdopter.type === 'username') {
       statusMutation.mutate({ status: 'ADOPTED', pendingAdopterUsername: selectedAdopter.username });

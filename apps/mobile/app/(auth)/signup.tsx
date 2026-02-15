@@ -19,8 +19,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { PrimaryButton } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuthStore } from '../../src/stores/authStore';
+import { getApiUrlConfigIssue } from '../../src/api/client';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
-import { clearOnboardingSeen } from '../../src/storage/onboarding';
 import { spacing } from '../../src/theme';
 
 const LogoSplash = require('../../assets/brand/logo/logo_splash.png');
@@ -29,6 +29,8 @@ const LogoSplash = require('../../assets/brand/logo/logo_splash.png');
 const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d).{6,}$/;
 /** Nome de usuário: 2–30 caracteres, apenas a-z 0-9 . _ */
 const USERNAME_RULE = /^[a-z0-9._]{2,30}$/;
+/** Formato básico de e-mail */
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -50,6 +52,10 @@ export default function SignupScreen() {
   const handleSubmit = async () => {
     if (!name.trim() || !email.trim() || !password || !passwordConfirm || !phone.trim()) {
       Alert.alert('Erro', 'Preencha nome, email, telefone, senha e confirmação da senha.');
+      return;
+    }
+    if (!EMAIL_REGEX.test(email.trim())) {
+      Alert.alert('E-mail inválido', 'Informe um endereço de e-mail válido (ex: seu@email.com).');
       return;
     }
     const userInput = username.trim().toLowerCase().replace(/^@/, '');
@@ -87,35 +93,42 @@ export default function SignupScreen() {
       return;
     }
     try {
-      await signup(email.trim(), password, name.trim(), phoneDigits, userInput);
-      Alert.alert(
-        'Conta criada!',
-        'Sua conta foi criada com sucesso. Bem-vindo(a)!',
-        [
-          {
-            text: 'Continuar',
-            onPress: async () => {
-              try {
-                await clearOnboardingSeen();
-                await queryClient.invalidateQueries({ queryKey: ['me'] });
-                const { trackEvent } = await import('../../src/analytics');
-                trackEvent({ name: 'signup_complete', properties: {} });
-                router.replace('/');
-              } catch {
-                router.replace('/');
-              }
-            },
-          },
-        ]
-      );
+      const res = await signup(email.trim(), password, name.trim(), phoneDigits, userInput);
+      try {
+        const { trackEvent } = await import('../../src/analytics');
+        trackEvent({ name: 'signup_complete', properties: {} });
+      } catch {
+        // não falhar o fluxo se analytics der erro (ex.: ambiente de desenvolvimento)
+      }
+      if (res.requiresEmailVerification) {
+        Alert.alert(
+          'Conta criada!',
+          'Enviamos um e-mail de confirmação para você. Clique no link que enviamos para ativar sua conta. Depois, faça login com seu e-mail e senha.',
+          [{ text: 'Ir para o login', onPress: () => router.replace('/(auth)/login') }]
+        );
+      } else {
+        Alert.alert('Conta criada!', 'Sua conta foi criada com sucesso. Bem-vindo(a)!', [
+          { text: 'Continuar', onPress: () => router.replace('/') },
+        ]);
+      }
     } catch (e: unknown) {
+      const configMsg = getApiUrlConfigIssue();
       const msg = e instanceof Error ? e.message : String(e ?? '');
-      const isConnectionError = /network|fetch|connection|timeout|ECONNREFUSED|failed to fetch|could not connect/i.test(msg);
+      const isConnectionError = /network|fetch|connection|timeout|ECONNREFUSED|failed to fetch|could not connect|request timeout/i.test(msg);
+      const friendlyMsg = getFriendlyErrorMessage(e, 'Tente outro email ou mais tarde.');
+      const isDevEnvError = /ambiente de desenvolvimento|dev:mobile:clear/i.test(friendlyMsg);
       const title = 'Não foi possível completar';
-      const body = isConnectionError
-        ? 'Não foi possível conectar. Sua conta pode ter sido criada. Tente fazer login com seu email e senha. Se não conseguir, tente criar a conta novamente.'
-        : getFriendlyErrorMessage(e, 'Tente outro email ou mais tarde.');
-      Alert.alert(title, body);
+      const body = configMsg
+        ? configMsg
+        : isConnectionError
+          ? 'Não foi possível conectar ao servidor. Sua conta pode ter sido criada — tente fazer login com seu e-mail e senha. Se funcionar, use o app normalmente; se não, tente criar a conta novamente.'
+          : isDevEnvError
+            ? 'Pode ser um problema temporário do app em desenvolvimento. Primeiro tente fazer login com esse e-mail e senha (a conta pode ter sido criada). Se não funcionar: pare o servidor (Ctrl+C); na raiz do projeto execute pnpm dev:mobile:clear ou, dentro de apps/mobile, pnpm dev:clear; depois abra o app de novo.'
+            : friendlyMsg;
+      Alert.alert(title, body, [
+        { text: 'OK' },
+        ...(configMsg || isConnectionError || isDevEnvError ? [{ text: 'Ir para o login', onPress: () => router.replace('/(auth)/login') }] : []),
+      ]);
     }
   };
 

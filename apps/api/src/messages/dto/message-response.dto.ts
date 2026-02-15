@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class MessageItemDto {
   @ApiProperty()
@@ -7,8 +7,11 @@ export class MessageItemDto {
   @ApiProperty()
   conversationId: string;
 
-  @ApiProperty()
-  senderId: string;
+  @ApiPropertyOptional({ description: 'Null para mensagens de sistema (ex.: anúncio expirado)' })
+  senderId?: string;
+
+  @ApiProperty({ description: 'True para mensagens geradas pelo sistema' })
+  isSystem: boolean;
 
   @ApiProperty()
   content: string;

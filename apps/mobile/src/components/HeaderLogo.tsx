@@ -1,4 +1,5 @@
-import { View, Image, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Image } from 'expo-image';
 import { useTheme } from '../hooks/useTheme';
 
 const LogoLight = require('../../assets/brand/logo/logo_horizontal_light.png');
@@ -11,7 +12,7 @@ export function HeaderLogo() {
       <Image
         source={isDark ? LogoDark : LogoLight}
         style={styles.logo}
-        resizeMode="contain"
+        contentFit="contain"
       />
     </View>
   );

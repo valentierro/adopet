@@ -30,7 +30,7 @@ function formatListingDate(iso: string | undefined): string {
   }
 }
 
-export function PetCard({
+export const PetCard = React.memo(function PetCard({
   pet,
   onPress,
   onLike,
@@ -133,7 +133,7 @@ export function PetCard({
       </View>
     </TouchableOpacity>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

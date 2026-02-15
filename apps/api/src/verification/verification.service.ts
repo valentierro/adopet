@@ -96,13 +96,33 @@ export class VerificationService {
     return this.toItemDto(v);
   }
 
-  /** [Admin] Listar verificações aprovadas (para revogar). */
+  /** [Admin] Listar verificações aprovadas (para revogar), com userName e petName para exibição. */
   async listApproved(): Promise<VerificationItemDto[]> {
     const list = await this.prisma.verification.findMany({
       where: { status: 'APPROVED' },
       orderBy: { createdAt: 'desc' },
+      include: { user: { select: { name: true } } },
     });
-    return list.map((v) => this.toItemDto(v));
+    const petIds = list
+      .map((v) => (v.metadata as { petId?: string } | null)?.petId)
+      .filter((id): id is string => !!id);
+    const petMap = new Map<string, string>();
+    if (petIds.length > 0) {
+      const pets = await this.prisma.pet.findMany({
+        where: { id: { in: petIds } },
+        select: { id: true, name: true },
+      });
+      for (const p of pets) petMap.set(p.id, p.name);
+    }
+    return list.map((v) => {
+      const dto = this.toItemDto(v);
+      const meta = v.metadata as { petId?: string } | null;
+      return {
+        ...dto,
+        userName: v.user?.name,
+        petName: meta?.petId ? petMap.get(meta.petId) : undefined,
+      };
+    });
   }
 
   /** Retorna o conjunto de IDs de pets que possuem verificação aprovada (evita N+1 no feed/listagens). */

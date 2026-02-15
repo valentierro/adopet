@@ -25,7 +25,10 @@ model User {
   hasChildren  Boolean?  // tem crianças em casa
   timeAtHome   String?   // MOST_DAY | HALF_DAY | LITTLE — quanto tempo passa em casa
   pushToken    String?   // Expo push token para notificações
+  emailVerificationToken String?   // token para confirmar e-mail (limpo após confirmação)
+  emailVerifiedAt        DateTime? // quando o e-mail foi confirmado
   deactivatedAt DateTime? // soft delete: conta desativada
+  lastListingReminderAt DateTime? // último envio de push "atualize seus anúncios" (follow-up tutores)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   pets         Pet[]
@@ -57,10 +60,11 @@ model UserPreferences {
   sizePref         String?  // BOTH | small | medium | large | xlarge (para recomendação)
   latitude         Float?   // última localização (para notificação "novos pets na região")
   longitude        Float?
-  notifyNewPets    Boolean  @default(true)
-  notifyMessages   Boolean  @default(true)
-  notifyReminders  Boolean  @default(true)
-  updatedAt        DateTime @updatedAt
+  notifyNewPets           Boolean  @default(true)
+  notifyMessages         Boolean  @default(true)
+  notifyReminders        Boolean  @default(true)
+  notifyListingReminders Boolean  @default(true) // lembretes para atualizar anúncios (a cada ~30 dias)
+  updatedAt              DateTime @updatedAt
 }
 
 model SavedSearch {
@@ -186,10 +190,16 @@ model Pet {
   feedingType     String?   // seca, úmida, mista, natural, outra (opcional)
   feedingNotes    String?   // alergias, dieta especial, observações (opcional)
   status          String    @default("AVAILABLE") // AVAILABLE | IN_PROCESS | ADOPTED
-  markedAdoptedAt DateTime? // quando o tutor marcou como adotado; após 48h sem registro manual, sistema auto-valida
+  markedAdoptedAt DateTime? // quando o tutor marcou como adotado; após 48h sem registro manual (e após adotante confirmar), sistema auto-valida
   pendingAdopterId String?  // adotante indicado pelo tutor ao marcar como adotado (lista de conversas ou @username)
+  adopterConfirmedAt DateTime? // quando o adotante confirmou no app que realizou a adoção; só então vai para painel admin / auto-approve
   adoptionRejectedAt DateTime? // quando um admin rejeitou a marcação de adoção; pet volta a disponível e exibe badge "Rejeitado pelo Adopet"
+  adopetConfirmedAt  DateTime? // quando a Adopet confirmou a adoção (admin ou auto-approve 48h); só então exibe badge "Confirmado pelo Adopet"
   publicationStatus String  @default("PENDING")   // PENDING | APPROVED | REJECTED — feed só mostra APPROVED
+  expiresAt        DateTime? // vida útil do anúncio (60 dias); null = legado; feed só mostra se expiresAt > now
+  expiryReminder10SentAt DateTime? // aviso "expira em 10 dias" já enviado
+  expiryReminder5SentAt  DateTime?
+  expiryReminder1SentAt  DateTime?
   latitude        Float?
   longitude       Float?
   ownerId         String
@@ -204,6 +214,10 @@ model Pet {
   swipes          Swipe[]
   favorites       Favorite[]
   conversations   Conversation[]
+
+  @@index([publicationStatus, status, id])
+  @@index([publicationStatus, status, expiresAt, id])
+  @@index([ownerId])
 }
 
 model Adoption {
@@ -249,19 +263,23 @@ model Favorite {
   pet       Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   @@unique([userId, petId])
+  @@index([userId, createdAt])
 }
 
 model Conversation {
-  id              String    @id @default(uuid())
-  petId           String
-  pet             Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
-  adopterId       String?   // quem favoritou e iniciou a conversa (MVP: uma conversa por pet+adopter)
-  participants    ConversationParticipant[]
-  messages        Message[]
-  lastReminderAt  DateTime? // último envio de lembrete "conversa pendente"
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  @@unique([petId, adopterId])
+  id                String    @id @default(uuid())
+  petId             String
+  pet               Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
+  adopterId         String?   // quem favoritou e iniciou a conversa (NORMAL) ou adotante a confirmar (ADOPTION_CONFIRMATION)
+  type              String    @default("NORMAL") // NORMAL | ADOPTION_CONFIRMATION (conversa com Adopet para confirmar adoção)
+  participants      ConversationParticipant[]
+  messages          Message[]
+  lastReminderAt    DateTime? // último envio de lembrete "conversa pendente"
+  listingRemovedAt  DateTime? // anúncio expirou por falta de prorrogação; exibir aviso no chat
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  @@unique([petId, adopterId, type])
+  @@index([updatedAt])
 }
 
 model ConversationParticipant {
@@ -277,12 +295,14 @@ model Message {
   id             String       @id @default(uuid())
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  senderId      String
-  sender        User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  content       String       @default("")
-  imageUrl      String?      // foto enviada no chat
-  readAt        DateTime?
-  createdAt     DateTime     @default(now())
+  senderId       String?      // null = mensagem de sistema (ex.: anúncio expirado)
+  sender         User?        @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  isSystem       Boolean      @default(false)
+  content        String       @default("")
+  imageUrl       String?      // foto enviada no chat
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
+  @@index([conversationId, createdAt])
 }
 
 model Report {
@@ -298,6 +318,7 @@ model Report {
   resolutionFeedback  String?   // feedback para o denunciador (opcional)
   createdAt           DateTime  @default(now())
   @@index([targetType, targetId])
+  @@index([targetType, resolvedAt])
   @@index([reporterId])
 }
 
@@ -330,12 +351,14 @@ model BugReport {
   id          String   @id @default(uuid())
   userId      String?
   user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  type        String   @default("BUG") // BUG | SUGGESTION
   message     String
   stack       String?
   screen      String?
   userComment String?
   createdAt   DateTime @default(now())
   @@index([createdAt])
+  @@index([type])
 }
 
 model PartnerRecommendation {

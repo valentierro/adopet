@@ -36,7 +36,7 @@ type Props = {
   showActions?: boolean;
 };
 
-export function FeedCard({ pet, onPress, onLike, onPass, height: cardHeight, wrapInTouchable = true, showActions = true }: Props) {
+export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onPass, height: cardHeight, wrapInTouchable = true, showActions = true }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const photos = pet.photos?.length ? pet.photos : ['https://placedog.net/800/1200'];
@@ -192,7 +192,7 @@ export function FeedCard({ pet, onPress, onLike, onPass, height: cardHeight, wra
       )}
     </CardWrapper>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

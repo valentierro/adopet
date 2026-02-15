@@ -1,21 +1,23 @@
 import { useEffect } from 'react';
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import { updatePushToken } from '../api/me';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+const isExpoGo = Constants.appOwnership === 'expo';
 
 export function usePushToken(isLoggedIn: boolean) {
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (!isLoggedIn || isExpoGo) return;
     let mounted = true;
     (async () => {
+      const Notifications = await import('expo-notifications');
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+        }),
+      });
       if (!Device.isDevice) return;
       const { status: existing } = await Notifications.getPermissionsAsync();
       let final = existing;

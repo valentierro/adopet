@@ -58,6 +58,9 @@ export class PetResponseDto {
   @ApiPropertyOptional({ enum: ['PENDING', 'APPROVED', 'REJECTED'], description: 'Status de moderação do anúncio (ex.: Em análise)' })
   publicationStatus?: string;
 
+  @ApiPropertyOptional({ description: 'Data em que o anúncio expira (vida útil 60 dias); null = sem expiração' })
+  expiresAt?: string;
+
   @ApiPropertyOptional({ description: 'Data em que o pet foi adotado (apenas quando status === ADOPTED)' })
   adoptedAt?: string;
 
@@ -66,6 +69,9 @@ export class PetResponseDto {
 
   @ApiPropertyOptional({ description: 'Data em que um admin rejeitou a marcação de adoção; exibe badge "Rejeitado pelo Adopet"' })
   adoptionRejectedAt?: string;
+
+  @ApiPropertyOptional({ description: 'True quando a Adopet confirmou a adoção (admin ou 48h); apenas para pet adotado' })
+  confirmedByAdopet?: boolean;
 
   @ApiProperty()
   createdAt: string;

@@ -1,9 +1,9 @@
 // Configuração dinâmica do Expo (fonte única; ex-expo doctor).
-// GOOGLE_MAPS_API_KEY é injetada no build Android pelo EAS.
+// GOOGLE_MAPS_API_KEY = Android. GOOGLE_MAPS_API_KEY_IOS = iOS (opcional; se não existir, usa GOOGLE_MAPS_API_KEY).
 const baseExpo = {
   name: 'Adopet',
   slug: 'adopet',
-  version: '1.0.4',
+  version: '1.0.19',
   orientation: 'portrait',
   icon: './assets/brand/icon/app_icon_light.png',
   userInterfaceStyle: 'automatic',
@@ -17,6 +17,11 @@ const baseExpo = {
     supportsTablet: true,
     bundleIdentifier: 'br.com.adopet.app',
     infoPlist: { UIBackgroundModes: [] },
+    ...((process.env.GOOGLE_MAPS_API_KEY_IOS || process.env.GOOGLE_MAPS_API_KEY) && {
+      config: {
+        googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY_IOS || process.env.GOOGLE_MAPS_API_KEY,
+      },
+    }),
   },
   android: {
     adaptiveIcon: {
@@ -24,7 +29,7 @@ const baseExpo = {
       backgroundColor: '#FFFFFF',
     },
     package: 'br.com.adopet.app',
-    versionCode: 10,
+    versionCode: 23,
   },
   plugins: [
     'expo-router',

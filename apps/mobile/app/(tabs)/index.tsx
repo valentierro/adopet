@@ -21,7 +21,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ScreenContainer, LoadingLogo, VerifiedBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuthStore } from '../../src/stores/authStore';
-import { getMe, getTutorStats, getMyAdoptions, getPreferences } from '../../src/api/me';
+import { getMe, getTutorStats, getMyAdoptions, getPreferences, getPendingAdoptionConfirmations } from '../../src/api/me';
 import { getMinePets } from '../../src/api/pets';
 import { getFavorites } from '../../src/api/favorites';
 import { getConversations } from '../../src/api/conversations';
@@ -50,30 +50,36 @@ function useDashboardData() {
   }, []);
 
   const { data: user } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: 60_000 });
+  const hasUser = !!user?.id;
   const { data: prefs } = useQuery({
     queryKey: ['me', 'preferences'],
     queryFn: getPreferences,
     staleTime: 5 * 60_000,
+    enabled: hasUser,
   });
   const { data: tutorStats } = useQuery({
     queryKey: ['me', 'tutor-stats'],
     queryFn: getTutorStats,
     staleTime: 60_000,
+    enabled: hasUser,
   });
   const { data: minePage, refetch: refetchMine } = useQuery({
     queryKey: ['pets', 'mine'],
     queryFn: () => getMinePets({}),
     staleTime: 60_000,
+    enabled: hasUser,
   });
   const { data: favoritesPage, refetch: refetchFav } = useQuery({
     queryKey: ['favorites'],
     queryFn: () => getFavorites(),
     staleTime: 60_000,
+    enabled: hasUser,
   });
   const { data: conversations = [], refetch: refetchConv } = useQuery({
     queryKey: ['conversations'],
     queryFn: getConversations,
     staleTime: 60_000,
+    enabled: hasUser,
   });
   const { data: feedData, refetch: refetchFeed } = useQuery({
     queryKey: ['feed', null, prefs?.radiusKm, 'BOTH', userCoords?.lat, userCoords?.lng],
@@ -84,16 +90,25 @@ function useDashboardData() {
         species: 'BOTH',
       }),
     staleTime: 2 * 60_000,
+    enabled: hasUser,
   });
   const { data: adoptionsData, refetch: refetchAdoptions } = useQuery({
     queryKey: ['me', 'adoptions'],
     queryFn: getMyAdoptions,
     staleTime: 60_000,
+    enabled: hasUser,
   });
   const { data: passedData, refetch: refetchPassed } = useQuery({
     queryKey: ['swipes', 'passed'],
     queryFn: getPassedPets,
     staleTime: 60_000,
+    enabled: hasUser,
+  });
+  const { data: pendingConfirmationsData, refetch: refetchPendingConfirmations } = useQuery({
+    queryKey: ['me', 'pending-adoption-confirmations'],
+    queryFn: getPendingAdoptionConfirmations,
+    staleTime: 60_000,
+    enabled: hasUser,
   });
 
   const myPets = minePage?.items ?? [];
@@ -104,24 +119,35 @@ function useDashboardData() {
   const feedPreviewItems = feedData?.items ?? [];
   const feedTotalCount = feedData?.totalCount;
 
+  const pendingConfirmations = pendingConfirmationsData?.items ?? [];
   const [refreshing, setRefreshing] = useState(false);
   const refetchAll = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refetchMine(), refetchFav(), refetchConv(), refetchFeed(), refetchAdoptions(), refetchPassed()]);
+    await Promise.all([
+      refetchMine(),
+      refetchFav(),
+      refetchConv(),
+      refetchFeed(),
+      refetchAdoptions(),
+      refetchPassed(),
+      refetchPendingConfirmations(),
+    ]);
     setRefreshing(false);
-  }, [refetchMine, refetchFav, refetchConv, refetchFeed, refetchAdoptions, refetchPassed]);
+  }, [refetchMine, refetchFav, refetchConv, refetchFeed, refetchAdoptions, refetchPassed, refetchPendingConfirmations]);
 
   return {
     user,
     tutorStats,
     myPetsCount: myPets.length,
     myAdoptionsCount,
+    pendingConfirmations,
     favoritesCount,
     conversationsCount: conversations.length,
     unreadTotal,
     passedCount,
     feedPreviewItems,
     feedTotalCount,
+    pendingConfirmations,
     refetchAll,
     refreshing,
   };
@@ -164,6 +190,7 @@ export default function DashboardScreen() {
     passedCount,
     feedPreviewItems,
     feedTotalCount,
+    pendingConfirmations,
     refetchAll,
     refreshing,
   } = useDashboardData();
@@ -232,7 +259,7 @@ export default function DashboardScreen() {
       id: 'my-pets',
       title: 'Meus anúncios',
       subtitle: myPetsCount === 0 ? 'Nenhum anúncio' : `${myPetsCount} anúncio${myPetsCount !== 1 ? 's' : ''}`,
-      icon: 'document-text',
+      icon: 'megaphone-outline',
       route: '/my-pets',
       badge: myPetsCount > 0 ? myPetsCount : undefined,
     },
@@ -325,6 +352,23 @@ export default function DashboardScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={refetchAll} tintColor={colors.primary} />
         }
       >
+        {pendingConfirmations.length > 0 ? (
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => router.push('/adoption-confirm')}
+            style={styles.confirmBanner}
+          >
+            <View style={styles.confirmBannerContent}>
+              <Ionicons name="paw" size={20} color="#fff" style={styles.confirmBannerIcon} />
+              <Text style={styles.confirmBannerText} numberOfLines={2}>
+                Você tem adoções não confirmadas
+              </Text>
+            </View>
+            <View style={styles.confirmBannerButtonWrap}>
+              <Text style={styles.confirmBannerButtonText}>Confirmar</Text>
+            </View>
+          </TouchableOpacity>
+        ) : null}
         <LinearGradient
           colors={[colors.primary + '22', colors.primary + '08']}
           style={[styles.hero, { borderRadius: 20, overflow: 'hidden' }]}
@@ -357,7 +401,7 @@ export default function DashboardScreen() {
                 <View style={styles.stat}>
                   <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.adoptedCount}</Text>
                   <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
-                    adoção{tutorStats.adoptedCount !== 1 ? 'ões' : ''}
+                    {tutorStats.adoptedCount === 1 ? 'adoção' : 'adoções'}
                   </Text>
                 </View>
                 <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
@@ -404,6 +448,10 @@ export default function DashboardScreen() {
                     <Text style={[styles.feedCardSubtitle, { color: 'rgba(255,255,255,0.9)' }]} numberOfLines={1}>
                       {card.subtitle}
                     </Text>
+                  </View>
+                  <View style={styles.feedCardCta}>
+                    <Text style={styles.feedCardCtaText}>Ver pets</Text>
+                    <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.95)" />
                   </View>
                 </View>
                 <View style={styles.feedThumbsRow}>
@@ -624,6 +672,26 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingBottom: spacing.xl },
+  confirmBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#EA580C',
+    borderRadius: 12,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  confirmBannerContent: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginRight: spacing.md },
+  confirmBannerIcon: {},
+  confirmBannerText: { color: '#fff', fontSize: 13, fontWeight: '600', flex: 1 },
+  confirmBannerButtonWrap: {
+    backgroundColor: '#059669',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 10,
+  },
+  confirmBannerButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   hero: {
     marginBottom: spacing.xl,
     paddingVertical: spacing.lg,
@@ -804,6 +872,8 @@ const styles = StyleSheet.create({
   feedCardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm },
   feedCardIconWrap: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   feedCardText: { flex: 1, marginLeft: spacing.sm, minWidth: 0, justifyContent: 'center' },
+  feedCardCta: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  feedCardCtaText: { color: 'rgba(255,255,255,0.95)', fontSize: 13, fontWeight: '600' },
   feedCardTitle: { fontSize: 15, fontWeight: '700' },
   feedCardSubtitle: { fontSize: 12, marginTop: 2 },
   feedThumbsRow: { flexDirection: 'row', gap: 6, marginTop: spacing.xs },

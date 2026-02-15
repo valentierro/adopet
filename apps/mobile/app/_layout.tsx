@@ -1,18 +1,45 @@
 import { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
+import { TouchableOpacity } from 'react-native';
+import Constants from 'expo-constants';
+import { Ionicons } from '@expo/vector-icons';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
-import * as Sentry from '@sentry/react-native';
 import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
 import { AppWithOfflineBanner } from '../src/components/AppWithOfflineBanner';
+import { HeaderLogo } from '../src/components';
+import { useTheme } from '../src/hooks/useTheme';
 
 SplashScreen.preventAutoHideAsync();
 
+/** Botão Voltar (volta para a tela anterior). */
+function HeaderBackButton() {
+  const router = useRouter();
+  const { colors } = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={() => router.back()}
+      style={{ padding: 8, marginLeft: 4 }}
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+    >
+      <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+    </TouchableOpacity>
+  );
+}
+
+const profileMenuHeaderOptions = {
+  headerTitle: () => <HeaderLogo />,
+  headerTitleAlign: 'center' as const,
+  headerLeft: () => <HeaderBackButton />,
+};
+
+const isExpoGo = Constants.appOwnership === 'expo';
 const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN ?? process.env.SENTRY_DSN ?? '';
-if (SENTRY_DSN) {
+if (!isExpoGo && SENTRY_DSN) {
+  const Sentry = require('@sentry/react-native');
   Sentry.init({
     dsn: SENTRY_DSN,
     enabled: true,
@@ -22,7 +49,12 @@ if (SENTRY_DSN) {
 }
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 2 * 60 * 1000 } },
+  defaultOptions: {
+    queries: {
+      staleTime: 2 * 60 * 1000,
+      gcTime: 5 * 60 * 1000,
+    },
+  },
 });
 
 const asyncStoragePersister = createAsyncStoragePersister({
@@ -31,6 +63,8 @@ const asyncStoragePersister = createAsyncStoragePersister({
 });
 
 function RootLayout() {
+  const router = useRouter();
+  const { colors } = useTheme();
   useEffect(() => {
     SplashScreen.hideAsync();
   }, []);
@@ -40,35 +74,39 @@ function RootLayout() {
       client={queryClient}
       persistOptions={{ persister: asyncStoragePersister, maxAge: 24 * 60 * 60 * 1000 }}
     >
-      <AppErrorBoundary>
+      <AppErrorBoundary onGoHome={() => router.replace('/(tabs)')}>
       <AppWithOfflineBanner>
       <Stack
         screenOptions={{
           headerShown: true,
           headerBackTitle: 'Voltar',
+          headerStyle: { backgroundColor: colors.headerBg },
+          headerTintColor: colors.textPrimary,
         }}
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="profile-edit" options={{ title: 'Editar perfil' }} />
+        <Stack.Screen name="profile-edit" options={{ title: 'Editar perfil', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="change-password" options={{ title: 'Alterar senha', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="tutor-profile" options={{ title: 'Perfil do anunciante' }} />
         <Stack.Screen name="owner-pets" options={{ title: 'Anúncios do tutor' }} />
-        <Stack.Screen name="partner-portal" options={{ title: 'Portal do parceiro' }} />
+        <Stack.Screen name="partner-portal" options={{ title: 'Portal do parceiro', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="partner-edit" options={{ title: 'Dados do estabelecimento' }} />
         <Stack.Screen name="partner-coupons" options={{ title: 'Cupons de desconto' }} />
         <Stack.Screen name="partner-coupon-edit" options={{ title: 'Cupom' }} />
         <Stack.Screen name="partner-services" options={{ title: 'Serviços prestados' }} />
         <Stack.Screen name="partner-service-edit" options={{ title: 'Serviço' }} />
         <Stack.Screen name="partner-analytics" options={{ title: 'Analytics' }} />
-        <Stack.Screen name="partner-subscription" options={{ title: 'Assinatura' }} />
+        <Stack.Screen name="partner-subscription" options={{ title: 'Assinatura', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="partner-success" options={{ title: 'Pagamento concluído' }} />
         <Stack.Screen name="partner-cancel" options={{ title: 'Pagamento cancelado' }} />
         <Stack.Screen name="parceria-apresentacao" options={{ title: 'Seja parceiro' }} />
         <Stack.Screen name="solicitar-parceria" options={{ title: 'Solicitar parceria' }} />
-        <Stack.Screen name="terms" options={{ title: 'Termos de Uso' }} />
-        <Stack.Screen name="privacy" options={{ title: 'Política de Privacidade' }} />
+        <Stack.Screen name="terms" options={{ title: 'Termos de Uso', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="privacy" options={{ title: 'Política de Privacidade', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="bug-report-suggestion" options={{ title: 'Bug report / Sugestões', ...profileMenuHeaderOptions }} />
       </Stack>
       </AppWithOfflineBanner>
       </AppErrorBoundary>
@@ -76,4 +114,4 @@ function RootLayout() {
   );
 }
 
-export default Sentry.wrap(RootLayout);
+export default isExpoGo ? RootLayout : require('@sentry/react-native').wrap(RootLayout);

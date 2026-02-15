@@ -1,14 +1,19 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, RefreshControl, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, ScrollView } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, EmptyState, LoadingLogo, StatusBadge, VerifiedBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useListViewMode } from '../../src/hooks/useListViewMode';
 import { getMinePets, type PetStatus } from '../../src/api/pets';
 import { spacing } from '../../src/theme';
+import { gridLayout } from '../../src/theme/grid';
+
+const { cellWidth, gap, padding: gridPadding, aspectRatio } = gridLayout;
 
 const STATUS_LABEL: Record<string, string> = {
   AVAILABLE: 'Disponível',
@@ -50,8 +55,10 @@ const STATUS_OPTIONS: { value: '' | PetStatus; label: string }[] = [
 export default function MyPetsScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const [nameSearch, setNameSearch] = useState('');
   const [speciesFilter, setSpeciesFilter] = useState<'BOTH' | 'DOG' | 'CAT'>('BOTH');
   const [statusFilter, setStatusFilter] = useState<'' | PetStatus>('');
+  const { viewMode, setViewMode } = useListViewMode('myPetsViewMode', { persist: false });
 
   const {
     data,
@@ -79,12 +86,27 @@ export default function MyPetsScreen() {
       refetch();
     }, [refetch]),
   );
-  const pets = data?.pages.flatMap((p) => p.items) ?? [];
+  const allPets = data?.pages.flatMap((p) => p.items) ?? [];
+  const nameQuery = nameSearch.trim().toLowerCase();
+  const pets = nameQuery
+    ? allPets.filter((p) => (p.name || '').toLowerCase().includes(nameQuery))
+    : allPets;
 
-  if ((isLoading || isRefetching) && pets.length === 0) {
+  if ((isLoading || isRefetching) && allPets.length === 0) {
     return (
       <ScreenContainer>
         <View style={[styles.filtersWrap, { borderBottomColor: colors.surface }]}>
+          <View style={[styles.searchRow, { backgroundColor: colors.surface }]}>
+            <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, { color: colors.textPrimary, backgroundColor: colors.surface }]}
+              placeholder="Buscar por nome do pet"
+              placeholderTextColor={colors.textSecondary}
+              value={nameSearch}
+              onChangeText={setNameSearch}
+              editable={false}
+            />
+          </View>
           <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Espécie</Text>
           <View style={styles.chipRow}>
             {SPECIES_OPTIONS.map((opt) => (
@@ -109,18 +131,33 @@ export default function MyPetsScreen() {
     );
   }
 
-  const hasFilters = speciesFilter !== 'BOTH' || statusFilter !== '';
+  const hasFilters = speciesFilter !== 'BOTH' || statusFilter !== '' || nameSearch.trim() !== '';
   const emptyTitle = pets.length === 0 && hasFilters
-    ? 'Nenhum anúncio com esses filtros'
+    ? nameSearch.trim() ? 'Nenhum pet com esse nome' : 'Nenhum anúncio com esses filtros'
     : 'Nenhum anúncio ainda';
   const emptyMessage = pets.length === 0 && hasFilters
-    ? 'Tente alterar os filtros ou anuncie um pet.'
+    ? nameSearch.trim() ? 'Tente outro nome ou limpe a busca.' : 'Tente alterar os filtros ou anuncie um pet.'
     : 'Anuncie um pet para encontrar um novo lar para ele.';
 
   if (pets.length === 0 && !isFetchingNextPage) {
     return (
       <ScreenContainer>
         <View style={[styles.filtersWrap, { borderBottomColor: colors.surface }]}>
+          <View style={[styles.searchRow, { backgroundColor: colors.surface }]}>
+            <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, { color: colors.textPrimary, backgroundColor: colors.surface }]}
+              placeholder="Buscar por nome do pet"
+              placeholderTextColor={colors.textSecondary}
+              value={nameSearch}
+              onChangeText={setNameSearch}
+            />
+            {nameSearch.length > 0 && (
+              <TouchableOpacity hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} onPress={() => setNameSearch('')} style={styles.searchClear}>
+                <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
           <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Espécie</Text>
           <View style={styles.chipRow}>
             {SPECIES_OPTIONS.map((opt) => (
@@ -180,7 +217,44 @@ export default function MyPetsScreen() {
   return (
     <ScreenContainer scroll={false}>
       <View style={[styles.filtersWrap, { borderBottomColor: colors.surface }]}>
-        <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Espécie</Text>
+        <View style={[styles.searchRow, { backgroundColor: colors.surface }]}>
+          <Ionicons name="search" size={20} color={colors.textSecondary} style={styles.searchIcon} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.textPrimary, backgroundColor: colors.surface }]}
+            placeholder="Buscar por nome do pet"
+            placeholderTextColor={colors.textSecondary}
+            value={nameSearch}
+            onChangeText={setNameSearch}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {nameSearch.length > 0 && (
+            <TouchableOpacity
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              onPress={() => setNameSearch('')}
+              style={styles.searchClear}
+            >
+              <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
+        <View style={styles.filterHeaderRow}>
+          <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Espécie</Text>
+          <View style={styles.viewModeRow}>
+            <TouchableOpacity
+              style={[styles.viewModeBtn, viewMode === 'list' && { backgroundColor: colors.primary }]}
+              onPress={() => setViewMode('list')}
+            >
+              <Ionicons name="list" size={22} color={viewMode === 'list' ? '#fff' : colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.viewModeBtn, viewMode === 'grid' && { backgroundColor: colors.primary }]}
+              onPress={() => setViewMode('grid')}
+            >
+              <Ionicons name="grid-outline" size={22} color={viewMode === 'grid' ? '#fff' : colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        </View>
         <View style={styles.chipRow}>
           {SPECIES_OPTIONS.map((opt) => (
             <TouchableOpacity
@@ -215,10 +289,13 @@ export default function MyPetsScreen() {
           ))}
         </ScrollView>
       </View>
-      <FlatList
+      <FlashList
         data={pets}
         keyExtractor={(p) => p.id}
-        contentContainerStyle={styles.list}
+        numColumns={viewMode === 'grid' ? 2 : 1}
+        estimatedItemSize={viewMode === 'grid' ? 220 : 100}
+        contentContainerStyle={[styles.list, viewMode === 'grid' && styles.gridList]}
+        key={viewMode}
         refreshControl={
           <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.primary} />
         }
@@ -231,66 +308,119 @@ export default function MyPetsScreen() {
             </View>
           ) : null
         }
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={[styles.card, { backgroundColor: colors.surface }]}
-            onPress={() => router.push(`/pet-edit/${item.id}`)}
-            activeOpacity={0.7}
-          >
-            <Image
-              source={{ uri: item.photos?.[0] ?? 'https://placehold.co/80?text=Pet' }}
-              style={styles.thumb}
-            />
-            <View style={styles.cardBody}>
-              <View style={styles.cardTitleRow}>
-                <Text style={[styles.cardName, { color: colors.textPrimary }]} numberOfLines={1}>{item.name}</Text>
-                {item.verified && <VerifiedBadge size={16} iconBackgroundColor={colors.primary} />}
+        renderItem={({ item }) =>
+          viewMode === 'grid' ? (
+            <TouchableOpacity
+              style={[styles.gridCard, { backgroundColor: colors.surface, marginHorizontal: gridLayout.gap / 2, marginBottom: gridLayout.gap }]}
+              onPress={() => router.push(`/pet-edit/${item.id}`)}
+              activeOpacity={0.7}
+            >
+              <Image
+                source={{ uri: item.photos?.[0] ?? 'https://placehold.co/80?text=Pet' }}
+                style={[styles.gridThumb, { width: cellWidth, height: cellWidth / aspectRatio }]}
+                contentFit="cover"
+              />
+              <View style={styles.gridCardInfo}>
+                <View style={styles.gridCardTitleRow}>
+                  <Text style={[styles.gridCardName, { color: colors.textPrimary }]} numberOfLines={1}>{item.name}</Text>
+                  {item.verified && <VerifiedBadge size={14} iconBackgroundColor={colors.primary} />}
+                </View>
+                <View style={styles.gridBadgesRow}>
+                  {item.partner && (
+                    <View style={[styles.gridPartnerBadge, { backgroundColor: (item.partner as { isPaidPartner?: boolean }).isPaidPartner ? (colors.warning || '#d97706') + '30' : (colors.primary + '25') }]}>
+                      <Ionicons name={(item.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={9} color={(item.partner as { isPaidPartner?: boolean }).isPaidPartner ? (colors.warning || '#d97706') : colors.primary} />
+                      <Text style={[styles.gridPartnerBadgeText, { color: (item.partner as { isPaidPartner?: boolean }).isPaidPartner ? (colors.warning || '#d97706') : colors.primary }]} numberOfLines={1}>
+                        {(item.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'Patrocinado' : 'Parceiro'}
+                      </Text>
+                    </View>
+                  )}
+                  <StatusBadge label={item.vaccinated ? 'Vacinado' : 'Não vacinado'} variant={item.vaccinated ? 'success' : 'warning'} />
+                  {typeof item.neutered === 'boolean' && (
+                    <StatusBadge label={item.neutered ? 'Castrado' : 'Não castrado'} variant={item.neutered ? 'success' : 'warning'} />
+                  )}
+                </View>
+                <View style={[styles.gridStatusBadge, { backgroundColor: (item.publicationStatus === 'PENDING' ? PUBLICATION_STATUS_COLOR.PENDING : STATUS_COLOR[item.status as string] ?? colors.background) + '25' }]}>
+                  <Text style={[styles.gridStatusText, { color: item.publicationStatus === 'PENDING' ? PUBLICATION_STATUS_COLOR.PENDING : STATUS_COLOR[item.status as string] ?? colors.textSecondary }]} numberOfLines={1}>
+                    {item.publicationStatus === 'PENDING'
+                      ? PUBLICATION_STATUS_LABEL.PENDING
+                      : (STATUS_LABEL[item.status as string] ?? item.status)}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.gridEditBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => router.push(`/pet-edit/${item.id}`)}
+                >
+                  <Ionicons name="create-outline" size={16} color="#fff" />
+                  <Text style={styles.gridEditBtnText}>Editar</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
-                {item.species === 'dog' ? 'Cachorro' : 'Gato'} • {item.age} anos
-              </Text>
-              <View style={styles.badgesRow}>
-                {item.partner && (
-                  <View style={[styles.partnerBadge, { backgroundColor: (item.partner as { isPaidPartner?: boolean }).isPaidPartner ? (colors.warning || '#d97706') + '30' : (colors.primary + '25') }]}>
-                    <Ionicons name={(item.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={10} color={(item.partner as { isPaidPartner?: boolean }).isPaidPartner ? (colors.warning || '#d97706') : colors.primary} />
-                    <Text style={[styles.partnerBadgeText, { color: (item.partner as { isPaidPartner?: boolean }).isPaidPartner ? (colors.warning || '#d97706') : colors.primary }]}>
-                      {(item.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'Patrocinado' : 'Parceiro'}
-                    </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.card, { backgroundColor: colors.surface }]}
+              onPress={() => router.push(`/pet-edit/${item.id}`)}
+              activeOpacity={0.7}
+            >
+              <Image
+                source={{ uri: item.photos?.[0] ?? 'https://placehold.co/80?text=Pet' }}
+                style={styles.thumb}
+              />
+              <View style={styles.cardBody}>
+                <View style={styles.cardTitleRow}>
+                  <Text style={[styles.cardName, { color: colors.textPrimary }]} numberOfLines={1}>{item.name}</Text>
+                  {item.verified && <VerifiedBadge size={16} iconBackgroundColor={colors.primary} />}
+                </View>
+                <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
+                  {item.species === 'dog' ? 'Cachorro' : 'Gato'} • {item.age} anos
+                </Text>
+                <View style={styles.badgesRow}>
+                  {item.partner && (
+                    <View style={[styles.partnerBadge, { backgroundColor: (item.partner as { isPaidPartner?: boolean }).isPaidPartner ? (colors.warning || '#d97706') + '30' : (colors.primary + '25') }]}>
+                      <Ionicons name={(item.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={10} color={(item.partner as { isPaidPartner?: boolean }).isPaidPartner ? (colors.warning || '#d97706') : colors.primary} />
+                      <Text style={[styles.partnerBadgeText, { color: (item.partner as { isPaidPartner?: boolean }).isPaidPartner ? (colors.warning || '#d97706') : colors.primary }]}>
+                        {(item.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'Patrocinado' : 'Parceiro'}
+                      </Text>
+                    </View>
+                  )}
+                  <StatusBadge label={item.vaccinated ? 'Vacinado' : 'Não vacinado'} variant={item.vaccinated ? 'success' : 'warning'} />
+                  {typeof item.neutered === 'boolean' && (
+                    <StatusBadge label={item.neutered ? 'Castrado' : 'Não castrado'} variant={item.neutered ? 'success' : 'warning'} />
+                  )}
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: (item.publicationStatus === 'PENDING' ? PUBLICATION_STATUS_COLOR.PENDING : STATUS_COLOR[item.status as string] ?? colors.background) + '25' }]}>
+                  <View style={[styles.statusDot, { backgroundColor: item.publicationStatus === 'PENDING' ? PUBLICATION_STATUS_COLOR.PENDING : STATUS_COLOR[item.status as string] ?? colors.textSecondary }]} />
+                  <Text style={[styles.statusText, { color: item.publicationStatus === 'PENDING' ? PUBLICATION_STATUS_COLOR.PENDING : STATUS_COLOR[item.status as string] ?? colors.textSecondary }]}>
+                    {item.publicationStatus === 'PENDING'
+                      ? PUBLICATION_STATUS_LABEL.PENDING
+                      : (STATUS_LABEL[item.status as string] ?? item.status)}
+                  </Text>
+                </View>
+                {item.adoptionRejectedAt ? (
+                  <View style={[styles.adminBadge, { backgroundColor: (colors.error || '#DC2626') + '25', marginTop: 6 }]}>
+                    <Text style={[styles.adminBadgeText, { color: colors.error || '#DC2626' }]}>Rejeitado pelo Adopet</Text>
                   </View>
-                )}
-                <StatusBadge label={item.vaccinated ? 'Vacinado' : 'Não vacinado'} variant={item.vaccinated ? 'success' : 'warning'} />
-                {typeof item.neutered === 'boolean' && (
-                  <StatusBadge label={item.neutered ? 'Castrado' : 'Não castrado'} variant={item.neutered ? 'success' : 'warning'} />
-                )}
+                ) : item.status === 'ADOPTED' && item.adoptedAt ? (
+                  item.confirmedByAdopet ? (
+                    <View style={[styles.adminBadge, { backgroundColor: '#0D9488' + '25', marginTop: 6 }]}>
+                      <Text style={[styles.adminBadgeText, { color: '#0D9488' }]}>Confirmado pelo Adopet</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.adminBadge, { backgroundColor: (colors.textSecondary || '#78716c') + '20', marginTop: 6 }]}>
+                      <Text style={[styles.adminBadgeText, { color: colors.textSecondary || '#78716c' }]}>Aguardando confirmação Adopet</Text>
+                    </View>
+                  )
+                ) : null}
+                {item.status === 'ADOPTED' && item.adoptedAt ? (
+                  <Text style={[styles.cardMeta, { color: colors.textSecondary, marginTop: 2 }]}>
+                    Adotado em {new Date(item.adoptedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                    {item.adopterUsername ? ` • @${item.adopterUsername}` : ''}
+                  </Text>
+                ) : null}
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: (item.publicationStatus === 'PENDING' ? PUBLICATION_STATUS_COLOR.PENDING : STATUS_COLOR[item.status as string] ?? colors.background) + '25' }]}>
-                <View style={[styles.statusDot, { backgroundColor: item.publicationStatus === 'PENDING' ? PUBLICATION_STATUS_COLOR.PENDING : STATUS_COLOR[item.status as string] ?? colors.textSecondary }]} />
-                <Text style={[styles.statusText, { color: item.publicationStatus === 'PENDING' ? PUBLICATION_STATUS_COLOR.PENDING : STATUS_COLOR[item.status as string] ?? colors.textSecondary }]}>
-                  {item.publicationStatus === 'PENDING'
-                    ? PUBLICATION_STATUS_LABEL.PENDING
-                    : (STATUS_LABEL[item.status as string] ?? item.status)}
-                </Text>
-              </View>
-              {item.status === 'ADOPTED' && item.adoptedAt ? (
-                <View style={[styles.adminBadge, { backgroundColor: '#0D9488' + '25', marginTop: 6 }]}>
-                  <Text style={[styles.adminBadgeText, { color: '#0D9488' }]}>Confirmado pelo Adopet</Text>
-                </View>
-              ) : null}
-              {item.adoptionRejectedAt ? (
-                <View style={[styles.adminBadge, { backgroundColor: (colors.error || '#DC2626') + '25', marginTop: 6 }]}>
-                  <Text style={[styles.adminBadgeText, { color: colors.error || '#DC2626' }]}>Não Confirmado pelo Adopet</Text>
-                </View>
-              ) : null}
-              {item.status === 'ADOPTED' && item.adoptedAt ? (
-                <Text style={[styles.cardMeta, { color: colors.textSecondary, marginTop: 2 }]}>
-                  Adotado em {new Date(item.adoptedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                  {item.adopterUsername ? ` • @${item.adopterUsername}` : ''}
-                </Text>
-              ) : null}
-            </View>
-            <Text style={[styles.arrow, { color: colors.textSecondary }]}>›</Text>
-          </TouchableOpacity>
-        )}
+              <Text style={[styles.arrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+          )
+        }
       />
     </ScreenContainer>
   );
@@ -303,6 +433,22 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
   },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.08)',
+    paddingHorizontal: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  searchIcon: { marginRight: spacing.sm },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 10,
+    fontSize: 16,
+  },
+  searchClear: { padding: spacing.xs },
   filterLabel: {
     fontSize: 12,
     fontWeight: '600',
@@ -354,4 +500,36 @@ const styles = StyleSheet.create({
   adminBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   adminBadgeText: { fontSize: 11, fontWeight: '600' },
   arrow: { fontSize: 24 },
+  filterHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm },
+  viewModeRow: { flexDirection: 'row', gap: 4 },
+  viewModeBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  gridList: { paddingHorizontal: gridPadding, gap },
+  gridRow: { gap, marginBottom: gap },
+  gridCard: { width: cellWidth, borderRadius: 12, overflow: 'hidden' },
+  gridThumb: { borderTopLeftRadius: 12, borderTopRightRadius: 12 },
+  gridCardInfo: { padding: spacing.sm },
+  gridCardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  gridCardName: { fontSize: 14, fontWeight: '700', flex: 1 },
+  gridBadgesRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 4 },
+  gridPartnerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingVertical: 1,
+    paddingHorizontal: 4,
+    borderRadius: 6,
+  },
+  gridPartnerBadgeText: { fontSize: 9, fontWeight: '600' },
+  gridStatusBadge: { alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4 },
+  gridStatusText: { fontSize: 11, fontWeight: '600' },
+  gridEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: spacing.sm,
+  },
+  gridEditBtnText: { color: '#fff', fontSize: 12, fontWeight: '600' },
 });

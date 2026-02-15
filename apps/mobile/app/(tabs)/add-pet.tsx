@@ -148,6 +148,23 @@ export default function AddPetWizardScreen() {
     setImageUris((prev) => [...prev, ...uris].slice(0, 10));
   }, []);
 
+  const capturePhoto = useCallback(async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão', 'Precisamos acessar a câmera para capturar a foto.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsEditing: true,
+      aspect: [4, 3],
+    });
+    if (result.canceled) return;
+    const uri = result.assets[0]?.uri;
+    if (uri) setImageUris((prev) => [...prev, uri].slice(0, 10));
+  }, []);
+
   const removeImage = useCallback((index: number) => {
     setImageUris((prev) => prev.filter((_, i) => i !== index));
     setUploadedKeys((prev) => prev.filter((_, i) => i !== index));
@@ -209,8 +226,25 @@ export default function AddPetWizardScreen() {
       const ok = await uploadImages();
       if (!ok) return;
     }
+    if (step === 1) {
+      if (!form.name.trim()) {
+        Alert.alert('Campo obrigatório', 'Informe o nome do pet.');
+        return;
+      }
+      const age = parseInt(form.age, 10);
+      if (form.age === '' || isNaN(age) || age < 0 || age > 30) {
+        Alert.alert('Campo obrigatório', 'Selecione a idade do pet (0 a 30 anos).');
+        return;
+      }
+    }
+    if (step === 3) {
+      if (form.description.trim().length < 10) {
+        Alert.alert('Campo obrigatório', 'A descrição deve ter pelo menos 10 caracteres.');
+        return;
+      }
+    }
     if (step < STEPS.length - 1) setStep((s) => s + 1);
-  }, [step, imageUris.length, uploadImages]);
+  }, [step, imageUris.length, uploadImages, form.name, form.age, form.description]);
 
   const handleSubmit = useCallback(async () => {
     if (!user?.avatarUrl || !user?.phone) {
@@ -301,8 +335,20 @@ export default function AddPetWizardScreen() {
         </Text>
 
         {step === 0 && (
+          <View style={[styles.expiryInfoBox, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '40' }]}>
+            <Ionicons name="time-outline" size={20} color={colors.primary} style={styles.expiryInfoIcon} />
+            <Text style={[styles.expiryInfoText, { color: colors.textPrimary }]}>
+              Os anúncios têm validade de <Text style={styles.expiryInfoBold}>60 dias</Text> e podem ser prorrogados. Enviaremos notificações quando faltarem <Text style={styles.expiryInfoBold}>10, 5 e 1 dia</Text> para a expiração.
+            </Text>
+          </View>
+        )}
+
+        {step === 0 && (
           <View style={styles.photoStep}>
-            <PrimaryButton title="Escolher fotos" onPress={pickImages} disabled={uploading} />
+            <View style={styles.photoButtonsRow}>
+              <PrimaryButton title="Escolher fotos" onPress={pickImages} disabled={uploading} style={styles.photoButton} />
+              <SecondaryButton title="Capturar foto" onPress={capturePhoto} disabled={uploading} style={styles.photoButton} />
+            </View>
             {imageUris.length > 0 && (
               <ScrollView horizontal style={styles.thumbs} showsHorizontalScrollIndicator={false}>
                 {imageUris.map((uri, i) => (
@@ -722,10 +768,23 @@ export default function AddPetWizardScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg },
+  container: { paddingTop: spacing.sm, paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
   title: { fontSize: 22, fontWeight: '700', marginBottom: spacing.xs },
   stepLabel: { fontSize: 14, marginBottom: spacing.md },
+  expiryInfoBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: spacing.lg,
+  },
+  expiryInfoIcon: { marginRight: spacing.sm, marginTop: 2 },
+  expiryInfoText: { flex: 1, fontSize: 14, lineHeight: 21 },
+  expiryInfoBold: { fontWeight: '700' },
   photoStep: { marginBottom: spacing.lg },
+  photoButtonsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
+  photoButton: { flex: 1 },
   thumbs: { marginVertical: spacing.md },
   thumbWrap: { marginRight: spacing.sm, position: 'relative' },
   thumb: { width: 80, height: 80, borderRadius: 8 },

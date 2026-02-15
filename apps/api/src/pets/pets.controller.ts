@@ -99,6 +99,23 @@ export class PetsController {
     return this.petsService.getConversationPartners(id, user.id);
   }
 
+  @Get(':id/similar')
+  @ApiOperation({ summary: 'Pets parecidos / quem viu este pet também viu' })
+  async getSimilar(@Param('id') id: string): Promise<PetResponseDto[]> {
+    return this.petsService.getSimilarPets(id);
+  }
+
+  @Post(':id/confirm-adoption')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Adotante confirma que realizou a adoção (para seguir ao painel admin)' })
+  async confirmAdoption(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ): Promise<{ confirmed: boolean }> {
+    return this.petsService.confirmAdoption(id, user.id);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Buscar pet por ID' })
   async findOne(@Param('id') id: string): Promise<PetResponseDto> {
@@ -140,6 +157,17 @@ export class PetsController {
     @Body() dto: PatchStatusDto,
   ): Promise<PetResponseDto> {
     return this.petsService.patchStatus(id, user.id, dto.status, dto.pendingAdopterId, dto.pendingAdopterUsername);
+  }
+
+  @Post(':id/extend')
+  @UseGuards(JwtAuthGuard, PetOwnerGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Prorrogar anúncio por mais 60 dias (apenas tutor; pet disponível ou em andamento)' })
+  async extendListing(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ): Promise<PetResponseDto> {
+    return this.petsService.extendListing(id, user.id);
   }
 
   @Delete(':id/media/:mediaId')

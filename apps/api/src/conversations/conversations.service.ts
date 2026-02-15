@@ -32,7 +32,7 @@ export class ConversationsService {
     if (blocked) throw new ForbiddenException('Não é possível iniciar conversa com este usuário.');
 
     const existing = await this.prisma.conversation.findUnique({
-      where: { petId_adopterId: { petId, adopterId: userId } },
+      where: { petId_adopterId_type: { petId, adopterId: userId, type: 'NORMAL' } },
     });
     if (existing) return { id: existing.id };
 
@@ -44,6 +44,7 @@ export class ConversationsService {
       data: {
         petId,
         adopterId: userId,
+        type: 'NORMAL',
         participants: {
           create: [
             { userId: ownerId },
@@ -96,7 +97,12 @@ export class ConversationsService {
             },
           },
         },
-        pet: { include: { media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }], take: 1 } } },
+        pet: {
+          include: {
+            media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }], take: 1 },
+            adoption: { select: { id: true } },
+          },
+        },
       },
     });
     if (!conv) return null;
@@ -104,9 +110,14 @@ export class ConversationsService {
       | { id: string; name: string; avatarUrl: string | null; city: string | null; housingType: string | null; hasYard: boolean | null; hasOtherPets: boolean | null; hasChildren: boolean | null; timeAtHome: string | null }
       | undefined;
     const otherUserTyping = this.typingService.isOtherUserTyping(conversationId, userId);
-    const adoptionFinalized = conv.pet?.status === 'ADOPTED';
+    // Adoção finalizada = adotante já confirmou ou já existe registro Adoption; antes disso exibe botão "Confirmar adoção"
+    const adoptionFinalized =
+      conv.pet?.status === 'ADOPTED' &&
+      (!!conv.pet.adopterConfirmedAt || !!conv.pet.adoption);
     const result: {
       id: string;
+      type: string;
+      petId?: string;
       otherUser: {
         id: string;
         name: string;
@@ -118,10 +129,12 @@ export class ConversationsService {
         hasChildren?: boolean;
         timeAtHome?: string;
       };
-      pet?: { name: string; photoUrl?: string; adoptionFinalized?: boolean };
+      pet?: { name: string; photoUrl?: string; adoptionFinalized?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string };
       otherUserTyping?: boolean;
     } = {
       id: conv.id,
+      type: conv.type ?? 'NORMAL',
+      petId: conv.petId,
       otherUser: other
         ? {
             id: other.id,
@@ -142,6 +155,9 @@ export class ConversationsService {
         name: conv.pet.name,
         photoUrl: conv.pet.media?.[0]?.url,
         adoptionFinalized,
+        pendingAdopterId: conv.pet.pendingAdopterId ?? undefined,
+        isTutor: conv.pet.ownerId === userId,
+        status: conv.pet.status,
       };
     }
     return result;
@@ -180,8 +196,8 @@ export class ConversationsService {
             by: ['conversationId'],
             where: {
               conversationId: { in: convIds },
-              senderId: { not: userId },
               readAt: null,
+              OR: [{ senderId: { not: userId } }, { senderId: null }],
             },
             _count: { id: true },
           })
@@ -207,7 +223,7 @@ export class ConversationsService {
           avatarUrl: other?.avatarUrl ?? undefined,
         },
         lastMessage: last
-          ? { content: last.content, createdAt: last.createdAt.toISOString(), senderId: last.senderId }
+          ? { content: last.content, createdAt: last.createdAt.toISOString(), senderId: last.senderId ?? '' }
           : undefined,
         unreadCount: unreadByConv[c.id] ?? 0,
       };

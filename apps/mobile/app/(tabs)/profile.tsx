@@ -1,14 +1,15 @@
 import { useEffect, useCallback } from 'react';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, ActivityIndicator, Share } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Share } from 'react-native';
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PrimaryButton, SecondaryButton, LoadingLogo, PageIntro, VerifiedBadge, TutorLevelBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuthStore } from '../../src/stores/authStore';
-import { getMe, getTutorStats, deactivateAccount, exportMyData } from '../../src/api/me';
+import { getMe, getTutorStats, getPendingAdoptionConfirmations, deactivateAccount, exportMyData } from '../../src/api/me';
+import { getAdminStats } from '../../src/api/admin';
 import { requestVerification, getVerificationStatus } from '../../src/api/verification';
 import { presign, confirmAvatarUpload } from '../../src/api/uploads';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
@@ -36,13 +37,25 @@ export default function ProfileScreen() {
     queryFn: getTutorStats,
     staleTime: 60_000,
   });
-  useFocusEffect(
-    useCallback(() => {
-      refetchMe();
-      refetchVerification();
-      refetchTutorStats();
-    }, [refetchMe, refetchVerification, refetchTutorStats]),
-  );
+  const { data: pendingConfirmations, refetch: refetchPendingConfirmations } = useQuery({
+    queryKey: ['me', 'pending-adoption-confirmations'],
+    queryFn: getPendingAdoptionConfirmations,
+    staleTime: 30_000,
+  });
+  const pendingConfirmCount = pendingConfirmations?.items?.length ?? 0;
+  const { data: adminStats } = useQuery({
+    queryKey: ['admin', 'stats'],
+    queryFn: getAdminStats,
+    enabled: user?.isAdmin === true,
+    staleTime: 60_000,
+  });
+  const adminPendingTotal =
+    user?.isAdmin && adminStats
+      ? (adminStats.pendingPetsCount ?? 0) +
+        (adminStats.pendingReportsCount ?? 0) +
+        (adminStats.pendingAdoptionsByTutorCount ?? 0) +
+        (adminStats.pendingVerificationsCount ?? 0)
+      : 0;
   const requestUserVerification = useMutation({
     mutationFn: () => requestVerification({ type: 'USER_VERIFIED' }),
     onSuccess: () => {
@@ -159,7 +172,7 @@ export default function ProfileScreen() {
         disabled={uploadAvatarMutation.isPending}
       >
         {user?.avatarUrl ? (
-          <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
+          <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} contentFit="cover" />
         ) : (
           <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface }]}>
             <Text style={[styles.avatarText, { color: colors.textSecondary }]}>
@@ -230,53 +243,69 @@ export default function ProfileScreen() {
       )}
       <TouchableOpacity
         style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/my-pets')}
-      >
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Meus anúncios</Text>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/my-adoptions')}
-      >
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Minhas adoções</Text>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
         onPress={() => router.push('/profile-edit')}
       >
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Editar perfil</Text>
+        <View style={styles.menuItemLeft}>
+          <Ionicons name="person-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Editar perfil</Text>
+        </View>
+        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+        onPress={() => router.push('/change-password')}
+      >
+        <View style={styles.menuItemLeft}>
+          <Ionicons name="lock-closed-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Segurança (alterar senha)</Text>
+        </View>
         <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.menuItem, { borderBottomColor: colors.surface }]}
         onPress={() => router.push('/preferences')}
       >
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Preferências</Text>
+        <View style={styles.menuItemLeft}>
+          <Ionicons name="settings-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Preferências</Text>
+        </View>
         <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/passed-pets')}
+        onPress={() => router.push('/bug-report-suggestion')}
       >
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Pets que você passou</Text>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/map')}
-      >
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Mapa de pets</Text>
+        <View style={styles.menuItemLeft}>
+          <Ionicons name="bug-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Bug report / Sugestões</Text>
+        </View>
         <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.menuItem, { borderBottomColor: colors.surface }]}
         onPress={() => router.push('/saved-searches')}
       >
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Buscas salvas</Text>
+        <View style={styles.menuItemLeft}>
+          <Ionicons name="search-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Buscas salvas</Text>
+        </View>
         <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
       </TouchableOpacity>
+      {pendingConfirmCount > 0 && (
+        <TouchableOpacity
+          style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+          onPress={() => router.push('/adoption-confirm')}
+        >
+          <View style={styles.menuItemLeft}>
+            <Ionicons name="checkmark-done-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+            <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Confirmar adoção</Text>
+            <View style={[styles.pendingBadge, { backgroundColor: colors.primary }]}>
+              <Text style={styles.pendingBadgeText}>{pendingConfirmCount}</Text>
+            </View>
+          </View>
+          <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+        </TouchableOpacity>
+      )}
       {user?.partner?.isPaidPartner && (
         <TouchableOpacity
           style={[
@@ -286,7 +315,10 @@ export default function ProfileScreen() {
           ]}
           onPress={() => router.push('/partner-portal')}
         >
-          <Text style={[styles.menuLabel, { color: colors.primary }]}>Portal do parceiro</Text>
+          <View style={styles.menuItemLeft}>
+            <Ionicons name="business-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+            <Text style={[styles.menuLabel, { color: colors.primary }]}>Portal do parceiro</Text>
+          </View>
           <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
         </TouchableOpacity>
       )}
@@ -295,7 +327,10 @@ export default function ProfileScreen() {
           style={[styles.menuItem, { borderBottomColor: colors.surface }]}
           onPress={() => router.push('/partner-subscription')}
         >
-          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Renovar assinatura do parceiro</Text>
+          <View style={styles.menuItemLeft}>
+            <Ionicons name="card-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+            <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Renovar assinatura do parceiro</Text>
+          </View>
           <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
         </TouchableOpacity>
       )}
@@ -303,28 +338,40 @@ export default function ProfileScreen() {
         style={[styles.menuItem, { borderBottomColor: colors.surface }]}
         onPress={() => router.push('/partners')}
       >
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Parceiros Adopet</Text>
+        <View style={styles.menuItemLeft}>
+          <Ionicons name="people-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Parceiros Adopet</Text>
+        </View>
         <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.menuItem, { borderBottomColor: colors.surface }]}
         onPress={() => router.push('/terms')}
       >
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Termos de Uso</Text>
+        <View style={styles.menuItemLeft}>
+          <Ionicons name="document-text-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Termos de Uso</Text>
+        </View>
         <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.menuItem, { borderBottomColor: colors.surface }]}
         onPress={() => router.push('/privacy')}
       >
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Política de Privacidade</Text>
+        <View style={styles.menuItemLeft}>
+          <Ionicons name="shield-checkmark-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Política de Privacidade</Text>
+        </View>
         <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.menuItem, { borderBottomColor: colors.surface }]}
         onPress={handleExportData}
       >
-        <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Exportar meus dados (LGPD)</Text>
+        <View style={styles.menuItemLeft}>
+          <Ionicons name="download-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Exportar meus dados (LGPD)</Text>
+        </View>
         <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
       </TouchableOpacity>
       {user?.isAdmin && (
@@ -336,7 +383,17 @@ export default function ProfileScreen() {
           ]}
           onPress={() => router.push('/admin')}
         >
-          <Text style={[styles.menuLabel, { color: colors.primary }]}>Administração</Text>
+          <View style={styles.menuItemLeft}>
+            <Ionicons name="shield-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+            <Text style={[styles.menuLabel, { color: colors.primary }]}>Administração</Text>
+            {adminPendingTotal > 0 && (
+              <View style={[styles.pendingBadge, { backgroundColor: colors.primary, marginLeft: spacing.sm }]}>
+                <Text style={styles.pendingBadgeText}>
+                  {adminPendingTotal > 99 ? '99+' : adminPendingTotal}
+                </Text>
+              </View>
+            )}
+          </View>
           <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
         </TouchableOpacity>
       )}
@@ -499,8 +556,30 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
   },
+  menuItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  menuIcon: {
+    marginRight: spacing.sm,
+  },
   menuLabel: {
     fontSize: 16,
+  },
+  pendingBadge: {
+    marginLeft: 8,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  pendingBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
   menuArrow: {
     fontSize: 20,

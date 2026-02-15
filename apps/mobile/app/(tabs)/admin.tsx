@@ -11,7 +11,6 @@ import {
   TextInput,
   Modal,
   Platform,
-  Image,
   type LayoutChangeEvent,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -32,6 +31,8 @@ import {
   getAdminStats,
   getAdminAdoptions,
   createAdoption,
+  confirmAdoptionByAdopet,
+  rejectAdoptionByAdopet,
   searchAdminUsers,
   getAdminPetsAvailable,
   getAdminPendingAdoptionsByTutor,
@@ -109,6 +110,7 @@ export default function AdminScreen() {
   const { colors } = useTheme();
   const queryClient = useQueryClient();
   const [selectedPetIds, setSelectedPetIds] = useState<Set<string>>(new Set());
+  const [batchPublicationStatus, setBatchPublicationStatus] = useState<'APPROVED' | 'REJECTED' | null>(null);
   const [selectedVerificationIds, setSelectedVerificationIds] = useState<Set<string>>(new Set());
   const [selectedReportIds, setSelectedReportIds] = useState<Set<string>>(new Set());
   const [selectedPendingAdoptionPetIds, setSelectedPendingAdoptionPetIds] = useState<Set<string>>(new Set());
@@ -231,6 +233,8 @@ export default function AdminScreen() {
   const [registerAdopterId, setRegisterAdopterId] = useState<string | null>(null);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [selectedAdoption, setSelectedAdoption] = useState<AdoptionItem | null>(null);
+  const [confirmingAdoptionPetId, setConfirmingAdoptionPetId] = useState<string | null>(null);
+  const [rejectingAdoptionPetId, setRejectingAdoptionPetId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [resolveReportModal, setResolveReportModal] = useState<{ reportId: string } | null>(null);
   const [resolveReportFeedback, setResolveReportFeedback] = useState('');
@@ -305,6 +309,57 @@ export default function AdminScreen() {
       setToastMessage('Adoção registrada. O pet foi marcado como adotado.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível registrar a adoção.')),
+  });
+
+  const confirmByAdopetMutation = useMutation({
+    mutationFn: (petId: string) => confirmAdoptionByAdopet(petId),
+    onMutate: (petId) => setConfirmingAdoptionPetId(petId),
+    onSuccess: (_, petId) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'adoptions'] });
+      setSelectedAdoption((prev) => (prev && prev.petId === petId ? { ...prev, confirmedByAdopet: true } : prev));
+      setSelectedPendingAdoptionPetIds((prev) => { const s = new Set(prev); s.delete(petId); return s; });
+      setToastMessage('Adoção confirmada pelo Adopet.');
+    },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível confirmar.')),
+    onSettled: () => setConfirmingAdoptionPetId(null),
+  });
+
+  const rejectByAdopetMutation = useMutation({
+    mutationFn: (petId: string) => rejectAdoptionByAdopet(petId),
+    onMutate: (petId) => setRejectingAdoptionPetId(petId),
+    onSuccess: (_, petId) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'adoptions'] });
+      setSelectedAdoption((prev) => (prev && prev.petId === petId ? null : prev));
+      setSelectedPendingAdoptionPetIds((prev) => { const s = new Set(prev); s.delete(petId); return s; });
+      setToastMessage('Adoção rejeitada pelo Adopet.');
+    },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível rejeitar.')),
+    onSettled: () => setRejectingAdoptionPetId(null),
+  });
+
+  const pendingAdoptionsList = adoptionsList.filter((a) => !a.confirmedByAdopet);
+  const bulkConfirmPendingMutation = useMutation({
+    mutationFn: async (petIds: string[]) => {
+      await Promise.all(petIds.map((id) => confirmAdoptionByAdopet(id)));
+    },
+    onSuccess: (_, petIds) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'adoptions'] });
+      setSelectedPendingAdoptionPetIds(new Set());
+      setToastMessage(`${petIds.length} adoção(ões) confirmada(s) pelo Adopet.`);
+    },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível confirmar em massa.')),
+  });
+
+  const bulkRejectPendingMutation = useMutation({
+    mutationFn: async (petIds: string[]) => {
+      await Promise.all(petIds.map((id) => rejectAdoptionByAdopet(id)));
+    },
+    onSuccess: (_, petIds) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'adoptions'] });
+      setSelectedPendingAdoptionPetIds(new Set());
+      setToastMessage(`${petIds.length} adoção(ões) rejeitada(s) pelo Adopet.`);
+    },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível rejeitar em massa.')),
   });
 
   const setPublicationMutation = useMutation({
@@ -626,12 +681,21 @@ export default function AdminScreen() {
           text: status === 'APPROVED' ? 'Aprovar todos' : 'Rejeitar todos',
           style: status === 'REJECTED' ? 'destructive' : 'default',
           onPress: async () => {
-            for (const petId of ids) {
-              await setPetPublication(petId, status);
+            setBatchPublicationStatus(status);
+            try {
+              for (const petId of ids) {
+                await setPetPublication(petId, status);
+              }
+              setSelectedPetIds(new Set());
+              queryClient.invalidateQueries({ queryKey: ['admin', 'pending-pets'] });
+              queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
+              queryClient.invalidateQueries({ queryKey: ['feed'] });
+              setToastMessage(status === 'APPROVED' ? `${ids.length} anúncio(s) aprovado(s).` : `${ids.length} anúncio(s) rejeitado(s).`);
+            } catch (e: unknown) {
+              Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível atualizar alguns anúncios.'));
+            } finally {
+              setBatchPublicationStatus(null);
             }
-            setSelectedPetIds(new Set());
-            queryClient.invalidateQueries({ queryKey: ['admin', 'pending-pets'] });
-            queryClient.invalidateQueries({ queryKey: ['feed'] });
           },
         },
       ]
@@ -1029,29 +1093,139 @@ export default function AdminScreen() {
       >
         <Text style={styles.registerAdoptionBtnText}>Registrar adoção</Text>
       </TouchableOpacity>
+      {pendingAdoptionsList.length > 0 && selectedPendingAdoptionPetIds.size > 0 && (
+        <View style={styles.batchBar}>
+          <Text style={[styles.batchLabel, { color: colors.textSecondary }]}>
+            {selectedPendingAdoptionPetIds.size} selecionada(s)
+          </Text>
+          <View style={styles.batchActions}>
+            <TouchableOpacity
+              style={[styles.batchBtn, { backgroundColor: colors.primary }]}
+              onPress={() => bulkConfirmPendingMutation.mutate(Array.from(selectedPendingAdoptionPetIds))}
+              disabled={bulkConfirmPendingMutation.isPending}
+            >
+              {bulkConfirmPendingMutation.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="checkmark-circle" size={16} color="#fff" />
+              )}
+              <Text style={styles.batchBtnText}>
+                {bulkConfirmPendingMutation.isPending ? 'Confirmando...' : 'Confirmar selecionadas'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.batchBtn, { backgroundColor: colors.error || '#DC2626' }]}
+              onPress={() =>
+                Alert.alert(
+                  'Rejeitar adoções',
+                  `Rejeitar ${selectedPendingAdoptionPetIds.size} adoção(ões)? Tutor e adotante verão o badge "Rejeitado pelo Adopet".`,
+                  [
+                    { text: 'Cancelar', style: 'cancel' },
+                    {
+                      text: 'Rejeitar',
+                      style: 'destructive',
+                      onPress: () => bulkRejectPendingMutation.mutate(Array.from(selectedPendingAdoptionPetIds)),
+                    },
+                  ]
+                )
+              }
+              disabled={bulkRejectPendingMutation.isPending}
+            >
+              {bulkRejectPendingMutation.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="close-circle" size={16} color="#fff" />
+              )}
+              <Text style={styles.batchBtnText}>
+                {bulkRejectPendingMutation.isPending ? 'Rejeitando...' : 'Rejeitar selecionadas'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
       {adoptionsList.length === 0 ? (
         <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
           <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhuma adoção registrada ainda.</Text>
         </View>
       ) : (
         adoptionsList.slice(0, 20).map((a) => (
-          <TouchableOpacity
+          <View
             key={a.id}
             style={[styles.card, styles.adoptionCard, { backgroundColor: colors.surface, borderColor: colors.background }]}
-            onPress={() => setSelectedAdoption(a)}
-            activeOpacity={0.7}
           >
-            <View style={styles.adoptionCardHeader}>
-              <Text style={[styles.adoptionPetName, { color: colors.textPrimary }]}>{a.petName}</Text>
-              <View style={[styles.adoptionBadge, styles.adoptionBadgeConfirmed, { backgroundColor: colors.primary + '20' }]}>
-                <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
-                <Text style={[styles.adoptionBadgeText, { color: colors.primary }]}>Confirmado</Text>
+            <TouchableOpacity
+              style={styles.adoptionCardTouchable}
+              onPress={() => setSelectedAdoption(a)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.adoptionCardHeader}>
+                {!a.confirmedByAdopet ? (
+                  <TouchableOpacity
+                    style={[styles.checkbox, selectedPendingAdoptionPetIds.has(a.petId) && { backgroundColor: colors.primary }]}
+                    onPress={() => {
+                      setSelectedPendingAdoptionPetIds((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(a.petId)) next.delete(a.petId);
+                        else next.add(a.petId);
+                        return next;
+                      });
+                    }}
+                  >
+                    {selectedPendingAdoptionPetIds.has(a.petId) && <Ionicons name="checkmark" size={14} color="#fff" />}
+                  </TouchableOpacity>
+                ) : null}
+                <Text style={[styles.adoptionPetName, { color: colors.textPrimary }]} numberOfLines={1}>{a.petName}</Text>
+                {a.confirmedByAdopet ? (
+                  <View style={[styles.adoptionBadge, styles.adoptionBadgeConfirmed, { backgroundColor: colors.primary + '20' }]}>
+                    <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
+                    <Text style={[styles.adoptionBadgeText, { color: colors.primary }]}>Confirmado</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.adoptionBadge, { backgroundColor: (colors.textSecondary || '#78716c') + '25' }]}>
+                    <Text style={[styles.adoptionBadgeText, { color: colors.textSecondary || '#78716c' }]}>Aguardando confirmação Adopet</Text>
+                  </View>
+                )}
               </View>
-            </View>
-            <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>Tutor: {a.tutorName}</Text>
-            <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>Adotante: {a.adopterName}</Text>
-            <Text style={[styles.cardDate, { color: colors.textSecondary }]}>{new Date(a.adoptedAt).toLocaleDateString('pt-BR')}</Text>
-          </TouchableOpacity>
+              <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>Tutor: {a.tutorName}</Text>
+              <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>Adotante: {a.adopterName}</Text>
+              <Text style={[styles.cardDate, { color: colors.textSecondary }]}>{new Date(a.adoptedAt).toLocaleDateString('pt-BR')}</Text>
+            </TouchableOpacity>
+            {!a.confirmedByAdopet && (
+              <View style={styles.adoptionCardActions}>
+                <TouchableOpacity
+                  style={[styles.adoptionCardBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => confirmByAdopetMutation.mutate(a.petId)}
+                  disabled={confirmingAdoptionPetId != null}
+                >
+                  {confirmingAdoptionPetId === a.petId ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.adoptionCardBtnText}>Confirmar</Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.adoptionCardBtn, { backgroundColor: colors.error || '#DC2626' }]}
+                  onPress={() =>
+                    Alert.alert(
+                      'Rejeitar adoção',
+                      'Tem certeza? O tutor e o adotante verão o badge "Rejeitado pelo Adopet".',
+                      [
+                        { text: 'Cancelar', style: 'cancel' },
+                        { text: 'Rejeitar', style: 'destructive', onPress: () => rejectByAdopetMutation.mutate(a.petId) },
+                      ]
+                    )
+                  }
+                  disabled={rejectingAdoptionPetId != null}
+                >
+                  {rejectingAdoptionPetId === a.petId ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.adoptionCardBtnText}>Rejeitar</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
         ))
       )}
       {adoptionsList.length > 20 && (
@@ -1129,10 +1303,16 @@ export default function AdminScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]} collapsable={false}>
             {selectedAdoption ? (
               <>
-                <View style={[styles.adoptionBadge, styles.adoptionBadgeConfirmed, { backgroundColor: colors.primary + '20', alignSelf: 'flex-start', marginBottom: spacing.md }]}>
-                  <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
-                  <Text style={[styles.adoptionBadgeText, { color: colors.primary }]}>Confirmado</Text>
-                </View>
+                {selectedAdoption.confirmedByAdopet ? (
+                  <View style={[styles.adoptionBadge, styles.adoptionBadgeConfirmed, { backgroundColor: colors.primary + '20', alignSelf: 'flex-start', marginBottom: spacing.md }]}>
+                    <Ionicons name="checkmark-circle" size={14} color={colors.primary} />
+                    <Text style={[styles.adoptionBadgeText, { color: colors.primary }]}>Confirmado pelo Adopet</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.adoptionBadge, { backgroundColor: (colors.textSecondary || '#78716c') + '25', alignSelf: 'flex-start', marginBottom: spacing.md }]}>
+                    <Text style={[styles.adoptionBadgeText, { color: colors.textSecondary || '#78716c' }]}>Aguardando confirmação Adopet</Text>
+                  </View>
+                )}
                 <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{selectedAdoption.petName}</Text>
                 <Text style={[styles.detailRow, { color: colors.textSecondary }]}>
                   <Text style={styles.detailLabel}>Tutor: </Text>
@@ -1159,10 +1339,23 @@ export default function AdminScreen() {
                   </TouchableOpacity>
                 </View>
                 <TouchableOpacity
-                  style={[styles.modalBtn, { backgroundColor: colors.background, marginTop: spacing.sm }]}
+                  activeOpacity={0.8}
+                  style={{
+                    marginTop: spacing.sm,
+                    paddingVertical: 14,
+                    paddingHorizontal: 24,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: '#e5e7eb',
+                    borderWidth: 1,
+                    borderColor: '#9ca3af',
+                    minHeight: 48,
+                  }}
                   onPress={() => setSelectedAdoption(null)}
                 >
-                  <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Fechar</Text>
+                  <Ionicons name="close-circle-outline" size={20} color="#111827" />
+                  <Text style={{ color: '#111827', fontSize: 16, fontWeight: '600', marginTop: 4 }}>Fechar</Text>
                 </TouchableOpacity>
               </>
             ) : null}
@@ -1178,13 +1371,13 @@ export default function AdminScreen() {
         <View style={styles.batchBar}>
           <Text style={[styles.batchLabel, { color: colors.textSecondary }]}>{selectedPetIds.size} selecionado(s)</Text>
           <View style={styles.batchActions}>
-            <TouchableOpacity style={[styles.batchBtn, { backgroundColor: colors.primary }]} onPress={() => handleBatchPetPublication('APPROVED')} disabled={setPublicationMutation.isPending}>
-              {setPublicationMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="checkmark-circle" size={16} color="#fff" />}
-              <Text style={styles.batchBtnText}>{setPublicationMutation.isPending ? 'Aprovando...' : 'Aprovar'}</Text>
+            <TouchableOpacity style={[styles.batchBtn, { backgroundColor: colors.primary }]} onPress={() => handleBatchPetPublication('APPROVED')} disabled={batchPublicationStatus !== null || setPublicationMutation.isPending}>
+              {batchPublicationStatus === 'APPROVED' || setPublicationMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="checkmark-circle" size={16} color="#fff" />}
+              <Text style={styles.batchBtnText}>{batchPublicationStatus === 'APPROVED' || setPublicationMutation.isPending ? 'Aprovando...' : 'Aprovar'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.batchBtn, { backgroundColor: colors.error || '#DC2626' }]} onPress={() => handleBatchPetPublication('REJECTED')} disabled={setPublicationMutation.isPending}>
-              {setPublicationMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="close-circle" size={16} color="#fff" />}
-              <Text style={styles.batchBtnText}>{setPublicationMutation.isPending ? 'Rejeitando...' : 'Rejeitar'}</Text>
+            <TouchableOpacity style={[styles.batchBtn, { backgroundColor: colors.error || '#DC2626' }]} onPress={() => handleBatchPetPublication('REJECTED')} disabled={batchPublicationStatus !== null || setPublicationMutation.isPending}>
+              {batchPublicationStatus === 'REJECTED' || setPublicationMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="close-circle" size={16} color="#fff" />}
+              <Text style={styles.batchBtnText}>{batchPublicationStatus === 'REJECTED' || setPublicationMutation.isPending ? 'Rejeitando...' : 'Rejeitar'}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1329,17 +1522,24 @@ export default function AdminScreen() {
       ) : (
         approvedVerifications.map((item) => (
           <View key={item.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
-            <View style={styles.cardRow}>
-              <Text style={[styles.cardType, { color: colors.textPrimary }]}>{VERIFICATION_TYPE_LABEL[item.type] ?? item.type}</Text>
-              {item.petId ? (
-                <TouchableOpacity onPress={() => router.push(`/pet/${item.petId!}`)} style={styles.linkBtn}>
-                  <Ionicons name="image-outline" size={12} color={colors.primary} />
-                  <Text style={[styles.linkText, { color: colors.primary, fontSize: 12 }]}>Ver pet</Text>
-                </TouchableOpacity>
-              ) : null}
-            </View>
+            <Text style={[styles.cardType, { color: colors.textPrimary }]}>{VERIFICATION_TYPE_LABEL[item.type] ?? item.type}</Text>
+            {item.type === 'USER_VERIFIED' && item.userName ? (
+              <Text style={[styles.cardDetail, { color: colors.textSecondary }]}>Usuário: {item.userName}</Text>
+            ) : item.type === 'PET_VERIFIED' ? (
+              <View style={styles.cardRow}>
+                <Text style={[styles.cardDetail, { color: colors.textSecondary }]}>
+                  Pet: {item.petName ?? '—'}
+                </Text>
+                {item.petId ? (
+                  <TouchableOpacity onPress={() => router.push(`/pet/${item.petId!}`)} style={styles.linkBtn}>
+                    <Ionicons name="image-outline" size={12} color={colors.primary} />
+                    <Text style={[styles.linkText, { color: colors.primary, fontSize: 12 }]}>Ver pet</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null}
             <Text style={[styles.cardDate, { color: colors.textSecondary }]}>{new Date(item.createdAt).toLocaleDateString('pt-BR')}</Text>
-            <TouchableOpacity style={[styles.actionBtn, styles.revokeBtn, { borderColor: colors.error || '#DC2626' }]} onPress={() => handleRevoke(item)} disabled={revokeMutation.isPending}>
+            <TouchableOpacity style={[styles.actionBtn, styles.revokeBtn, { borderColor: colors.error || '#DC2626', marginTop: spacing.sm }]} onPress={() => handleRevoke(item)} disabled={revokeMutation.isPending}>
               {revokeMutation.isPending ? <ActivityIndicator size="small" color={colors.error || '#DC2626'} /> : <Ionicons name="remove-circle-outline" size={18} color={colors.error || '#DC2626'} />}
               <Text style={[styles.actionBtnTextRevoke, { color: colors.error || '#DC2626' }]}>{revokeMutation.isPending ? 'Revogando...' : 'Revogar'}</Text>
             </TouchableOpacity>
@@ -1447,7 +1647,7 @@ export default function AdminScreen() {
             <View key={p.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
               <View style={styles.cardRowWrap}>
                 {p.logoUrl ? (
-                  <Image source={{ uri: p.logoUrl }} style={styles.partnerCardLogo} resizeMode="contain" />
+                  <ExpoImage source={{ uri: p.logoUrl }} style={styles.partnerCardLogo} contentFit="contain" />
                 ) : null}
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={[styles.adoptionPetName, { color: colors.textPrimary }]}>{p.name}</Text>
@@ -1555,7 +1755,7 @@ export default function AdminScreen() {
       <View ref={bugReportsRef} onLayout={(e: LayoutChangeEvent) => { sectionY.current.bugReports = e.nativeEvent.layout.y; }} collapsable={false}>
         <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.xl }]}>Reports de bugs ({bugReports.length})</Text>
         <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
-          Erros reportados pelos usuários na tela de falha (app em beta). Apenas leitura.
+          Bugs (tela de falha) e sugestões enviados pelos usuários. Apenas leitura.
         </Text>
         {bugReports.length === 0 ? (
           <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
@@ -1564,6 +1764,15 @@ export default function AdminScreen() {
         ) : (
           bugReports.map((r: BugReportItem) => (
             <View key={r.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
+              {r.type === 'SUGGESTION' ? (
+                <View style={[styles.bugReportTypeBadge, { backgroundColor: colors.primary + '25' }]}>
+                  <Text style={[styles.bugReportTypeText, { color: colors.primary }]}>Sugestão</Text>
+                </View>
+              ) : (
+                <View style={[styles.bugReportTypeBadge, { backgroundColor: (colors.error || '#DC2626') + '20' }]}>
+                  <Text style={[styles.bugReportTypeText, { color: colors.error || '#DC2626' }]}>Bug</Text>
+                </View>
+              )}
               <Text style={[styles.bugReportMessage, { color: colors.textPrimary }]} numberOfLines={3}>{r.message}</Text>
               {(r.userName ?? r.userEmail) && (
                 <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
@@ -1714,7 +1923,7 @@ export default function AdminScreen() {
             </View>
             {(createPartnerForm.logoUrl ?? '').trim() ? (
               <View style={styles.logoPreviewWrap}>
-                <Image source={{ uri: (createPartnerForm.logoUrl ?? '').trim() }} style={styles.logoPreview} resizeMode="contain" />
+                <ExpoImage source={{ uri: (createPartnerForm.logoUrl ?? '').trim() }} style={styles.logoPreview} contentFit="contain" />
               </View>
             ) : null}
             <TouchableOpacity
@@ -1856,7 +2065,7 @@ export default function AdminScreen() {
                 </View>
                 {editPartnerForm.logoUrl.trim() ? (
                   <View style={styles.logoPreviewWrap}>
-                    <Image source={{ uri: editPartnerForm.logoUrl.trim() }} style={styles.logoPreview} resizeMode="contain" />
+                    <ExpoImage source={{ uri: editPartnerForm.logoUrl.trim() }} style={styles.logoPreview} contentFit="contain" />
                   </View>
                 ) : null}
                 <TouchableOpacity
@@ -2012,6 +2221,7 @@ const styles = StyleSheet.create({
   cardRowWrap: { flexDirection: 'row', alignItems: 'center' },
   cardRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   cardType: { fontSize: 16, fontWeight: '600' },
+  cardDetail: { fontSize: 14, marginTop: 4 },
   cardMeta: { fontSize: 13 },
   cardDate: { fontSize: 12, marginTop: 4 },
   cardActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
@@ -2035,6 +2245,8 @@ const styles = StyleSheet.create({
   reportTarget: { fontSize: 15, fontWeight: '600' },
   reportReason: { fontSize: 14, marginTop: 4 },
   reportDate: { fontSize: 12, marginTop: 4 },
+  bugReportTypeBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginBottom: 6 },
+  bugReportTypeText: { fontSize: 12, fontWeight: '600' },
   bugReportMessage: { fontSize: 15, fontWeight: '600', marginBottom: 4 },
   bugReportComment: { fontSize: 13, fontStyle: 'italic', marginTop: 4 },
   bugReportStack: { fontSize: 11, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', marginTop: 6 },
@@ -2043,8 +2255,12 @@ const styles = StyleSheet.create({
   registerAdoptionBtn: { padding: spacing.md, borderRadius: 10, alignItems: 'center', marginBottom: spacing.md },
   registerAdoptionBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   adoptionCard: {},
-  adoptionCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing.sm, marginBottom: 2 },
-  adoptionPetName: { fontSize: 16, fontWeight: '600' },
+  adoptionCardTouchable: { flex: 1 },
+  adoptionCardHeader: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm, marginBottom: 2 },
+  adoptionPetName: { fontSize: 16, fontWeight: '600', flex: 1, minWidth: 0 },
+  adoptionCardActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.06)' },
+  adoptionCardBtn: { flex: 1, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, alignItems: 'center' },
+  adoptionCardBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   adoptionBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   adoptionBadgeText: { fontSize: 12, fontWeight: '600' },
   adoptionBadgePending: {},

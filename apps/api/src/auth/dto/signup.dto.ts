@@ -11,6 +11,7 @@ const USERNAME_REGEX = /^[a-z0-9._]+$/;
 
 export class SignupDto {
   @ApiProperty({ example: 'user@adopet.com.br' })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
   @IsEmail()
   email: string;
 

@@ -340,35 +340,36 @@ export default function SolicitarParceriaScreen() {
         ...(addressStr ? { address: addressStr } : {}),
         planId: planoPagamento,
       });
-      await queryClient.invalidateQueries({ queryKey: ['me'] });
-      try {
-        const { url } = await createPartnerCheckoutSession({
-          planId: planoPagamento,
-          successUrl: 'adopet://partner-success',
-          cancelUrl: 'adopet://partner-cancel',
-        });
-        const canOpen = await Linking.canOpenURL(url);
-        if (canOpen) {
-          Linking.openURL(url);
+      if (res.requiresEmailVerification) {
+        Alert.alert(
+          'Conta criada',
+          'Enviamos um e-mail de confirmação. Clique no link para ativar sua conta. Depois faça login e, em Perfil, conclua o pagamento para ativar seu portal de parceiro.',
+          [{ text: 'Ir para o login', onPress: () => router.replace('/(auth)/login') }],
+        );
+      } else {
+        try {
+          const { url } = await createPartnerCheckoutSession({
+            planId: planoPagamento,
+            successUrl: 'adopet://partner-success',
+            cancelUrl: 'adopet://partner-cancel',
+          });
+          const canOpen = await Linking.canOpenURL(url);
+          if (canOpen) {
+            Linking.openURL(url);
+            Alert.alert(
+              'Conta criada',
+              'Conclua o pagamento na próxima tela para ativar seu portal de parceiro. Depois volte ao app.',
+              [{ text: 'OK', onPress: () => router.replace('/(tabs)') }],
+            );
+          } else {
+            Alert.alert('Próximo passo', 'Acesse o link de pagamento pelo computador ou copie e cole no navegador.', [{ text: 'OK', onPress: () => router.replace('/(tabs)') }]);
+          }
+        } catch (paymentError: unknown) {
           Alert.alert(
             'Conta criada',
-            'Sua conta foi criada. Conclua o pagamento na próxima tela para ativar seu portal de parceiro. Depois volte ao app.',
-            [{ text: 'OK', onPress: () => router.replace('/(tabs)') }],
-          );
-        } else {
-          Alert.alert('Próximo passo', 'Copie o link de pagamento que enviamos ou acesse pelo computador. Sua conta já está criada.', [{ text: 'OK', onPress: () => router.replace('/(tabs)') }]);
-        }
-      } catch (paymentError: unknown) {
-        const paymentMsg = getFriendlyErrorMessage(paymentError, '');
-        const isPaymentNotConfigured = /pagamentos?\s*não\s*configurados?|payments?\s*not\s*configured/i.test(paymentMsg) || (paymentError instanceof Error && /pagamentos?\s*não\s*configurados?/i.test(paymentError.message));
-        if (isPaymentNotConfigured) {
-          Alert.alert(
-            'Conta criada',
-            'Sua conta foi criada com sucesso. No momento o pagamento online não está disponível neste ambiente. Você já pode entrar no app; para ativar o portal do parceiro depois, use Perfil → Renovar assinatura do parceiro ou entre em contato com o suporte.',
+            'Sua conta foi criada. Para ativar o portal do parceiro, faça login e use Perfil → Assinatura do parceiro.',
             [{ text: 'Ir para o app', onPress: () => router.replace('/(tabs)') }],
           );
-        } else {
-          Alert.alert('Erro ao abrir pagamento', getFriendlyErrorMessage(paymentError, 'Não foi possível abrir a tela de pagamento. Sua conta já foi criada — entre no app e tente em Perfil → Renovar assinatura do parceiro.'));
         }
       }
     } catch (e: unknown) {

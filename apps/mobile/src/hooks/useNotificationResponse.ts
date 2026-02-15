@@ -1,31 +1,42 @@
 import { useEffect } from 'react';
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import type { Router } from 'expo-router';
+
+const isExpoGo = Constants.appOwnership === 'expo';
 
 /**
  * Navega para chat quando o usuário toca em notificação com conversationId (engajamento/retenção).
+ * No Expo Go (SDK 53+) push foi removido no Android; este hook não faz nada lá.
  */
 export function useNotificationResponse(router: Router) {
   useEffect(() => {
-    const openChatIfConversation = (data: Record<string, unknown> | undefined) => {
-      const conversationId = data?.conversationId;
-      if (typeof conversationId === 'string' && conversationId) {
-        router.push(`/chat/${conversationId}`);
-      }
-    };
+    if (isExpoGo) return;
+    let sub: { remove: () => void } | null = null;
+    let cancelled = false;
+    (async () => {
+      const Notifications = await import('expo-notifications');
+      if (cancelled) return;
+      const openChatIfConversation = (data: Record<string, unknown> | undefined) => {
+        const conversationId = data?.conversationId;
+        if (typeof conversationId === 'string' && conversationId) {
+          router.push(`/chat/${conversationId}`);
+        }
+      };
 
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data as Record<string, unknown> | undefined;
-      openChatIfConversation(data);
-    });
+      sub = Notifications.addNotificationResponseReceivedListener((response) => {
+        const data = response.notification.request.content.data as Record<string, unknown> | undefined;
+        openChatIfConversation(data);
+      });
 
-    Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response?.notification.request.content.data) {
+      const response = await Notifications.getLastNotificationResponseAsync();
+      if (!cancelled && response?.notification.request.content.data) {
         const data = response.notification.request.content.data as Record<string, unknown>;
         openChatIfConversation(data);
       }
-    });
-
-    return () => sub.remove();
+    })();
+    return () => {
+      cancelled = true;
+      sub?.remove();
+    };
   }, [router]);
 }

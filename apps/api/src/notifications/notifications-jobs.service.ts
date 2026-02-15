@@ -5,9 +5,15 @@ import { FeedService } from '../feed/feed.service';
 
 const NEW_PETS_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
 const REMINDERS_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12h
+const LISTING_REMINDER_INTERVAL_MS = 24 * 60 * 60 * 1000; // job 1x/dia
+const LISTING_REMINDER_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // não enviar de novo por 30 dias
+const LISTING_EXPIRY_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1x/dia: lembretes de expiração + expirar anúncios
 const NEW_PETS_LOOKBACK_MS = 24 * 60 * 60 * 1000; // 24h
 const REMINDER_AFTER_MS = 24 * 60 * 60 * 1000; // lembrar se última msg do outro > 24h
 const REMINDER_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // não enviar de novo por 7 dias
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const LISTING_EXPIRY_SYSTEM_MESSAGE =
+  'Este anúncio foi removido por falta de confirmação do anunciante. O pet não está mais disponível no feed.';
 
 @Injectable()
 export class NotificationsJobsService implements OnModuleInit {
@@ -21,9 +27,15 @@ export class NotificationsJobsService implements OnModuleInit {
     this.runNewPetsJob();
     this.runRemindersJob();
     this.runSavedSearchAlertsJob();
+    this.runTutorListingReminderJob();
+    this.runExpiryRemindersJob();
+    this.runExpireListingsJob();
     setInterval(() => this.runNewPetsJob(), NEW_PETS_INTERVAL_MS);
     setInterval(() => this.runRemindersJob(), REMINDERS_INTERVAL_MS);
     setInterval(() => this.runSavedSearchAlertsJob(), NEW_PETS_INTERVAL_MS);
+    setInterval(() => this.runTutorListingReminderJob(), LISTING_REMINDER_INTERVAL_MS);
+    setInterval(() => this.runExpiryRemindersJob(), LISTING_EXPIRY_INTERVAL_MS);
+    setInterval(() => this.runExpireListingsJob(), LISTING_EXPIRY_INTERVAL_MS);
   }
 
   /** Push "X novos pets na sua região" para usuários com notifyNewPets, pushToken e localização. */
@@ -82,7 +94,7 @@ export class NotificationsJobsService implements OnModuleInit {
       const now = Date.now();
       for (const c of convs) {
         const lastMsg = c.messages[0];
-        if (!lastMsg) continue;
+        if (!lastMsg || lastMsg.senderId == null) continue; // ignora se última msg for de sistema
         const lastFromOther = lastMsg.senderId;
         const otherParticipant = c.participants.find((p) => p.userId !== lastFromOther);
         if (!otherParticipant) continue;
@@ -113,30 +125,190 @@ export class NotificationsJobsService implements OnModuleInit {
     }
   }
 
-  /** Alertas de buscas salvas: "X pets novos combinam com sua busca". */
+  /** Push "Seus anúncios estão em dia?" para tutores com pet AVAILABLE ou IN_PROCESS, a cada 30 dias. */
+  private async runTutorListingReminderJob(): Promise<void> {
+    try {
+      const cooldownBefore = new Date(Date.now() - LISTING_REMINDER_COOLDOWN_MS);
+      const users = await this.prisma.user.findMany({
+        where: {
+          pushToken: { not: null },
+          deactivatedAt: null,
+          pets: {
+            some: { status: { in: ['AVAILABLE', 'IN_PROCESS'] } },
+          },
+          OR: [
+            { lastListingReminderAt: null },
+            { lastListingReminderAt: { lt: cooldownBefore } },
+          ],
+        },
+        select: { id: true },
+      });
+      for (const u of users) {
+        const prefs = await this.prisma.userPreferences.findUnique({
+          where: { userId: u.id },
+          select: { notifyListingReminders: true },
+        });
+        if (prefs?.notifyListingReminders === false) continue;
+        await this.push.sendToUser(
+          u.id,
+          'Seus anúncios estão em dia?',
+          'Se algum pet já foi adotado, atualize no app. Adoções confirmadas entram na sua pontuação e no seu nível de tutor.',
+          { screen: 'my-pets' },
+        );
+        await this.prisma.user.update({
+          where: { id: u.id },
+          data: { lastListingReminderAt: new Date() },
+        });
+      }
+    } catch (e) {
+      console.warn('[NotificationsJobs] runTutorListingReminderJob failed', e);
+    }
+  }
+
+  /** Lembretes de expiração: push ao tutor em 10, 5 e 1 dia antes de expiresAt. */
+  private async runExpiryRemindersJob(): Promise<void> {
+    try {
+      const now = new Date();
+      const pets = await this.prisma.pet.findMany({
+        where: {
+          status: { in: ['AVAILABLE', 'IN_PROCESS'] },
+          expiresAt: { not: null, gt: now },
+        },
+        include: { owner: { select: { id: true, pushToken: true } } },
+      });
+      const prefsByUserId = new Map<string, { notifyListingReminders: boolean }>();
+      for (const pet of pets) {
+        if (!pet.expiresAt || !pet.owner?.pushToken) continue;
+        const prefs =
+          prefsByUserId.get(pet.ownerId) ??
+          (await this.prisma.userPreferences.findUnique({
+            where: { userId: pet.ownerId },
+            select: { notifyListingReminders: true },
+          }));
+        if (prefs) prefsByUserId.set(pet.ownerId, prefs);
+        if (prefs?.notifyListingReminders === false) continue;
+        const msLeft = pet.expiresAt.getTime() - now.getTime();
+        const daysLeft = Math.ceil(msLeft / MS_PER_DAY);
+        if (daysLeft <= 1 && pet.expiryReminder1SentAt == null) {
+          await this.push.sendToUser(
+            pet.ownerId,
+            'Anúncio expirando',
+            `Oi! O seu anúncio de adoção do pet ${pet.name} expira em 1 dia. Toque para prorrogar e manter ativo.`,
+            { screen: 'pet-detail', petId: pet.id },
+          );
+          await this.prisma.pet.update({
+            where: { id: pet.id },
+            data: { expiryReminder1SentAt: now },
+          });
+        } else if (daysLeft <= 5 && pet.expiryReminder5SentAt == null) {
+          await this.push.sendToUser(
+            pet.ownerId,
+            'Anúncio expirando',
+            `Oi! O seu anúncio de adoção do pet ${pet.name} expira em 5 dias. Toque para prorrogar e manter ativo.`,
+            { screen: 'pet-detail', petId: pet.id },
+          );
+          await this.prisma.pet.update({
+            where: { id: pet.id },
+            data: { expiryReminder5SentAt: now },
+          });
+        } else if (daysLeft <= 10 && pet.expiryReminder10SentAt == null) {
+          await this.push.sendToUser(
+            pet.ownerId,
+            'Anúncio expirando',
+            `Oi! O seu anúncio de adoção do pet ${pet.name} expira em 10 dias. Toque para prorrogar e manter ativo.`,
+            { screen: 'pet-detail', petId: pet.id },
+          );
+          await this.prisma.pet.update({
+            where: { id: pet.id },
+            data: { expiryReminder10SentAt: now },
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[NotificationsJobs] runExpiryRemindersJob failed', e);
+    }
+  }
+
+  /** Expira anúncios (expiresAt <= now): marca conversas, envia mensagem de sistema, não remove pet. */
+  private async runExpireListingsJob(): Promise<void> {
+    try {
+      const now = new Date();
+      const expired = await this.prisma.pet.findMany({
+        where: {
+          status: { in: ['AVAILABLE', 'IN_PROCESS'] },
+          expiresAt: { not: null, lte: now },
+        },
+        select: {
+          id: true,
+          name: true,
+          ownerId: true,
+          owner: { select: { pushToken: true } },
+        },
+      });
+      for (const pet of expired) {
+        const convs = await this.prisma.conversation.findMany({
+          where: { petId: pet.id, listingRemovedAt: null },
+          select: { id: true },
+        });
+        for (const c of convs) {
+          await this.prisma.conversation.update({
+            where: { id: c.id },
+            data: { listingRemovedAt: now },
+          });
+          await this.prisma.message.create({
+            data: {
+              conversationId: c.id,
+              senderId: null,
+              isSystem: true,
+              content: LISTING_EXPIRY_SYSTEM_MESSAGE,
+            },
+          });
+        }
+        if (pet.owner?.pushToken) {
+          const prefs = await this.prisma.userPreferences.findUnique({
+            where: { userId: pet.ownerId },
+            select: { notifyListingReminders: true },
+          });
+          if (prefs?.notifyListingReminders !== false) {
+            await this.push.sendToUser(
+              pet.ownerId,
+              'Anúncio expirado',
+              `Oi! O seu anúncio de adoção do pet ${pet.name} expirou e foi removido do feed.`,
+              { screen: 'my-pets' },
+            );
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[NotificationsJobs] runExpireListingsJob failed', e);
+    }
+  }
+
+  /** Alertas de buscas salvas: "X pets novos combinam com sua busca" (respeita raio quando há lat/lng). */
   private async runSavedSearchAlertsJob(): Promise<void> {
     try {
       const searches = await this.prisma.savedSearch.findMany({
-        include: { user: { select: { pushToken: true } } },
+        include: {
+          user: { select: { pushToken: true } },
+        },
       });
       for (const s of searches) {
         if (!s.user.pushToken) continue;
-        const where: {
-          status: string;
-          createdAt: { gte: Date };
-          ownerId: { not: string };
-          species?: string;
-          size?: string;
-          breed?: { equals: string; mode: 'insensitive' };
-        } = {
-          status: 'AVAILABLE',
-          createdAt: { gte: s.lastCheckedAt },
-          ownerId: { not: s.userId },
-        };
-        if (s.species && s.species !== 'BOTH') where.species = s.species.toLowerCase();
-        if (s.size) where.size = s.size;
-        if (s.breed?.trim()) where.breed = { equals: s.breed.trim(), mode: 'insensitive' };
-        const count = await this.prisma.pet.count({ where });
+        const prefs = await this.prisma.userPreferences.findUnique({
+          where: { userId: s.userId },
+          select: { notifyNewPets: true },
+        });
+        if (prefs?.notifyNewPets === false) continue;
+        const count = await this.feedService.countPetsForSavedSearchAlert({
+          userId: s.userId,
+          lastCheckedAt: s.lastCheckedAt,
+          species: s.species,
+          size: s.size,
+          breed: s.breed,
+          latitude: s.latitude,
+          longitude: s.longitude,
+          radiusKm: s.radiusKm ?? 50,
+        });
         if (count > 0) {
           const msg =
             count === 1

@@ -34,6 +34,7 @@ export type PreferencesResponse = {
   notifyNewPets: boolean;
   notifyMessages: boolean;
   notifyReminders: boolean;
+  notifyListingReminders: boolean;
 };
 
 export type UpdatePreferencesBody = {
@@ -45,10 +46,29 @@ export type UpdatePreferencesBody = {
   notifyNewPets?: boolean;
   notifyMessages?: boolean;
   notifyReminders?: boolean;
+  notifyListingReminders?: boolean;
 };
 
 export async function getMe(): Promise<MeResponse> {
   return api.get<MeResponse>('/me');
+}
+
+export type PendingAdoptionConfirmationItem = {
+  petId: string;
+  petName: string;
+  tutorName: string;
+  photos: string[];
+  species: string;
+  breed?: string;
+  age: number;
+  vaccinated?: boolean;
+  neutered?: boolean;
+  verified?: boolean;
+  partner?: { isPaidPartner?: boolean };
+};
+
+export async function getPendingAdoptionConfirmations(): Promise<{ items: PendingAdoptionConfirmationItem[] }> {
+  return api.get<{ items: PendingAdoptionConfirmationItem[] }>('/me/pending-adoption-confirmations');
 }
 
 export async function updateMe(body: UpdateMeBody): Promise<MeResponse> {

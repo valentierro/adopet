@@ -1,8 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, MaxLength } from 'class-validator';
+import { IsString, IsOptional, MaxLength, IsIn } from 'class-validator';
 
 export class CreateBugReportDto {
-  @ApiProperty({ description: 'Mensagem do erro (ex.: exceção não tratada)' })
+  @ApiPropertyOptional({ description: 'Tipo: BUG (padrão) ou SUGGESTION', enum: ['BUG', 'SUGGESTION'] })
+  @IsOptional()
+  @IsString()
+  @IsIn(['BUG', 'SUGGESTION'])
+  type?: 'BUG' | 'SUGGESTION';
+
+  @ApiProperty({ description: 'Mensagem do erro (bug) ou título/resumo (sugestão)' })
   @IsString()
   @MaxLength(2000)
   message: string;

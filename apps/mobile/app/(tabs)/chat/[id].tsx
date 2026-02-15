@@ -24,6 +24,7 @@ import { useTheme } from '../../../src/hooks/useTheme';
 import { useAuthStore } from '../../../src/stores/authStore';
 import { getMessages, sendMessage, type SendMessagePayload } from '../../../src/api/messages';
 import { getConversation, postConversationTyping } from '../../../src/api/conversations';
+import { confirmAdoption, patchPetStatus } from '../../../src/api/pets';
 import { presign } from '../../../src/api/uploads';
 import { BASE_URL } from '../../../src/api/client';
 import { createReport } from '../../../src/api/reports';
@@ -85,7 +86,8 @@ export default function ChatRoomScreen() {
     queryKey: ['conversation', id],
     queryFn: () => getConversation(id!),
     enabled: !!id,
-    refetchInterval: 1500,
+    refetchInterval: 4500,
+    refetchIntervalInBackground: false,
   });
   const otherUserId = conversation?.otherUser?.id;
   const otherUserName = conversation?.otherUser?.name ?? 'Usuário';
@@ -104,7 +106,8 @@ export default function ChatRoomScreen() {
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     initialPageParam: undefined as string | undefined,
     enabled: !!id,
-    refetchInterval: 2500,
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
   });
 
   useFocusEffect(
@@ -283,6 +286,54 @@ export default function ChatRoomScreen() {
 
   const messages = data?.pages.flatMap((p) => p.items) ?? [];
   const adoptionFinalized = conversation?.pet?.adoptionFinalized === true;
+  const canConfirmAdoption =
+    !!conversation?.pet?.pendingAdopterId &&
+    conversation.pet.pendingAdopterId === userId &&
+    !adoptionFinalized;
+
+  const canTutorConfirmAdoption =
+    !!conversation?.pet?.isTutor &&
+    conversation.pet.status !== 'ADOPTED' &&
+    !!conversation.petId &&
+    !!otherUserId;
+
+  const confirmAdoptionMutation = useMutation({
+    mutationFn: () => confirmAdoption(conversation!.petId!),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['conversation', id] }),
+        queryClient.refetchQueries({ queryKey: ['me', 'pending-adoption-confirmations'] }),
+        queryClient.refetchQueries({
+          predicate: (q) => q.queryKey[0] === 'me' && q.queryKey[1] === 'adoptions',
+        }),
+        queryClient.refetchQueries({ queryKey: ['me', 'tutor-stats'] }),
+      ]);
+      Alert.alert('Adoção confirmada', 'Sua confirmação foi registrada. A adoção seguirá para validação do Adopet.');
+    },
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível confirmar. Tente novamente.'));
+    },
+  });
+
+  const tutorConfirmAdoptionMutation = useMutation({
+    mutationFn: () =>
+      patchPetStatus(conversation!.petId!, 'ADOPTED', { pendingAdopterId: otherUserId! }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['conversation', id] }),
+        queryClient.refetchQueries({ queryKey: ['conversations'] }),
+        queryClient.refetchQueries({ queryKey: ['pet', conversation!.petId!] }),
+        queryClient.refetchQueries({ queryKey: ['me', 'tutor-stats'] }),
+      ]);
+      Alert.alert(
+        'Pet marcado como adotado',
+        `${otherUserName} foi indicado(a) como adotante. A pessoa receberá um pedido para confirmar a adoção no app; após isso, a adoção seguirá para confirmação do Adopet.`,
+      );
+    },
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível marcar como adotado. Tente novamente.'));
+    },
+  });
 
   const loadMore = useCallback(() => {
     if (hasNextPage && !isFetchingNextPage) fetchNextPage();
@@ -388,6 +439,9 @@ export default function ChatRoomScreen() {
         contentContainerStyle={styles.list}
         onEndReached={loadMore}
         onEndReachedThreshold={0.3}
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        windowSize={5}
         ListHeaderComponent={
           conversation?.otherUserTyping ? (
             <View style={[styles.typingRow, { backgroundColor: colors.surface }]}>
@@ -399,6 +453,64 @@ export default function ChatRoomScreen() {
         }
         ListFooterComponent={
           <>
+            {canTutorConfirmAdoption && (
+              <TouchableOpacity
+                style={[styles.confirmAdoptionBtn, { backgroundColor: colors.primary }]}
+                onPress={() => {
+                  Alert.alert(
+                    'Confirmar adoção',
+                    `Marcar este pet como adotado para ${otherUserName}? O anúncio sairá do feed e a pessoa receberá um pedido para confirmar a adoção no app.`,
+                    [
+                      { text: 'Cancelar', style: 'cancel' },
+                      {
+                        text: 'Confirmar',
+                        onPress: () => tutorConfirmAdoptionMutation.mutate(),
+                      },
+                    ],
+                  );
+                }}
+                disabled={tutorConfirmAdoptionMutation.isPending}
+              >
+                {tutorConfirmAdoptionMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={22} color="#fff" />
+                    <Text style={styles.confirmAdoptionBtnText}>
+                      Confirmar adoção para {otherUserName}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+            {canConfirmAdoption && (
+              <TouchableOpacity
+                style={[styles.confirmAdoptionBtn, { backgroundColor: colors.primary }]}
+                onPress={() => confirmAdoptionMutation.mutate()}
+                disabled={confirmAdoptionMutation.isPending}
+              >
+                {confirmAdoptionMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={22} color="#fff" />
+                    <Text style={styles.confirmAdoptionBtnText}>Confirmar adoção</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+            <View style={[styles.safetyTips, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
+              <View style={styles.safetyTipsHeader}>
+                <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
+                <Text style={[styles.safetyTipsTitle, { color: colors.textPrimary }]}>Dicas de segurança</Text>
+              </View>
+              <Text style={[styles.safetyTipsText, { color: colors.textSecondary }]}>
+                • Combine o primeiro encontro em local público e movimentado.{'\n'}
+                • Não envie dinheiro antes de conhecer a pessoa e o pet.{'\n'}
+                • Desconfie de pedidos de depósito ou transferência antecipada.{'\n'}
+                • Ao combinar entrega, prefira horário de dia e local seguro.
+              </Text>
+            </View>
             {adoptionFinalized && (
               <View style={[styles.adoptionBanner, { backgroundColor: colors.surface, borderColor: colors.primary }]}>
                 <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
@@ -546,6 +658,40 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   list: { padding: spacing.md, paddingBottom: spacing.sm },
   loader: { padding: spacing.sm, alignItems: 'center' },
+  safetyTips: {
+    padding: spacing.md,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+  },
+  safetyTipsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  safetyTipsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  safetyTipsText: {
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  confirmAdoptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: 12,
+    marginBottom: spacing.md,
+  },
+  confirmAdoptionBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   adoptionBanner: {
     flexDirection: 'row',
     alignItems: 'center',

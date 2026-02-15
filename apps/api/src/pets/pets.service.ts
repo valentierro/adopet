@@ -1,9 +1,10 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { VerificationService } from '../verification/verification.service';
 import { TutorStatsService } from '../me/tutor-stats.service';
 import { PushService } from '../notifications/push.service';
+import { AdminService } from '../admin/admin.service';
 import type { PetResponseDto } from './dto/pet-response.dto';
 import type { CreatePetDto } from './dto/create-pet.dto';
 import type { UpdatePetDto } from './dto/update-pet.dto';
@@ -16,6 +17,7 @@ export class PetsService {
     private readonly tutorStatsService: TutorStatsService,
     private readonly config: ConfigService,
     private readonly push: PushService,
+    private readonly adminService: AdminService,
   ) {}
 
   private mapToDto(
@@ -32,6 +34,7 @@ export class PetsService {
       ownerId: string;
       status: string;
       publicationStatus?: string | null;
+      expiresAt?: Date | null;
       createdAt: Date;
       updatedAt: Date;
       latitude?: number | null;
@@ -74,6 +77,7 @@ export class PetsService {
     if (pet.feedingType != null) dto.feedingType = pet.feedingType;
     if (pet.feedingNotes != null) dto.feedingNotes = pet.feedingNotes;
     if (pet.publicationStatus != null) dto.publicationStatus = pet.publicationStatus;
+    if (pet.expiresAt != null) dto.expiresAt = pet.expiresAt.toISOString();
     if (pet.partner != null) {
       dto.partner = {
         id: pet.partner.id,
@@ -176,7 +180,11 @@ export class PetsService {
     const dto = this.mapToDto(pet, userLat, userLng, verified);
     if (pet.owner) {
       dto.owner = this.mapOwnerToPublicDto(pet.owner, petsCount, ownerVerified);
-      dto.owner.tutorStats = await this.tutorStatsService.getStats(pet.ownerId);
+      try {
+        dto.owner.tutorStats = await this.tutorStatsService.getStats(pet.ownerId);
+      } catch {
+        // Se getStats falhar (ex.: dados inconsistentes), mantém owner sem tutorStats
+      }
     }
     if (!dto.partner && pet.ownerId) {
       const ownerPartner = await this.prisma.partner.findUnique({
@@ -234,7 +242,10 @@ export class PetsService {
     return dtos;
   }
 
-  /** [Admin] Aprovar ou rejeitar anúncio (publicação no feed). */
+  /** Vida útil padrão do anúncio (dias). */
+  private static readonly LISTING_LIFETIME_DAYS = 60;
+
+  /** [Admin] Aprovar ou rejeitar anúncio (publicação no feed). Ao aprovar, define expiresAt = now + 60 dias. */
   async setPublicationStatus(petId: string, status: 'APPROVED' | 'REJECTED'): Promise<PetResponseDto | null> {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
@@ -244,9 +255,58 @@ export class PetsService {
       },
     });
     if (!pet) return null;
+    const now = new Date();
+    const expiresAt =
+      status === 'APPROVED' && ['AVAILABLE', 'IN_PROCESS'].includes(pet.status)
+        ? new Date(now.getTime() + PetsService.LISTING_LIFETIME_DAYS * 24 * 60 * 60 * 1000)
+        : undefined;
     const updated = await this.prisma.pet.update({
       where: { id: petId },
-      data: { publicationStatus: status },
+      data: {
+        publicationStatus: status,
+        ...(expiresAt && {
+          expiresAt,
+          expiryReminder10SentAt: null,
+          expiryReminder5SentAt: null,
+          expiryReminder1SentAt: null,
+        }),
+      },
+      include: {
+        media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+      },
+    });
+    const verified = await this.verificationService.isPetVerified(updated.id);
+    return this.mapToDto(updated, undefined, undefined, verified);
+  }
+
+  /** Prorrogar vida útil do anúncio em 60 dias. Apenas dono; pet deve estar AVAILABLE ou IN_PROCESS e não expirado. */
+  async extendListing(petId: string, ownerId: string): Promise<PetResponseDto> {
+    const pet = await this.prisma.pet.findUnique({
+      where: { id: petId },
+      include: {
+        media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+      },
+    });
+    if (!pet) throw new NotFoundException('Pet não encontrado');
+    if (pet.ownerId !== ownerId) throw new ForbiddenException('Apenas o tutor pode prorrogar o anúncio.');
+    if (!['AVAILABLE', 'IN_PROCESS'].includes(pet.status)) {
+      throw new BadRequestException('Só é possível prorrogar anúncios de pets disponíveis ou em andamento.');
+    }
+    const now = new Date();
+    if (pet.expiresAt != null && pet.expiresAt <= now) {
+      throw new BadRequestException('Este anúncio já expirou. Crie um novo anúncio para o pet.');
+    }
+    const newExpiresAt = new Date(now.getTime() + PetsService.LISTING_LIFETIME_DAYS * 24 * 60 * 60 * 1000);
+    const updated = await this.prisma.pet.update({
+      where: { id: petId },
+      data: {
+        expiresAt: newExpiresAt,
+        expiryReminder10SentAt: null,
+        expiryReminder5SentAt: null,
+        expiryReminder1SentAt: null,
+      },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
         partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
@@ -369,6 +429,7 @@ export class PetsService {
       if (p.adoption?.adoptedAt) dto.adoptedAt = p.adoption.adoptedAt.toISOString();
       if (p.adoption?.adopter?.username) dto.adopterUsername = p.adoption.adopter.username;
       if (p.adoptionRejectedAt) dto.adoptionRejectedAt = p.adoptionRejectedAt.toISOString();
+      if (p.adoption) dto.confirmedByAdopet = !p.adoptionRejectedAt && !!(p as { adopetConfirmedAt?: Date | null }).adopetConfirmedAt;
       return dto;
     });
     const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].id : null;
@@ -533,9 +594,49 @@ export class PetsService {
       for (const adminId of adminIds) {
         this.push.sendToUser(adminId, title, body, { screen: 'admin', petId: pet.id }).catch(() => {});
       }
+      if (resolvedAdopterId) {
+        this.requestAdoptionConfirmation(id, pet.name, pet.owner.name, resolvedAdopterId).catch((e) =>
+          console.warn('[PetsService] requestAdoptionConfirmation failed', e),
+        );
+      }
     }
     const verified = await this.verificationService.isPetVerified(pet.id);
     return this.mapToDto(pet, undefined, undefined, verified);
+  }
+
+  /** Usa a conversa existente com o tutor e envia push para o adotante confirmar a adoção. */
+  private async requestAdoptionConfirmation(
+    petId: string,
+    petName: string,
+    tutorName: string,
+    adopterId: string,
+  ): Promise<void> {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { petId, adopterId, type: 'NORMAL' },
+      select: { id: true },
+    });
+    if (!conv) return;
+    const messageContent = `O tutor ${tutorName} indicou você como adotante de ${petName}. Toque em "Confirmar adoção" nesta tela para registrar que a adoção foi realizada.`;
+    await this.prisma.$transaction([
+      this.prisma.message.create({
+        data: {
+          conversationId: conv.id,
+          senderId: null,
+          isSystem: true,
+          content: messageContent,
+        },
+      }),
+      this.prisma.conversation.update({
+        where: { id: conv.id },
+        data: { updatedAt: new Date() },
+      }),
+    ]);
+    await this.push.sendToUser(
+      adopterId,
+      'Confirme sua adoção',
+      `${tutorName} indicou você como adotante de ${petName}. Confirme no app.`,
+      { conversationId: conv.id, petId },
+    );
   }
 
   async getConversationPartners(
@@ -550,7 +651,7 @@ export class PetsService {
       throw new BadRequestException('Pet não encontrado ou você não é o dono');
     }
     const convs = await this.prisma.conversation.findMany({
-      where: { petId, adopterId: { not: null } },
+      where: { petId, type: 'NORMAL', adopterId: { not: null } },
       select: { adopterId: true },
     });
     const userIds = [...new Set(convs.map((c) => c.adopterId).filter(Boolean))] as string[];
@@ -620,5 +721,68 @@ export class PetsService {
     });
     const verified = await this.verificationService.isPetVerified(petId);
     return this.mapToDto(updated!, undefined, undefined, verified);
+  }
+
+  /** Adotante confirma que realizou a adoção; cria o registro de adoção na hora para o número atualizar. */
+  async confirmAdoption(petId: string, userId: string): Promise<{ confirmed: boolean }> {
+    const pet = await this.prisma.pet.findUnique({
+      where: { id: petId },
+      select: {
+        ownerId: true,
+        pendingAdopterId: true,
+        status: true,
+        adopterConfirmedAt: true,
+        adoption: { select: { id: true } },
+      },
+    });
+    if (!pet) throw new NotFoundException('Pet não encontrado');
+    if (pet.status !== 'ADOPTED') {
+      throw new BadRequestException('Este pet não está marcado como adotado.');
+    }
+    if (pet.pendingAdopterId !== userId) {
+      throw new ForbiddenException('Apenas o adotante indicado pelo tutor pode confirmar esta adoção.');
+    }
+    const alreadyConfirmed = !!pet.adopterConfirmedAt;
+    if (!alreadyConfirmed) {
+      await this.prisma.pet.update({
+        where: { id: petId },
+        data: { adopterConfirmedAt: new Date() },
+      });
+    }
+    if (!pet.adoption) {
+      if (pet.ownerId === userId) {
+        console.warn('[PetsService] confirmAdoption: não cria Adoption quando adotante é o próprio tutor (petId=%s)', petId);
+      } else {
+        await this.adminService.createAdoption(petId);
+      }
+    }
+    return { confirmed: true };
+  }
+
+  /** Pets parecidos / quem viu este pet também viu: mesma espécie e porte, disponíveis. */
+  async getSimilarPets(petId: string, limit = 12): Promise<PetResponseDto[]> {
+    const pet = await this.prisma.pet.findUnique({
+      where: { id: petId },
+      select: { species: true, size: true },
+    });
+    if (!pet) return [];
+    const now = new Date();
+    const similar = await this.prisma.pet.findMany({
+      where: {
+        id: { not: petId },
+        status: 'AVAILABLE',
+        publicationStatus: 'APPROVED',
+        species: pet.species,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      include: {
+        media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+    const verifiedIds = await this.verificationService.getVerifiedPetIds(similar.map((p) => p.id));
+    return similar.map((p) => this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id)));
   }
 }

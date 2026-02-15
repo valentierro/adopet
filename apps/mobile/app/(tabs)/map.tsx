@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image as RNImage } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import MapView, { Marker, Callout, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useQuery } from '@tanstack/react-query';
-import { ScreenContainer, EmptyState, LoadingLogo } from '../../src/components';
+import type { MapPin } from '../../src/api/feed';
+import { ScreenContainer, EmptyState, LoadingLogo, VerifiedBadge, StatusBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { fetchFeedMap } from '../../src/api/feed';
 import { getPreferences } from '../../src/api/me';
@@ -27,13 +29,15 @@ export default function MapScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const mapRef = useRef<MapView | null>(null);
-  const [region, setRegion] = useState(DEFAULT_REGION);
+  // Centro para a API; MapView fica não controlado para evitar crash ao abrir no Android
+  const [apiCenter, setApiCenter] = useState(DEFAULT_REGION);
   const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
   const [locationReady, setLocationReady] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  const [selectedPin, setSelectedPin] = useState<MapPin | null>(null);
   const hasAnimatedToUser = useRef(false);
 
-  const { data: prefs } = useQuery({
+  const { data: prefs, refetch: refetchPrefs } = useQuery({
     queryKey: ['me', 'preferences'],
     queryFn: getPreferences,
     staleTime: 5 * 60_000,
@@ -41,11 +45,11 @@ export default function MapScreen() {
   const radiusKm = prefs?.radiusKm ?? 50;
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['feed', 'map', region.latitude, region.longitude, radiusKm],
+    queryKey: ['feed', 'map', apiCenter.latitude, apiCenter.longitude, radiusKm],
     queryFn: () =>
       fetchFeedMap({
-        lat: region.latitude,
-        lng: region.longitude,
+        lat: apiCenter.latitude,
+        lng: apiCenter.longitude,
         radiusKm,
       }),
     enabled: locationGranted === true && locationReady && mapReady,
@@ -67,8 +71,8 @@ export default function MapScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      refetch();
-    }, [refetch]),
+      refetchPrefs();
+    }, [refetchPrefs]),
   );
 
   useEffect(() => {
@@ -88,14 +92,13 @@ export default function MapScreen() {
             latitudeDelta: 0.08,
             longitudeDelta: 0.08,
           };
-          setRegion(userRegion);
-          // Anima para a localização do usuário após o mapa estar montado (evita tela branca ao trocar region no primeiro frame)
+          setApiCenter(userRegion);
           timeoutId = setTimeout(() => {
             if (!hasAnimatedToUser.current && mapRef.current) {
               hasAnimatedToUser.current = true;
               mapRef.current.animateToRegion(userRegion, 400);
             }
-          }, 300);
+          }, 500);
         } catch {
           // mantém região padrão (ex.: São Paulo)
         }
@@ -115,7 +118,7 @@ export default function MapScreen() {
   }, [locationReady, mapReady]);
 
   useUpdateCityFromLocation(
-    locationGranted ? { lat: region.latitude, lng: region.longitude } : null,
+    locationGranted ? { lat: apiCenter.latitude, lng: apiCenter.longitude } : null,
   );
 
   if (locationGranted === false) {
@@ -150,59 +153,126 @@ export default function MapScreen() {
           ref={mapRef}
           style={styles.map}
           initialRegion={DEFAULT_REGION}
-          region={region}
-          onRegionChangeComplete={setRegion}
+          provider={PROVIDER_GOOGLE}
           showsUserLocation
           loadingEnabled
           onMapReady={() => setMapReady(true)}
-          {...(Platform.OS === 'ios' ? { provider: PROVIDER_GOOGLE } : {})}
         >
-          {items.map((pin) => {
+          {items.map((pin, index) => {
             const lat = Number(pin.latitude);
             const lng = Number(pin.longitude);
             if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+            const markerKey = pin?.id ? String(pin.id) : `pin-${lat}-${lng}-${index}`;
             return (
               <Marker
-                key={pin.id}
+                key={markerKey}
                 coordinate={{ latitude: lat, longitude: lng }}
                 anchor={{ x: 0.5, y: 0.5 }}
-                tracksViewChanges={true}
+                tracksViewChanges={false}
+                onPress={() => {
+                  try {
+                    setSelectedPin(pin);
+                  } catch {
+                    // evita crash se setState falhar em edge cases
+                  }
+                }}
               >
                 <View style={styles.markerWrap}>
-                  <Image source={AdopetMarkerIcon} style={styles.markerIcon} resizeMode="contain" />
+                  <RNImage source={AdopetMarkerIcon} style={styles.markerIcon} resizeMode="contain" />
                 </View>
-                <Callout tooltip>
-                <View style={[styles.callout, { backgroundColor: colors.surface }]}>
-                  {pin.photoUrl ? (
-                    <Image source={{ uri: pin.photoUrl }} style={styles.calloutPhoto} />
-                  ) : (
-                    <View style={[styles.calloutPhoto, styles.calloutPhotoPlaceholder]}>
-                      <Ionicons name="paw" size={24} color={colors.textSecondary} />
-                    </View>
-                  )}
-                  <View style={styles.calloutBody}>
-                    <Text style={[styles.calloutName, { color: colors.textPrimary }]} numberOfLines={1}>
-                      {pin.name}
-                    </Text>
-                    <Text style={[styles.calloutMeta, { color: colors.textSecondary }]}>
-                      {pin.age} ano{pin.age !== 1 ? 's' : ''} • {pin.species === 'DOG' ? 'Cachorro' : 'Gato'}
-                      {pin.city ? ` • ${pin.city}` : ''}
-                    </Text>
-                    <TouchableOpacity
-                      style={[styles.calloutBtn, { backgroundColor: colors.primary }]}
-                      onPress={() => router.push(`/pet/${pin.id}`)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.calloutBtnText}>Ver perfil</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </Callout>
-            </Marker>
+              </Marker>
             );
           })}
         </MapView>
       </View>
+
+      {selectedPin ? (
+        <View style={[styles.selectedCard, { backgroundColor: colors.surface }]}>
+          <View style={styles.selectedCardRow}>
+            {selectedPin.photoUrl ? (
+              <Image source={{ uri: selectedPin.photoUrl }} style={styles.selectedCardPhoto} contentFit="cover" />
+            ) : (
+              <View style={[styles.selectedCardPhoto, styles.selectedCardPhotoPlaceholder]}>
+                <Ionicons name="paw" size={24} color={colors.textSecondary} />
+              </View>
+            )}
+            <View style={styles.selectedCardBody}>
+              <View style={styles.selectedCardTitleRow}>
+                <Text style={[styles.selectedCardName, { color: colors.textPrimary }]} numberOfLines={1}>
+                  {selectedPin.name ?? 'Pet'}
+                </Text>
+                {selectedPin.verified && (
+                  <VerifiedBadge size={16} iconBackgroundColor={colors.primary} />
+                )}
+              </View>
+              <Text style={[styles.selectedCardMeta, { color: colors.textSecondary }]}>
+                {Number(selectedPin.age) === 1 ? '1 ano' : `${selectedPin.age ?? 0} anos`} • {selectedPin.species === 'DOG' ? 'Cachorro' : selectedPin.species === 'CAT' ? 'Gato' : 'Pet'}
+                {selectedPin.size ? ` • ${selectedPin.size}` : ''}
+                {selectedPin.city ? ` • ${selectedPin.city}` : ''}
+              </Text>
+              <View style={styles.selectedCardBadges}>
+                {selectedPin.partner != null && typeof selectedPin.partner?.isPaidPartner === 'boolean' && (
+                  <View
+                    style={[
+                      styles.selectedCardPartnerBadge,
+                      {
+                        backgroundColor: selectedPin.partner.isPaidPartner
+                          ? (colors.warning || '#d97706') + '30'
+                          : colors.primary + '25',
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={selectedPin.partner.isPaidPartner ? 'star' : 'heart'}
+                      size={12}
+                      color={selectedPin.partner.isPaidPartner ? (colors.warning || '#d97706') : colors.primary}
+                    />
+                    <Text
+                      style={[
+                        styles.selectedCardPartnerBadgeText,
+                        {
+                          color: selectedPin.partner.isPaidPartner ? (colors.warning || '#d97706') : colors.primary,
+                        },
+                      ]}
+                    >
+                      {selectedPin.partner.isPaidPartner ? 'Patrocinado' : 'Parceiro'}
+                    </Text>
+                  </View>
+                )}
+                {selectedPin.vaccinated !== undefined && selectedPin.vaccinated !== null && (
+                  <StatusBadge
+                    label={selectedPin.vaccinated ? 'Vacinado' : 'Não vacinado'}
+                    variant={selectedPin.vaccinated ? 'success' : 'warning'}
+                  />
+                )}
+                {typeof selectedPin.distanceKm === 'number' && !Number.isNaN(selectedPin.distanceKm) && (
+                  <StatusBadge label={`${selectedPin.distanceKm.toFixed(1)} km`} variant="neutral" />
+                )}
+              </View>
+              <TouchableOpacity
+                style={[styles.selectedCardBtn, { backgroundColor: colors.primary }]}
+                onPress={() => {
+                  if (selectedPin?.id) {
+                    router.push(`/pet/${selectedPin.id}`);
+                  }
+                  setSelectedPin(null);
+                }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.selectedCardBtnText}>Ver perfil</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              onPress={() => setSelectedPin(null)}
+              style={styles.selectedCardClose}
+            >
+              <Ionicons name="close" size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
+
       <View style={[styles.footer, isError && styles.footerError, { backgroundColor: colors.surface }]}>
         <View style={styles.footerTextWrap}>
           <Text style={[styles.footerText, { color: colors.textSecondary }]} numberOfLines={isError ? 10 : 2}>
@@ -245,13 +315,13 @@ export default function MapScreen() {
   );
 }
 
-const MARKER_SIZE = 28;
+const MARKER_SIZE = 24;
 
 const styles = StyleSheet.create({
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.md },
   loadingText: { fontSize: 16 },
-  mapWrap: { flex: 1, position: 'relative' },
-  map: { width: '100%', height: '100%' },
+  mapWrap: { flex: 1, position: 'relative', minHeight: 200 },
+  map: { flex: 1, width: '100%', height: '100%' },
   markerWrap: {
     width: MARKER_SIZE,
     height: MARKER_SIZE,
@@ -262,30 +332,43 @@ const styles = StyleSheet.create({
     width: MARKER_SIZE,
     height: MARKER_SIZE,
   },
-  callout: {
+  selectedCard: {
+    padding: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.08)',
+  },
+  selectedCardRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: spacing.sm,
-    borderRadius: 12,
-    minWidth: 200,
-    maxWidth: 260,
   },
-  calloutPhoto: {
+  selectedCardPhoto: {
     width: 56,
     height: 56,
     borderRadius: 10,
     marginRight: spacing.sm,
   },
-  calloutPhotoPlaceholder: {
+  selectedCardPhotoPlaceholder: {
     backgroundColor: 'rgba(0,0,0,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  calloutBody: { flex: 1, minWidth: 0 },
-  calloutName: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
-  calloutMeta: { fontSize: 12, marginBottom: spacing.sm },
-  calloutBtn: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, alignSelf: 'flex-start' },
-  calloutBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  selectedCardBody: { flex: 1, minWidth: 0 },
+  selectedCardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+  selectedCardName: { fontSize: 16, fontWeight: '600', flex: 1 },
+  selectedCardMeta: { fontSize: 12, marginBottom: spacing.xs },
+  selectedCardBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: spacing.sm },
+  selectedCardPartnerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+  },
+  selectedCardPartnerBadgeText: { fontSize: 11, fontWeight: '600' },
+  selectedCardBtn: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, alignSelf: 'flex-start' },
+  selectedCardBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  selectedCardClose: { padding: spacing.xs },
   footer: {
     padding: spacing.md,
     flexDirection: 'row',

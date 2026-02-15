@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../notifications/push.service';
 import { BlocksService } from '../moderation/blocks.service';
@@ -32,6 +33,7 @@ describe('MessagesService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: PushService, useValue: push },
         { provide: BlocksService, useValue: blocksService },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
       ],
     }).compile();
     service = module.get<MessagesService>(MessagesService);
@@ -119,10 +121,52 @@ describe('MessagesService', () => {
       });
       expect(push.sendToUser).toHaveBeenCalledWith(
         otherUserId,
-        'Nova mensagem',
-        expect.stringContaining('Hello'),
+        'Tutor de Rex',
+        'Rex: Hello',
         { conversationId },
       );
+    });
+
+    it('nao envia push quando o outro usuario tem notifyMessages false', async () => {
+      prisma.conversation.findUnique
+        .mockResolvedValueOnce({
+          id: conversationId,
+          participants: [{ userId }, { userId: otherUserId }],
+        });
+      prisma.message.create.mockResolvedValue({
+        id: 'msg-1',
+        conversationId,
+        senderId: userId,
+        content: 'Oi',
+        imageUrl: null,
+        createdAt: new Date(),
+        readAt: null,
+      });
+      prisma.conversation.findUnique.mockResolvedValueOnce({
+        id: conversationId,
+        participants: [{ userId }, { userId: otherUserId }],
+        pet: { name: 'Luna' },
+      });
+      prisma.userPreferences.findUnique.mockResolvedValueOnce({ notifyMessages: false });
+      await service.send(conversationId, userId, { content: 'Oi' });
+      expect(push.sendToUser).not.toHaveBeenCalled();
+    });
+
+    it('marca mensagens como lidas ao buscar pagina (getPage)', async () => {
+      prisma.conversation.findUnique.mockResolvedValue({
+        id: conversationId,
+        participants: [{ userId }, { userId: otherUserId }],
+      });
+      prisma.message.findMany.mockResolvedValue([]);
+      await service.getPage(conversationId, userId);
+      expect(prisma.message.updateMany).toHaveBeenCalledWith({
+        where: {
+          conversationId,
+          readAt: null,
+          OR: [{ senderId: { not: userId } }, { isSystem: true }],
+        },
+        data: { readAt: expect.any(Date) },
+      });
     });
   });
 });

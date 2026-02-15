@@ -114,14 +114,11 @@ function pickCidadePE(): { lat: number; lng: number } {
   };
 }
 
-// Fotos locais: prisma/seed-images/dogs/1.png..5.png e cats/1.png..5.png (servidas em /v1/seed-photos/)
-const SEED_PHOTO_COUNT = 5;
-const SEED_PHOTO_EXT = '.png';
-const SEED_PHOTO_BASE_URL = process.env.API_PUBLIC_URL || 'http://localhost:3000';
-
+// URLs externas que funcionam em qualquer ambiente (local + prod), sem depender da API servir estáticos
 function seedPhotoUrl(folder: 'dogs' | 'cats', index: number): string {
-  const num = (index % SEED_PHOTO_COUNT) + 1;
-  return `${SEED_PHOTO_BASE_URL}/v1/seed-photos/${folder}/${num}${SEED_PHOTO_EXT}`;
+  const size = 400 + (index % 5); // 400–404 para variedade
+  if (folder === 'dogs') return `https://placedog.net/${size}/${size}?id=${index}`;
+  return `https://placekitten.com/${size}/${size}?id=${index}`;
 }
 
 const SEED_DOGS_PER_USER = 1;
@@ -224,8 +221,225 @@ async function seedPetsForExistingUsers() {
   console.log('Seed de pets por usuário concluído.');
 }
 
+/** Bairros em São Francisco (USA) para seed. */
+const SAO_FRANCISCO_AREAS: { name: string; lat: number; lng: number }[] = [
+  { name: 'Mission District', lat: 37.7599, lng: -122.4194 },
+  { name: 'SOMA', lat: 37.7749, lng: -122.4014 },
+  { name: 'Castro', lat: 37.7609, lng: -122.4350 },
+  { name: 'Hayes Valley', lat: 37.7766, lng: -122.4233 },
+  { name: 'Marina', lat: 37.8025, lng: -122.4365 },
+  { name: 'North Beach', lat: 37.8001, lng: -122.4102 },
+  { name: 'Potrero Hill', lat: 37.7582, lng: -122.4015 },
+  { name: 'Bernal Heights', lat: 37.7411, lng: -122.4206 },
+  { name: 'Noe Valley', lat: 37.7512, lng: -122.4336 },
+  { name: 'Sunset', lat: 37.7544, lng: -122.5090 },
+  { name: 'Richmond', lat: 37.7804, lng: -122.4602 },
+  { name: 'Dogpatch', lat: 37.7602, lng: -122.3900 },
+  { name: 'Glen Park', lat: 37.7331, lng: -122.4345 },
+  { name: 'Inner Sunset', lat: 37.7625, lng: -122.4648 },
+  { name: 'Pacific Heights', lat: 37.7917, lng: -122.4359 },
+];
+
+/** Bairros em São Paulo capital para seed. */
+const SAO_PAULO_AREAS: { name: string; lat: number; lng: number }[] = [
+  { name: 'Moema', lat: -23.5875, lng: -46.6578 },
+  { name: 'Vila Madalena', lat: -23.5489, lng: -46.6889 },
+  { name: 'Pinheiros', lat: -23.5619, lng: -46.6992 },
+  { name: 'Itaim Bibi', lat: -23.5847, lng: -46.6864 },
+  { name: 'Jardins', lat: -23.5633, lng: -46.6639 },
+  { name: 'Vila Olímpia', lat: -23.5936, lng: -46.6914 },
+  { name: 'Perdizes', lat: -23.5342, lng: -46.6847 },
+  { name: 'Santa Cecília', lat: -23.5378, lng: -46.6569 },
+  { name: 'Consolação', lat: -23.5506, lng: -46.6592 },
+  { name: 'Campo Belo', lat: -23.6011, lng: -46.6764 },
+  { name: 'Brooklin', lat: -23.6050, lng: -46.6853 },
+  { name: 'Alto de Pinheiros', lat: -23.5569, lng: -46.7153 },
+  { name: 'Lapa', lat: -23.5314, lng: -46.7036 },
+  { name: 'Vila Mariana', lat: -23.5933, lng: -46.6417 },
+  { name: 'Ipiranga', lat: -23.5978, lng: -46.6036 },
+];
+
+const REGION_DELTA = 0.008; // ~800 m de variação
+
+function pickSanFrancisco(): { lat: number; lng: number; city: string } {
+  const a = SAO_FRANCISCO_AREAS[Math.floor(Math.random() * SAO_FRANCISCO_AREAS.length)];
+  return {
+    lat: randomCoord(a.lat, REGION_DELTA),
+    lng: randomCoord(a.lng, REGION_DELTA),
+    city: 'San Francisco, CA',
+  };
+}
+
+function pickSaoPaulo(): { lat: number; lng: number; city: string } {
+  const a = SAO_PAULO_AREAS[Math.floor(Math.random() * SAO_PAULO_AREAS.length)];
+  return {
+    lat: randomCoord(a.lat, REGION_DELTA),
+    lng: randomCoord(a.lng, REGION_DELTA),
+    city: 'São Paulo, SP',
+  };
+}
+
 /** Seed extra: até 40 pets em várias cidades de PE. Usa o usuário admin como dono. */
 const SEED_PE_MAX_PETS = 40;
+
+const SEED_SF_PETS = 30;
+const SEED_SP_PETS = 30;
+
+/** Cria ~30 pets em São Francisco (USA) e ~30 em São Paulo capital, todos com fotos. */
+async function seedPetsSanFranciscoAndSaoPaulo() {
+  const hasUsers = await prisma.user.count({ where: { deactivatedAt: null } });
+  if (hasUsers === 0) {
+    console.log('Nenhum usuário na base. Pulando seed SF/SP.');
+    return;
+  }
+
+  // Usuários seed para SF e SP (para que o feed exiba a cidade correta via owner.city)
+  const sfOwner = await prisma.user.upsert({
+    where: { email: 'seed-sf@adopet.com.br' },
+    update: { city: 'San Francisco, CA' },
+    create: {
+      email: 'seed-sf@adopet.com.br',
+      passwordHash: await bcrypt.hash(SEED_PASSWORD, 10),
+      name: 'Seed San Francisco',
+      city: 'San Francisco, CA',
+    },
+  });
+  const spOwner = await prisma.user.upsert({
+    where: { email: 'seed-sp@adopet.com.br' },
+    update: { city: 'São Paulo, SP' },
+    create: {
+      email: 'seed-sp@adopet.com.br',
+      passwordHash: await bcrypt.hash(SEED_PASSWORD, 10),
+      name: 'Seed São Paulo',
+      city: 'São Paulo, SP',
+    },
+  });
+  await prisma.userPreferences.upsert({
+    where: { userId: sfOwner.id },
+    update: {},
+    create: { userId: sfOwner.id, species: 'BOTH', radiusKm: 50 },
+  });
+  await prisma.userPreferences.upsert({
+    where: { userId: spOwner.id },
+    update: {},
+    create: { userId: spOwner.id, species: 'BOTH', radiusKm: 50 },
+  });
+
+  const partnerIds = await prisma.partner
+    .findMany({
+      where: { type: 'ONG', active: true, approvedAt: { not: null } },
+      select: { id: true },
+    })
+    .then((rows) => rows.map((r) => r.id));
+  const pickPartnerId = () =>
+    partnerIds.length > 0 && Math.random() < SEED_PET_PARTNER_CHANCE ? pick(partnerIds) : undefined;
+
+  // San Francisco: ~37.7, -122.4
+  const existingSf = await prisma.pet.count({
+    where: {
+      ownerId: sfOwner.id,
+      latitude: { gte: 37.6, lte: 38 },
+      longitude: { gte: -122.6, lte: -122.3 },
+    },
+  });
+  const targetSf = Math.max(0, SEED_SF_PETS - existingSf);
+  if (targetSf > 0) {
+    console.log(`Criando ${targetSf} pets em San Francisco, CA...`);
+    const usedNames = new Set<string>();
+    for (let i = 0; i < targetSf; i++) {
+      const isDog = Math.random() < 0.55;
+      const names = isDog ? DOG_NAMES : CAT_NAMES;
+      const breeds = isDog ? DOG_BREEDS : CAT_BREEDS;
+      const descriptions = isDog ? DESCRIPTIONS_DOG : DESCRIPTIONS_CAT;
+      let name = pick(names);
+      let attempts = 0;
+      while (usedNames.has(`${name}-${i}`) && attempts++ < 30) name = pick(names);
+      usedNames.add(`${name}-${i}`);
+      const loc = pickSanFrancisco();
+      const partnerId = pickPartnerId();
+      await prisma.pet.create({
+        data: {
+          name,
+          species: isDog ? 'DOG' : 'CAT',
+          breed: pick(breeds),
+          age: randomAge(),
+          sex: Math.random() < 0.5 ? 'male' : 'female',
+          size: pick(SIZES),
+          vaccinated: Math.random() < 0.8,
+          neutered: Math.random() < 0.7,
+          description: pick(descriptions),
+          adoptionReason: pick(REASONS) ?? undefined,
+          status: 'AVAILABLE',
+          publicationStatus: 'APPROVED',
+          latitude: loc.lat,
+          longitude: loc.lng,
+          ownerId: sfOwner.id,
+          ...(partnerId ? { partnerId } : {}),
+          media: {
+            create: [
+              { url: seedPhotoUrl(isDog ? 'dogs' : 'cats', 100 + i), sortOrder: 0, isPrimary: true },
+            ],
+          },
+        },
+      });
+      console.log(`  [${i + 1}/${targetSf}] ${name} (${isDog ? 'cachorro' : 'gato'}) - SF`);
+    }
+    console.log(`Seed San Francisco concluído: ${targetSf} pet(s).`);
+  }
+
+  // São Paulo capital: ~-23.55, -46.63
+  const existingSp = await prisma.pet.count({
+    where: {
+      ownerId: spOwner.id,
+      latitude: { gte: -23.7, lte: -23.4 },
+      longitude: { gte: -46.8, lte: -46.5 },
+    },
+  });
+  const targetSp = Math.max(0, SEED_SP_PETS - existingSp);
+  if (targetSp > 0) {
+    console.log(`Criando ${targetSp} pets em São Paulo, SP...`);
+    const usedNames = new Set<string>();
+    for (let i = 0; i < targetSp; i++) {
+      const isDog = Math.random() < 0.55;
+      const names = isDog ? DOG_NAMES : CAT_NAMES;
+      const breeds = isDog ? DOG_BREEDS : CAT_BREEDS;
+      const descriptions = isDog ? DESCRIPTIONS_DOG : DESCRIPTIONS_CAT;
+      let name = pick(names);
+      let attempts = 0;
+      while (usedNames.has(`${name}-${i}`) && attempts++ < 30) name = pick(names);
+      usedNames.add(`${name}-${i}`);
+      const loc = pickSaoPaulo();
+      const partnerId = pickPartnerId();
+      await prisma.pet.create({
+        data: {
+          name,
+          species: isDog ? 'DOG' : 'CAT',
+          breed: pick(breeds),
+          age: randomAge(),
+          sex: Math.random() < 0.5 ? 'male' : 'female',
+          size: pick(SIZES),
+          vaccinated: Math.random() < 0.8,
+          neutered: Math.random() < 0.7,
+          description: pick(descriptions),
+          adoptionReason: pick(REASONS) ?? undefined,
+          status: 'AVAILABLE',
+          publicationStatus: 'APPROVED',
+          latitude: loc.lat,
+          longitude: loc.lng,
+          ownerId: spOwner.id,
+          ...(partnerId ? { partnerId } : {}),
+          media: {
+            create: [
+              { url: seedPhotoUrl(isDog ? 'dogs' : 'cats', 200 + i), sortOrder: 0, isPrimary: true },
+            ],
+          },
+        },
+      });
+      console.log(`  [${i + 1}/${targetSp}] ${name} (${isDog ? 'cachorro' : 'gato'}) - SP`);
+    }
+    console.log(`Seed São Paulo concluído: ${targetSp} pet(s).`);
+  }
+}
 
 async function seedPetsPernambuco() {
   const owner = await prisma.user.findFirst({
@@ -829,6 +1043,9 @@ async function main() {
 
   // Até 40 pets em várias cidades de PE (dono: primeiro usuário)
   await seedPetsPernambuco();
+
+  // ~30 pets em San Francisco (USA) e ~30 em São Paulo capital, todos com fotos
+  await seedPetsSanFranciscoAndSaoPaulo();
 
   console.log('Seed concluído.');
   console.log('  Login admin: admin@adopet.com.br / ' + SEED_PASSWORD);

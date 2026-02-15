@@ -38,10 +38,15 @@ export type MapPin = {
   name: string;
   age: number;
   species: string;
+  size?: string;
+  vaccinated?: boolean;
   city?: string;
   latitude: number;
   longitude: number;
   photoUrl: string;
+  distanceKm?: number;
+  verified?: boolean;
+  partner?: { isPaidPartner: boolean };
 };
 
 export type FeedMapResponse = { items: MapPin[] };

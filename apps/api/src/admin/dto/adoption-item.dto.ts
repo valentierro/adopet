@@ -24,4 +24,8 @@ export class AdoptionItemDto {
 
   @ApiProperty({ example: '2025-02-08T12:00:00.000Z' })
   adoptedAt: string;
+
+  /** true quando a Adopet confirmou (admin ou 48h); false quando só o adotante confirmou */
+  @ApiProperty()
+  confirmedByAdopet: boolean;
 }

@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Alert, Linking, ScrollView } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
-import { ScreenContainer, PrimaryButton, LoadingLogo, PartnerPanelLayout } from '../src/components';
+import { ScreenContainer, PrimaryButton, LoadingLogo, PartnerPanelLayout, ProfileMenuFooter } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMyPartner, createPartnerCheckoutSession, createPartnerBillingPortalSession } from '../src/api/partner';
 import { useQueryClient } from '@tanstack/react-query';
@@ -89,6 +89,7 @@ export default function PartnerSubscriptionScreen() {
     return (
       <ScreenContainer>
         <LoadingLogo size={120} />
+        <ProfileMenuFooter />
       </ScreenContainer>
     );
   }
@@ -122,6 +123,7 @@ export default function PartnerSubscriptionScreen() {
           )}
         </ScrollView>
       </PartnerPanelLayout>
+      <ProfileMenuFooter />
     </ScreenContainer>
   );
 }

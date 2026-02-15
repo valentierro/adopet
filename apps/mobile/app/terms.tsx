@@ -1,5 +1,5 @@
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
-import { ScreenContainer } from '../src/components';
+import { ScreenContainer, ProfileMenuFooter } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { spacing } from '../src/theme';
 
@@ -40,6 +40,7 @@ export default function TermsScreen() {
           Podemos atualizar estes termos periodicamente. O uso continuado do app após alterações constitui aceitação da nova versão. Em caso de dúvidas, entre em contato pelo email de suporte disponível no app.
         </Text>
       </View>
+      <ProfileMenuFooter />
     </ScreenContainer>
   );
 }

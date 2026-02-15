@@ -2,11 +2,12 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, Image, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, FlatList, Dimensions, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
-import { SwipeableCard, FeedCard, MatchOverlay, Toast, EmptyState, LoadingLogo } from '../../src/components';
+import { Image as ExpoImage } from 'expo-image';
+import { SwipeableCard, FeedCard, MatchOverlay, Toast, EmptyState, LoadingLogo, VerifiedBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { fetchFeed, type FeedResponse, type FeedSpeciesFilter } from '../../src/api/feed';
 import { createSwipe } from '../../src/api/swipes';
@@ -19,7 +20,12 @@ import { spacing } from '../../src/theme';
 type FeedItem = FeedResponse['items'][number];
 
 const FEED_QUERY_KEY = ['feed'];
-
+const GRID_GAP = spacing.sm;
+const GRID_PADDING = spacing.md;
+const NUM_COLUMNS = 2;
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const GRID_CELL_WIDTH = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP) / NUM_COLUMNS;
+const GRID_CELL_ASPECT = 4 / 5;
 const LogoLight = require('../../assets/brand/logo/logo_horizontal_light.png');
 const LogoDark = require('../../assets/brand/logo/logo_dark.png');
 
@@ -42,6 +48,13 @@ export default function FeedScreen() {
   const [deckHeight, setDeckHeight] = useState<number>(0);
   const [changingFilter, setChangingFilter] = useState(false);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  type ViewMode = 'swipe' | 'grid';
+  const [viewMode, setViewModeState] = useState<ViewMode>('swipe');
+  const [gridItems, setGridItems] = useState<FeedResponse['items']>([]);
+
+  const setViewMode = useCallback((mode: ViewMode) => {
+    setViewModeState(mode);
+  }, []);
 
   useEffect(() => {
     if (!isLoading && !isRefetching) setChangingFilter(false);
@@ -84,17 +97,33 @@ export default function FeedScreen() {
 
   const nextCursor = data?.nextCursor ?? null;
 
-  // Primeira carga: acumula; ao carregar mais: mostra os próximos 20 no deck
+  // Primeira carga: acumula; ao carregar mais: mostra os próximos 20 no deck (grid sem duplicar por id)
   useEffect(() => {
     if (!data?.items?.length) return;
     if (cursor === null) {
       setAccumulatedItems(data.items);
+      if (viewMode === 'grid') setGridItems(data.items);
     } else {
       setLocalItems(data.items);
+      if (viewMode === 'grid') {
+        setGridItems((prev) => {
+          const ids = new Set(prev.map((p) => p.id));
+          const newItems = data.items.filter((p) => !ids.has(p.id));
+          return newItems.length ? [...prev, ...newItems] : prev;
+        });
+      }
     }
-  }, [data?.items, cursor]);
+  }, [data?.items, cursor, viewMode]);
 
   const items = localItems ?? accumulatedItems ?? data?.items ?? [];
+  const displayGridItems = viewMode === 'grid' ? gridItems : [];
+
+  // Ao alternar para grid com dados já carregados, preenche gridItems
+  useEffect(() => {
+    if (viewMode === 'grid' && gridItems.length === 0 && (accumulatedItems?.length ?? 0) > 0) {
+      setGridItems(accumulatedItems ?? []);
+    }
+  }, [viewMode, gridItems.length, accumulatedItems]);
 
   useFocusEffect(
     useCallback(() => {
@@ -211,6 +240,7 @@ export default function FeedScreen() {
     setCursor(null);
     setAccumulatedItems(null);
     setLocalItems(null);
+    setGridItems([]);
     refetch();
   }, [refetch]);
 
@@ -221,7 +251,7 @@ export default function FeedScreen() {
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
         <View style={[styles.brandHeader, { paddingTop: insets.top + 8 }]}>
-          <Image source={isDark ? LogoDark : LogoLight} style={styles.headerLogo} resizeMode="contain" />
+          <ExpoImage source={isDark ? LogoDark : LogoLight} style={styles.headerLogo} contentFit="contain" />
         </View>
         <View style={[styles.deck, styles.deckLoading]}>
           <LoadingLogo size={160} />
@@ -238,7 +268,7 @@ export default function FeedScreen() {
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
         <View style={[styles.brandHeader, { paddingTop: insets.top + 8 }]}>
-          <Image source={isDark ? LogoDark : LogoLight} style={styles.headerLogo} resizeMode="contain" />
+          <ExpoImage source={isDark ? LogoDark : LogoLight} style={styles.headerLogo} contentFit="contain" />
         </View>
         <View style={styles.emptyWrap}>
           <EmptyState
@@ -265,11 +295,11 @@ export default function FeedScreen() {
     );
   }
 
-  if (!currentPet && !(changingFilter && (isRefetching || isLoading))) {
+  if (!currentPet && viewMode === 'swipe' && !(changingFilter && (isRefetching || isLoading))) {
     return (
       <View style={[styles.screen, { backgroundColor: colors.background }]}>
         <View style={[styles.brandHeader, { paddingTop: insets.top + 8 }]}>
-          <Image source={isDark ? LogoDark : LogoLight} style={styles.headerLogo} resizeMode="contain" />
+          <ExpoImage source={isDark ? LogoDark : LogoLight} style={styles.headerLogo} contentFit="contain" />
         </View>
         <View style={styles.emptyWrap}>
           <EmptyState
@@ -317,107 +347,275 @@ export default function FeedScreen() {
     { value: 'CAT', label: 'Gatos' },
   ];
 
-  return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
-        style={[styles.screen, { backgroundColor: colors.background }]}
-        contentContainerStyle={[styles.scrollContent, { backgroundColor: colors.background }]}
-        scrollEnabled={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching && !isLoading}
-            onRefresh={handleRefresh}
-            tintColor={colors.primary}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={[styles.brandHeader, { paddingTop: Math.max(insets.top, 8), paddingBottom: 4 }]}>
-          <Image source={isDark ? LogoDark : LogoLight} style={styles.headerLogo} resizeMode="contain" />
+  const headerAndChips = (
+    <>
+      <View style={[styles.brandHeader, { paddingTop: Math.max(insets.top, 8), paddingBottom: 4 }]}>
+        <ExpoImage source={isDark ? LogoDark : LogoLight} style={styles.headerLogo} contentFit="contain" />
+        <View style={styles.headerRight}>
           <Text style={[styles.hint, { color: colors.textSecondary }]}>
-            {items.length} restante{items.length !== 1 ? 's' : ''}
+            {viewMode === 'grid' ? displayGridItems.length : items.length} {viewMode === 'grid' ? 'pet' : 'restante'}{(viewMode === 'grid' ? displayGridItems.length : items.length) !== 1 ? 's' : ''}
           </Text>
-        </View>
-        <View style={[styles.chipsRow, { paddingBottom: spacing.xs }]}>
-          {chips.map(({ value, label }) => (
+          <View style={styles.viewModeToggle}>
             <TouchableOpacity
-              key={value}
-              style={[
-                styles.chip,
-                { borderColor: colors.textSecondary },
-                speciesFilter === value && { backgroundColor: colors.primary, borderColor: colors.primary },
-              ]}
-              onPress={() => {
-                setSpeciesFilter(value);
-                setCursor(null);
-                setAccumulatedItems(null);
-                setLocalItems(null);
-                setChangingFilter(true);
-              }}
+              style={[styles.viewModeBtn, viewMode === 'swipe' && { backgroundColor: colors.primary }]}
+              onPress={() => setViewMode('swipe')}
+              accessibilityLabel="Visualização em cards"
             >
-              <Text
-                style={[
-                  styles.chipText,
-                  { color: speciesFilter === value ? '#fff' : colors.textSecondary },
-                ]}
-              >
-                {label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <View style={styles.swipeHintWrap}>
-          <Ionicons name="arrow-back" size={16} color={colors.textSecondary} />
-          <Text style={[styles.swipeHint, { color: colors.textSecondary }]}>
-            Arraste o card para os lados para curtir ou passar
-          </Text>
-          <Ionicons name="arrow-forward" size={16} color={colors.textSecondary} />
-        </View>
-        <View style={styles.deck} onLayout={(e) => setDeckHeight(e.nativeEvent.layout.height)}>
-          {changingFilter && (isRefetching || isLoading || items.length === 0) ? (
-            <View style={styles.deckLoading}>
-              <LoadingLogo size={160} />
-            </View>
-          ) : currentPet ? (
-            <SwipeableCard
-              key={currentPet.id}
-              fullScreen
-              cardHeight={deckHeight > 0 ? deckHeight : undefined}
-              onSwipeRight={handleLike}
-              onSwipeLeft={handlePass}
-              onPress={() => router.push(`/pet/${currentPet.id}`)}
-            >
-              <FeedCard
-                pet={currentPet}
-                height={deckHeight > 0 ? deckHeight : undefined}
-                wrapInTouchable={false}
-                showActions={false}
-                onPress={() => router.push(`/pet/${currentPet.id}`)}
-                onLike={handleLike}
-                onPass={handlePass}
-              />
-            </SwipeableCard>
-          ) : null}
-        </View>
-        {!(changingFilter && (isRefetching || isLoading || items.length === 0)) && (
-          <View style={[styles.feedActions, { backgroundColor: colors.background }]}>
-            <TouchableOpacity
-              style={[styles.feedActionBtn, styles.feedPassBtn, { backgroundColor: colors.surface }]}
-              onPress={handlePass}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="close" size={36} color={colors.accent} />
+              <Ionicons name="layers-outline" size={22} color={viewMode === 'swipe' ? '#fff' : colors.textSecondary} />
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.feedActionBtn, styles.feedLikeBtn, { backgroundColor: colors.surface }]}
-              onPress={handleLike}
-              activeOpacity={0.8}
+              style={[styles.viewModeBtn, viewMode === 'grid' && { backgroundColor: colors.primary }]}
+              onPress={() => setViewMode('grid')}
+              accessibilityLabel="Visualização em grade"
             >
-              <Ionicons name="heart" size={32} color={colors.primary} />
+              <Ionicons name="grid-outline" size={22} color={viewMode === 'grid' ? '#fff' : colors.textSecondary} />
             </TouchableOpacity>
           </View>
-        )}
-      </ScrollView>
+        </View>
+      </View>
+      <View style={[styles.chipsRow, { paddingBottom: spacing.xs }]}>
+        {chips.map(({ value, label }) => (
+          <TouchableOpacity
+            key={value}
+            style={[
+              styles.chip,
+              { borderColor: colors.textSecondary },
+              speciesFilter === value && { backgroundColor: colors.primary, borderColor: colors.primary },
+            ]}
+            onPress={() => {
+              setSpeciesFilter(value);
+              setCursor(null);
+              setAccumulatedItems(null);
+              setLocalItems(null);
+              setGridItems([]);
+              setChangingFilter(true);
+            }}
+          >
+            <Text
+              style={[
+                styles.chipText,
+                { color: speciesFilter === value ? '#fff' : colors.textSecondary },
+              ]}
+            >
+              {label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </>
+  );
+
+  return (
+    <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      {viewMode === 'grid' ? (
+        <>
+          {headerAndChips}
+          <FlatList
+            data={displayGridItems}
+            keyExtractor={(item, index) => `${item.id}-${index}`}
+            numColumns={NUM_COLUMNS}
+            key="grid"
+            style={styles.gridList}
+            contentContainerStyle={[styles.gridListContent, { paddingHorizontal: GRID_PADDING }]}
+            columnWrapperStyle={styles.gridRow}
+            initialNumToRender={8}
+            maxToRenderPerBatch={4}
+            windowSize={5}
+            renderItem={({ item }) => {
+              const partner = item.partner as { isPaidPartner?: boolean } | undefined;
+              const onLike = () => {
+                swipeMutation.mutate(
+                  { petId: item.id, action: 'LIKE' },
+                  {
+                    onSuccess: () => {
+                      setGridItems((prev) => prev.filter((p) => p.id !== item.id));
+                      setShowMatchOverlay(true);
+                      setToastMessage('Adicionado aos favoritos!');
+                    },
+                  },
+                );
+              };
+              const onPass = () => {
+                swipeMutation.mutate(
+                  { petId: item.id, action: 'PASS' },
+                  { onSuccess: () => setGridItems((prev) => prev.filter((p) => p.id !== item.id)) },
+                );
+              };
+              return (
+                <View style={[styles.gridCard, { backgroundColor: colors.surface }]}>
+                  <TouchableOpacity
+                    style={styles.gridCardTouchable}
+                    onPress={() => router.push(`/pet/${item.id}`)}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.gridCardImageWrap}>
+                      <ExpoImage
+                        source={{ uri: item.photos?.[0] ?? 'https://placedog.net/400/500' }}
+                        style={[styles.gridCardImage, { width: GRID_CELL_WIDTH, height: GRID_CELL_WIDTH / GRID_CELL_ASPECT }]}
+                        contentFit="cover"
+                      />
+                      <View style={styles.gridCardBadges}>
+                        {item.verified && (
+                          <Pressable
+                            style={[styles.gridBadgeIcon, { backgroundColor: 'rgba(255,255,255,0.95)' }]}
+                            accessibilityLabel="Verificado"
+                            accessibilityRole="image"
+                          >
+                            <VerifiedBadge size={12} />
+                          </Pressable>
+                        )}
+                        {partner && (
+                          <Pressable
+                            style={[
+                              styles.gridBadgeIcon,
+                              { backgroundColor: partner.isPaidPartner ? 'rgba(251,191,36,0.9)' : 'rgba(217,119,6,0.92)' },
+                            ]}
+                            accessibilityLabel={partner.isPaidPartner ? 'Patrocinado' : 'Parceiro'}
+                            accessibilityRole="image"
+                          >
+                            <Ionicons name={partner.isPaidPartner ? 'star' : 'heart'} size={12} color="#fff" />
+                          </Pressable>
+                        )}
+                      </View>
+                    </View>
+                    <View style={[styles.gridCardInfo, { backgroundColor: colors.surface }]}>
+                      <Text style={[styles.gridCardName, { color: colors.textPrimary }]} numberOfLines={1}>{item.name}</Text>
+                      <Text style={[styles.gridCardMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+                        {item.species === 'DOG' ? 'Cachorro' : item.species === 'CAT' ? 'Gato' : item.species} • {item.age} ano(s)
+                      </Text>
+                      {(item.city != null || item.distanceKm != null) && (
+                        <View style={styles.gridCardLocation}>
+                          <Ionicons name="location-outline" size={12} color={colors.textSecondary} />
+                          <Text style={[styles.gridCardLocationText, { color: colors.textSecondary }]} numberOfLines={1}>
+                            {[item.city, item.distanceKm != null ? `${item.distanceKm.toFixed(1)} km` : null].filter(Boolean).join(' • ')}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                  <View style={[styles.gridCardActions, { backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border ?? colors.textSecondary + '20' }]}>
+                    <TouchableOpacity
+                      style={[styles.gridCardActionBtn, { backgroundColor: colors.surface }]}
+                      onPress={onPass}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityLabel="Passar"
+                    >
+                      <Ionicons name="close" size={24} color={colors.accent} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.gridCardActionBtn, { backgroundColor: colors.surface }]}
+                      onPress={onLike}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityLabel="Curtir"
+                    >
+                      <Ionicons name="heart" size={22} color={colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            }}
+            onEndReached={nextCursor ? loadMore : undefined}
+            onEndReachedThreshold={0.4}
+            ListEmptyComponent={
+              changingFilter && (isRefetching || isLoading) ? (
+                <View style={styles.gridLoading}>
+                  <LoadingLogo size={120} />
+                </View>
+              ) : displayGridItems.length === 0 && data ? (
+                <View style={styles.emptyWrap}>
+                  <EmptyState
+                    title="Você viu todos por enquanto"
+                    message="Volte mais tarde para novos pets na sua região."
+                    icon={<Ionicons name="heart-outline" size={56} color={colors.textSecondary} />}
+                  />
+                </View>
+              ) : null
+            }
+            ListFooterComponent={
+              nextCursor && displayGridItems.length > 0 && isRefetching ? (
+                <View style={styles.gridFooter}>
+                  <LoadingLogo size={48} />
+                </View>
+              ) : null
+            }
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefetching && !isLoading}
+                onRefresh={handleRefresh}
+                tintColor={colors.primary}
+              />
+            }
+            showsVerticalScrollIndicator={false}
+          />
+        </>
+      ) : (
+        <ScrollView
+          style={[styles.screen, { backgroundColor: colors.background }]}
+          contentContainerStyle={[styles.scrollContent, { backgroundColor: colors.background }]}
+          scrollEnabled={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching && !isLoading}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        >
+          {headerAndChips}
+          <View style={styles.swipeHintWrap}>
+            <Ionicons name="arrow-back" size={16} color={colors.textSecondary} />
+            <Text style={[styles.swipeHint, { color: colors.textSecondary }]}>
+              Arraste o card para os lados para curtir ou passar
+            </Text>
+            <Ionicons name="arrow-forward" size={16} color={colors.textSecondary} />
+          </View>
+          <View style={styles.deck} onLayout={(e) => setDeckHeight(e.nativeEvent.layout.height)}>
+            {changingFilter && (isRefetching || isLoading || items.length === 0) ? (
+              <View style={styles.deckLoading}>
+                <LoadingLogo size={160} />
+              </View>
+            ) : currentPet ? (
+              <SwipeableCard
+                key={currentPet.id}
+                fullScreen
+                cardHeight={deckHeight > 0 ? deckHeight : undefined}
+                onSwipeRight={handleLike}
+                onSwipeLeft={handlePass}
+                onPress={() => router.push(`/pet/${currentPet.id}`)}
+              >
+                <FeedCard
+                  pet={currentPet}
+                  height={deckHeight > 0 ? deckHeight : undefined}
+                  wrapInTouchable={false}
+                  showActions={false}
+                  onPress={() => router.push(`/pet/${currentPet.id}`)}
+                  onLike={handleLike}
+                  onPass={handlePass}
+                />
+              </SwipeableCard>
+            ) : null}
+          </View>
+          {!(changingFilter && (isRefetching || isLoading || items.length === 0)) && (
+            <View style={[styles.feedActions, { backgroundColor: colors.background }]}>
+              <TouchableOpacity
+                style={[styles.feedActionBtn, styles.feedPassBtn, { backgroundColor: colors.surface }]}
+                onPress={handlePass}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="close" size={36} color={colors.accent} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.feedActionBtn, styles.feedLikeBtn, { backgroundColor: colors.surface }]}
+                onPress={handleLike}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="heart" size={32} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
+      )}
       <MatchOverlay
         visible={showMatchOverlay}
         onHide={() => {
@@ -458,8 +656,63 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerLogo: { height: 32, width: 120 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  viewModeToggle: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  viewModeBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   hint: { fontSize: 13 },
   scrollContent: { flex: 1, minHeight: 0 },
+  gridList: { flex: 1 },
+  gridListContent: { paddingBottom: spacing.xl, paddingTop: spacing.xs, flexGrow: 1 },
+  gridRow: { gap: GRID_GAP, marginBottom: GRID_GAP },
+  gridCard: {
+    width: GRID_CELL_WIDTH,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  gridCardTouchable: { flex: 1 },
+  gridCardImageWrap: { position: 'relative' },
+  gridCardImage: { borderTopLeftRadius: 12, borderTopRightRadius: 12 },
+  gridCardBadges: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  gridBadgeIcon: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridCardInfo: { paddingVertical: spacing.sm, paddingHorizontal: spacing.xs },
+  gridCardName: { fontSize: 14, fontWeight: '700' },
+  gridCardMeta: { fontSize: 12, marginTop: 2 },
+  gridCardLocation: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  gridCardLocationText: { fontSize: 11 },
+  gridCardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  gridCardActionBtn: {
+    padding: 6,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  gridLoading: { flex: 1, minHeight: 280, justifyContent: 'center', alignItems: 'center' },
+  gridFooter: { paddingVertical: spacing.lg, alignItems: 'center' },
   chipsRow: { flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: 20, borderWidth: 1 },
   chipText: { fontSize: 14, fontWeight: '600' },

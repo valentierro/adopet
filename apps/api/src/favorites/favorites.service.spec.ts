@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { VerificationService } from '../verification/verification.service';
 import { FavoritesService } from './favorites.service';
 
 describe('FavoritesService', () => {
@@ -18,6 +19,7 @@ describe('FavoritesService', () => {
     species: 'DOG',
     age: 2,
     status: 'AVAILABLE',
+    createdAt: new Date(),
     media: [{ url: 'https://example.com/1.jpg' }],
   };
 
@@ -35,6 +37,14 @@ describe('FavoritesService', () => {
       providers: [
         FavoritesService,
         { provide: PrismaService, useValue: prisma },
+        {
+          provide: VerificationService,
+          useValue: {
+            assertPetVisibleToUser: jest.fn().mockResolvedValue(undefined),
+            isPetVerified: jest.fn().mockResolvedValue(false),
+            getVerifiedPetIds: jest.fn().mockResolvedValue(new Set<string>()),
+          },
+        },
       ],
     }).compile();
     service = module.get<FavoritesService>(FavoritesService);

@@ -1,8 +1,9 @@
 import { useRouter } from 'expo-router';
-import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { Image } from 'expo-image';
 import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, LoadingLogo, PartnerPanelLayout } from '../src/components';
+import { ScreenContainer, LoadingLogo, PartnerPanelLayout, ProfileMenuFooter } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMyPartner } from '../src/api/partner';
 import { spacing } from '../src/theme';
@@ -30,6 +31,7 @@ export default function PartnerPortalScreen() {
           <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Nenhum estabelecimento</Text>
           <Text style={[styles.emptySub, { color: colors.textSecondary }]}>Sua conta não está vinculada a um parceiro. Solicite uma parceria comercial para criar sua conta e acessar o portal.</Text>
         </View>
+        <ProfileMenuFooter />
       </ScreenContainer>
     );
   }
@@ -39,7 +41,7 @@ export default function PartnerPortalScreen() {
       <ScreenContainer>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
           {partner.logoUrl ? (
-            <Image source={{ uri: partner.logoUrl }} style={styles.logo} resizeMode="contain" />
+            <Image source={{ uri: partner.logoUrl }} style={styles.logo} contentFit="contain" />
           ) : null}
           <Text style={[styles.name, { color: colors.textPrimary }]}>{partner.name}</Text>
           <View style={[styles.badge, { backgroundColor: colors.textSecondary + '20' }]}>
@@ -57,6 +59,7 @@ export default function PartnerPortalScreen() {
             <Text style={styles.ctaButtonText}>Renovar assinatura</Text>
           </TouchableOpacity>
         </View>
+        <ProfileMenuFooter />
       </ScreenContainer>
     );
   }
@@ -71,7 +74,7 @@ export default function PartnerPortalScreen() {
         >
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
             {partner.logoUrl ? (
-              <Image source={{ uri: partner.logoUrl }} style={styles.logo} resizeMode="contain" />
+              <Image source={{ uri: partner.logoUrl }} style={styles.logo} contentFit="contain" />
             ) : null}
             <Text style={[styles.name, { color: colors.textPrimary }]}>{partner.name}</Text>
             <Text style={[styles.slug, { color: colors.textSecondary }]}>{partner.slug}</Text>
@@ -130,6 +133,7 @@ export default function PartnerPortalScreen() {
           </View>
         </ScrollView>
       </PartnerPanelLayout>
+      <ProfileMenuFooter />
     </ScreenContainer>
   );
 }

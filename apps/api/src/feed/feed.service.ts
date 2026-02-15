@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Pet } from '../../api/prisma-generated';
+import type { Prisma } from '../../api/prisma-generated';
 import { PrismaService } from '../prisma/prisma.service';
 import { ReportsService } from '../moderation/reports.service';
 import { BlocksService } from '../moderation/blocks.service';
@@ -201,9 +202,11 @@ export class FeedService {
     const excludeOwnerIds = userId ? [...blockedByMe, ...blockedMe] : [];
 
     const breedFilter = queryBreed?.trim();
+    const now = new Date();
     const where = {
       status: 'AVAILABLE' as const,
       publicationStatus: 'APPROVED' as const,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       ...(speciesFilter ? { species: speciesFilter } : {}),
       ...(breedFilter ? { breed: { equals: breedFilter, mode: 'insensitive' as const } } : {}),
       ...(swipedIds.length > 0 ? { id: { notIn: swipedIds } } : {}),
@@ -249,7 +252,7 @@ export class FeedService {
         : [];
     const isPaidPartnerByOwnerId = Object.fromEntries(ownerPartnersForScore.map((p) => [p.userId, p.isPaidPartner]));
 
-    const now = Date.now();
+    const nowMs = Date.now();
     const radiusKm = Number(queryRadiusKm ?? prefs?.radiusKm ?? 50) || 50;
     const hasUserLocation = lat != null && lng != null;
     const scored = candidates.map((pet) => {
@@ -259,7 +262,7 @@ export class FeedService {
           : hasUserLocation
             ? Infinity
             : 50;
-      const daysSinceCreated = (now - pet.createdAt.getTime()) / (1000 * 60 * 60 * 24);
+      const daysSinceCreated = (nowMs - pet.createdAt.getTime()) / (1000 * 60 * 60 * 24);
       const favoriteCount = favByPetId[pet.id] ?? 0;
       const speciesMatch = speciesFilter == null || pet.species === speciesFilter ? 1 : 0;
       const sizeMatch =
@@ -355,10 +358,12 @@ export class FeedService {
   ): Promise<FeedResponseDto> {
     const pageSize = DEFAULT_PAGE_SIZE;
     const reportedPetIds = await this.reportsService.getReportedPetIds();
+    const now = new Date();
     const where = {
       ownerId,
       status: 'AVAILABLE' as const,
       publicationStatus: 'APPROVED' as const,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       ...(reportedPetIds.length > 0 ? { id: { notIn: reportedPetIds } } : {}),
     };
     const [totalCount] = await Promise.all([
@@ -409,17 +414,35 @@ export class FeedService {
     lng: number,
     radiusKm: number,
     userId?: string,
-  ): Promise<{ items: { id: string; name: string; age: number; species: string; city?: string; latitude: number; longitude: number; photoUrl: string }[] }> {
+  ): Promise<{
+    items: {
+      id: string;
+      name: string;
+      age: number;
+      species: string;
+      size: string;
+      vaccinated: boolean;
+      city?: string;
+      latitude: number;
+      longitude: number;
+      photoUrl: string;
+      distanceKm: number;
+      verified: boolean;
+      partner?: { isPaidPartner: boolean };
+    }[];
+  }> {
     const [reportedPetIds, blockedByMe, blockedMe] = await Promise.all([
       this.reportsService.getReportedPetIds(),
       userId ? this.blocksService.getBlockedUserIds(userId) : Promise.resolve([]),
       userId ? this.blocksService.getBlockedByUserIds(userId) : Promise.resolve([]),
     ]);
     const excludeOwnerIds = userId ? [...blockedByMe, ...blockedMe] : [];
+    const now = new Date();
     const candidates = await this.prisma.pet.findMany({
       where: {
         status: 'AVAILABLE',
         publicationStatus: 'APPROVED',
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
         latitude: { not: null },
         longitude: { not: null },
         ...(reportedPetIds.length > 0 ? { id: { notIn: reportedPetIds } } : {}),
@@ -430,29 +453,61 @@ export class FeedService {
         name: true,
         age: true,
         species: true,
+        size: true,
+        vaccinated: true,
+        ownerId: true,
         latitude: true,
         longitude: true,
         media: { orderBy: { sortOrder: 'asc' }, take: 1, select: { url: true } },
         owner: { select: { city: true } },
+        partner: { select: { isPaidPartner: true } },
       },
     });
-    const items: { id: string; name: string; age: number; species: string; city?: string; latitude: number; longitude: number; photoUrl: string }[] = [];
+    const withinRadius: { p: (typeof candidates)[number]; distanceKm: number }[] = [];
     for (const p of candidates) {
       if (p.latitude == null || p.longitude == null) continue;
       const distanceKm = this.haversineKm(lat, lng, p.latitude, p.longitude);
       if (distanceKm <= radiusKm) {
-        items.push({
-          id: p.id,
-          name: p.name,
-          age: p.age,
-          species: p.species,
-          ...(p.owner?.city != null && { city: p.owner.city }),
-          latitude: p.latitude,
-          longitude: p.longitude,
-          photoUrl: p.media[0]?.url ?? '',
-        });
+        withinRadius.push({ p, distanceKm });
       }
     }
+    const petIds = withinRadius.map(({ p }) => p.id);
+    const verifiedIds = petIds.length > 0 ? await this.verificationService.getVerifiedPetIds(petIds) : new Set<string>();
+    const ownerIdsNeedingPartner = [
+      ...new Set(
+        withinRadius
+          .filter(({ p }) => !(p as { partner?: unknown }).partner)
+          .map(({ p }) => p.ownerId),
+      ),
+    ];
+    const ownerPartners =
+      ownerIdsNeedingPartner.length > 0
+        ? await this.prisma.partner.findMany({
+            where: { userId: { in: ownerIdsNeedingPartner } },
+            select: { userId: true, isPaidPartner: true },
+          })
+        : [];
+    const partnerByOwnerId = Object.fromEntries(ownerPartners.map((op) => [op.userId, { isPaidPartner: op.isPaidPartner }]));
+    const items = withinRadius.map(({ p, distanceKm }) => {
+      const partnerFromPet = (p as { partner?: { isPaidPartner: boolean } | null }).partner;
+      const partnerFromOwner = partnerByOwnerId[p.ownerId];
+      const partner = partnerFromPet ?? partnerFromOwner;
+      return {
+        id: p.id,
+        name: p.name,
+        age: p.age,
+        species: p.species,
+        size: p.size,
+        vaccinated: p.vaccinated,
+        ...(p.owner?.city != null && { city: p.owner.city }),
+        latitude: p.latitude!,
+        longitude: p.longitude!,
+        photoUrl: p.media[0]?.url ?? '',
+        distanceKm,
+        verified: verifiedIds.has(p.id),
+        ...(partner != null && { partner: { isPaidPartner: partner.isPaidPartner } }),
+      };
+    });
     return { items };
   }
 
@@ -474,10 +529,12 @@ export class FeedService {
     ]);
     const excludeOwnerIds = [...blockedByMe, ...blockedMe];
     const speciesFilter = species && species !== 'BOTH' ? species.toUpperCase() : null;
+    const now = new Date();
     const candidates = await this.prisma.pet.findMany({
       where: {
         status: 'AVAILABLE',
         publicationStatus: 'APPROVED',
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
         createdAt: { gte: since },
         latitude: { not: null },
         longitude: { not: null },
@@ -495,5 +552,62 @@ export class FeedService {
       if (this.haversineKm(lat, lng, p.latitude, p.longitude) <= radiusKm) count += 1;
     }
     return count;
+  }
+
+  /**
+   * Conta pets que combinam com uma busca salva (para alerta de notificação).
+   * Considera espécie, porte, raça, data de criação e, quando definido, raio (lat/lng).
+   */
+  async countPetsForSavedSearchAlert(s: {
+    userId: string;
+    lastCheckedAt: Date;
+    species?: string | null;
+    size?: string | null;
+    breed?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    radiusKm?: number;
+  }): Promise<number> {
+    const [reportedPetIds, blockedByMe, blockedMe] = await Promise.all([
+      this.reportsService.getReportedPetIds(),
+      this.blocksService.getBlockedUserIds(s.userId),
+      this.blocksService.getBlockedByUserIds(s.userId),
+    ]);
+    const excludeOwnerIds = [...blockedByMe, ...blockedMe];
+    const now = new Date();
+    const speciesFilter =
+      s.species && s.species !== 'BOTH' ? (s.species as string).toUpperCase() : null;
+    const where: Prisma.PetWhereInput = {
+      status: 'AVAILABLE',
+      publicationStatus: 'APPROVED',
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      createdAt: { gte: s.lastCheckedAt },
+      ownerId: { not: s.userId },
+      ...(speciesFilter ? { species: speciesFilter } : {}),
+      ...(s.size ? { size: s.size } : {}),
+      ...(s.breed?.trim() ? { breed: { equals: s.breed.trim(), mode: 'insensitive' as const } } : {}),
+      ...(reportedPetIds.length > 0 ? { id: { notIn: reportedPetIds } } : {}),
+      ...(excludeOwnerIds.length > 0 ? { ownerId: { notIn: excludeOwnerIds } } : {}),
+    };
+    if (s.latitude != null && s.longitude != null) {
+      where.latitude = { not: null };
+      where.longitude = { not: null };
+    }
+    const candidates = await this.prisma.pet.findMany({
+      where,
+      select: { id: true, latitude: true, longitude: true },
+      take: 2000,
+    });
+    const radiusKm = s.radiusKm ?? 50;
+    if (s.latitude != null && s.longitude != null) {
+      let count = 0;
+      for (const p of candidates) {
+        if (p.latitude == null || p.longitude == null) continue;
+        if (this.haversineKm(s.latitude, s.longitude, p.latitude, p.longitude) <= radiusKm)
+          count += 1;
+      }
+      return count;
+    }
+    return candidates.length;
   }
 }

@@ -13,6 +13,12 @@ export class VerificationItemDto {
   @ApiProperty({ required: false, description: 'Para PET_VERIFIED: id do pet' })
   petId?: string;
 
+  @ApiProperty({ required: false, description: 'Nome do usuário (listApproved)' })
+  userName?: string;
+
+  @ApiProperty({ required: false, description: 'Nome do pet (listApproved, PET_VERIFIED)' })
+  petName?: string;
+
   @ApiProperty()
   createdAt: string;
 

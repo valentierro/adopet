@@ -26,8 +26,8 @@ export class MessagesService {
     await this.prisma.message.updateMany({
       where: {
         conversationId,
-        senderId: { not: userId },
         readAt: null,
+        OR: [{ senderId: { not: userId } }, { isSystem: true }],
       },
       data: { readAt: new Date() },
     });
@@ -103,7 +103,8 @@ export class MessagesService {
   private toDto(m: {
     id: string;
     conversationId: string;
-    senderId: string;
+    senderId: string | null;
+    isSystem: boolean;
     content: string;
     imageUrl: string | null;
     createdAt: Date;
@@ -117,7 +118,8 @@ export class MessagesService {
     return {
       id: m.id,
       conversationId: m.conversationId,
-      senderId: m.senderId,
+      ...(m.senderId != null && { senderId: m.senderId }),
+      isSystem: m.isSystem,
       content: m.content,
       imageUrl,
       createdAt: m.createdAt.toISOString(),

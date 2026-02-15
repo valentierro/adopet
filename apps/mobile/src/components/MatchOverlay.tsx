@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Image, Animated, StyleSheet, Pressable } from 'react-native';
+import { View, Text, Animated, StyleSheet, Pressable } from 'react-native';
+import { Image } from 'expo-image';
 
 const LogoSplash = require('../../assets/brand/logo/logo_splash.png');
 
@@ -57,7 +58,7 @@ export function MatchOverlay({ visible, onHide, duration = 2500 }: Props) {
       <Pressable style={StyleSheet.absoluteFill} onPress={onHide} />
       <Animated.View style={[styles.centered, { transform: [{ scale }] }]}>
         <View style={styles.card}>
-          <Image source={LogoSplash} style={styles.logo} resizeMode="contain" />
+          <Image source={LogoSplash} style={styles.logo} contentFit="contain" />
           <Text style={styles.title}>Deu match!</Text>
           <Text style={styles.subtitle}>Você curtiu esse pet</Text>
         </View>

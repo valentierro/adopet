@@ -1,5 +1,5 @@
 import { View, Text, ScrollView, StyleSheet, Linking } from 'react-native';
-import { ScreenContainer } from '../src/components';
+import { ScreenContainer, ProfileMenuFooter } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { SUPPORT_EMAIL, REQUEST_ACCOUNT_DELETION_URL } from '../src/constants/support';
 import { spacing } from '../src/theme';
@@ -88,6 +88,7 @@ export default function PrivacyScreen() {
           Solicitar exclusão da conta e dos dados
         </Text>
       </View>
+      <ProfileMenuFooter />
     </ScreenContainer>
   );
 }

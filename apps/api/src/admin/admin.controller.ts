@@ -45,7 +45,21 @@ export class AdminController {
   @Post('adoptions')
   @ApiOperation({ summary: '[Admin] Registrar adoção (pet + adotante); define tutor pelo dono do pet' })
   async createAdoption(@Body() dto: CreateAdoptionDto): Promise<AdoptionItemDto> {
-    return this.adminService.createAdoption(dto.petId, dto.adopterUserId);
+    return this.adminService.createAdoption(dto.petId, dto.adopterUserId, true);
+  }
+
+  @Post('adoptions/:petId/confirm-by-adopet')
+  @ApiOperation({ summary: '[Admin] Marcar adoção como confirmada pela Adopet (badge "Confirmado pelo Adopet")' })
+  async confirmAdoptionByAdopet(@Param('petId') petId: string): Promise<{ message: string }> {
+    await this.adminService.confirmAdoptionByAdopet(petId);
+    return { message: 'OK' };
+  }
+
+  @Post('adoptions/:petId/reject-by-adopet')
+  @ApiOperation({ summary: '[Admin] Rejeitar adoção pela Adopet (badge "Rejeitado pelo Adopet" para tutor/adotante)' })
+  async rejectAdoptionByAdopet(@Param('petId') petId: string): Promise<{ message: string }> {
+    await this.adminService.rejectAdoptionByAdopet(petId);
+    return { message: 'OK' };
   }
 
   @Get('users')
