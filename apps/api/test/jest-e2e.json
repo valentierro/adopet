@@ -1,0 +1,13 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testRegex": "test/.+\\.e2e-spec\\.ts$",
+  "transform": { "^.+\\.(t|j)s$": "ts-jest" },
+  "moduleNameMapper": {
+    "^../../api/prisma-generated$": "<rootDir>/api/prisma-generated",
+    "^../../api/prisma-generated/(.*)$": "<rootDir>/api/prisma-generated/$1"
+  },
+  "modulePathIgnorePatterns": ["<rootDir>/dist/", "<rootDir>/src/prisma-generated/"],
+  "testTimeout": 30000
+}

@@ -3,7 +3,7 @@
 const baseExpo = {
   name: 'Adopet',
   slug: 'adopet',
-  version: '1.0.19',
+  version: '1.0.21',
   orientation: 'portrait',
   icon: './assets/brand/icon/app_icon_light.png',
   userInterfaceStyle: 'automatic',
@@ -29,7 +29,7 @@ const baseExpo = {
       backgroundColor: '#FFFFFF',
     },
     package: 'br.com.adopet.app',
-    versionCode: 23,
+    versionCode: 26,
   },
   plugins: [
     'expo-router',

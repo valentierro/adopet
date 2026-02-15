@@ -9,6 +9,8 @@
     "start": "nest start",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "test": "jest",
+    "test:e2e": "jest --config ./test/jest-e2e.json --runInBand --forceExit",
+    "test:e2e:log": "mkdir -p test/logs && pnpm test:e2e 2>&1 | tee test/logs/e2e-$(date +%Y%m%d-%H%M%S).log",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
@@ -59,6 +61,8 @@
     "prisma": "^5.18.0",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "supertest": "^7.0.0",
+    "@types/supertest": "^6.0.2"
   }
 }
