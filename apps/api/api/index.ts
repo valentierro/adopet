@@ -13,6 +13,7 @@ function setCorsHeaders(res: VercelResponse): void {
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Max-Age', '86400');
 }
 
 type HttpHandler = (req: VercelRequest, res: VercelResponse) => void;
@@ -29,8 +30,9 @@ async function getHandler(): Promise<HttpHandler> {
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   setCorsHeaders(res);
-  if (req.method === 'OPTIONS') {
-    res.status(204).end();
+  // Preflight: responder 200 OK para passar na checagem CORS do browser
+  if (req.method === 'OPTIONS' || req.method === 'options') {
+    res.status(200).end();
     return;
   }
   try {

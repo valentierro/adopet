@@ -1,15 +1,1 @@
-{
-  "buildCommand": "pnpm run build",
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "https://admin.appadopet.com.br" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,PUT,PATCH,DELETE,OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "Content-Type,Authorization" },
-        { "key": "Access-Control-Allow-Credentials", "value": "true" }
-      ]
-    }
-  ]
-}
+{"buildCommand":"pnpm run build","rewrites":[{"source":"/(.*)","destination":"/api"}],"headers":[{"source":"/(.*)","headers":[{"key":"Access-Control-Allow-Origin","value":"https://admin.appadopet.com.br"},{"key":"Access-Control-Allow-Methods","value":"GET,POST,PUT,PATCH,DELETE,OPTIONS"},{"key":"Access-Control-Allow-Headers","value":"Content-Type,Authorization"},{"key":"Access-Control-Allow-Credentials","value":"true"},{"key":"Access-Control-Max-Age","value":"86400"}]}]}
