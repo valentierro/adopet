@@ -60,18 +60,31 @@ export function FeatureFlags() {
                   <p className="text-sm text-adopet-text-secondary mt-0.5">{flag.description}</p>
                 )}
               </div>
-              <label className="flex shrink-0 items-center gap-2 cursor-pointer">
+              <div className="flex shrink-0 items-center gap-3">
                 <span className="text-sm text-adopet-text-secondary">
                   {flag.enabled ? 'Ligada' : 'Desligada'}
                 </span>
-                <input
-                  type="checkbox"
-                  checked={flag.enabled}
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={flag.enabled}
+                  aria-label={flag.enabled ? `Desabilitar ${flag.key}` : `Habilitar ${flag.key}`}
                   disabled={setFlag.isPending && setFlag.variables?.key === flag.key}
-                  onChange={(e) => setFlag.mutate({ key: flag.key, enabled: e.target.checked })}
-                  className="h-5 w-5 rounded border-2 border-adopet-primary/40 bg-adopet-background text-adopet-primary focus:ring-2 focus:ring-adopet-primary/50 disabled:opacity-50"
-                />
-              </label>
+                  onClick={() => setFlag.mutate({ key: flag.key, enabled: !flag.enabled })}
+                  className={`
+                    relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 transition-colors focus:outline-none focus:ring-2 focus:ring-adopet-primary/50 focus:ring-offset-2
+                    disabled:cursor-not-allowed disabled:opacity-50
+                    ${flag.enabled ? 'border-adopet-primary bg-adopet-primary' : 'border-adopet-primary/30 bg-adopet-background'}
+                  `}
+                >
+                  <span
+                    className={`
+                      pointer-events-none absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform
+                      ${flag.enabled ? 'translate-x-5' : 'translate-x-0'}
+                    `}
+                  />
+                </button>
+              </div>
             </div>
           ))}
         </div>
