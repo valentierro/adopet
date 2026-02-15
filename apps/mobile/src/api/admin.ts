@@ -251,3 +251,24 @@ export type PartnerRecommendationItem = {
 export async function getAdminPartnerRecommendations(): Promise<PartnerRecommendationItem[]> {
   return api.get<PartnerRecommendationItem[]>('/admin/partner-recommendations');
 }
+
+// --- Feature flags ---
+
+export type FeatureFlagItem = {
+  key: string;
+  enabled: boolean;
+  description: string | null;
+};
+
+/** [Admin] Listar feature flags (habilitar/desabilitar funcionalidades) */
+export async function getFeatureFlags(): Promise<FeatureFlagItem[]> {
+  return api.get<FeatureFlagItem[]>('/admin/feature-flags');
+}
+
+/** [Admin] Habilitar ou desabilitar uma feature flag */
+export async function updateFeatureFlag(
+  key: string,
+  body: { enabled: boolean },
+): Promise<{ key: string; enabled: boolean }> {
+  return api.patch<{ key: string; enabled: boolean }>(`/admin/feature-flags/${encodeURIComponent(key)}`, body);
+}

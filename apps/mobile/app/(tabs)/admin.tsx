@@ -11,6 +11,7 @@ import {
   TextInput,
   Modal,
   Platform,
+  Switch,
   type LayoutChangeEvent,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -44,6 +45,8 @@ import {
   getAdminPartnerRecommendations,
   createAdminPartner,
   updateAdminPartner,
+  getFeatureFlags,
+  updateFeatureFlag,
   type VerificationPendingItem,
   type ReportItem,
   type AdoptionItem,
@@ -55,6 +58,7 @@ import {
   type PartnerRecommendationItem,
   type CreatePartnerBody,
   type UpdatePartnerBody,
+  type FeatureFlagItem,
 } from '../../src/api/admin';
 import { presign } from '../../src/api/uploads';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
@@ -85,15 +89,18 @@ function SummaryCard({
   sub,
   colors,
   onPress,
+  icon,
 }: {
   title: string;
   count: number;
   sub?: string;
   colors: { textPrimary: string; textSecondary: string; primary: string };
   onPress?: () => void;
+  icon?: React.ReactNode;
 }) {
   const card = (
     <View style={[styles.summaryCard, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
+      {icon != null && <View style={styles.summaryCardIcon}>{icon}</View>}
       <Text style={[styles.summaryCount, { color: colors.primary }]}>{count}</Text>
       <Text style={[styles.summaryTitle, { color: colors.textPrimary }]}>{title}</Text>
       {sub != null && <Text style={[styles.summarySub, { color: colors.textSecondary }]}>{sub}</Text>}
@@ -167,6 +174,11 @@ export default function AdminScreen() {
   const { data: partnerRecommendations = [], refetch: refetchPartnerRecommendations, isRefetching: refetchingPartnerRecommendations } = useQuery({
     queryKey: ['admin', 'partner-recommendations'],
     queryFn: getAdminPartnerRecommendations,
+  });
+
+  const { data: featureFlagsList = [], refetch: refetchFeatureFlags, isRefetching: refetchingFeatureFlags } = useQuery({
+    queryKey: ['admin', 'feature-flags'],
+    queryFn: getFeatureFlags,
   });
 
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -281,6 +293,7 @@ export default function AdminScreen() {
   const pendingPetsRef = useRef<View>(null);
   const verificationsRef = useRef<View>(null);
   const reportsRef = useRef<View>(null);
+  const featureFlagsRef = useRef<View>(null);
 
   const scrollToSection = useCallback((key: string) => {
     const y = sectionY.current[key];
@@ -483,6 +496,15 @@ export default function AdminScreen() {
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível salvar.')),
   });
 
+  const updateFeatureFlagMutation = useMutation({
+    mutationFn: ({ key, enabled }: { key: string; enabled: boolean }) => updateFeatureFlag(key, { enabled }),
+    onSuccess: (_, { key, enabled }) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'feature-flags'] });
+      setToastMessage(`Feature "${key}" ${enabled ? 'habilitada' : 'desabilitada'}.`);
+    },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível atualizar a flag.')),
+  });
+
   const onRefresh = useCallback(() => {
     refetchPets();
     refetchVerifications();
@@ -493,13 +515,14 @@ export default function AdminScreen() {
     refetchPetsAvailable();
     refetchPendingByTutor();
     refetchBugReports();
+    refetchFeatureFlags();
     refetchPartnerRecommendations();
     refetchPartners();
     setSelectedPetIds(new Set());
     setSelectedVerificationIds(new Set());
     setSelectedReportIds(new Set());
     setSelectedPendingAdoptionPetIds(new Set());
-  }, [refetchPets, refetchVerifications, refetchApproved, refetchReports, refetchStats, refetchAdoptions, refetchPetsAvailable, refetchPendingByTutor, refetchBugReports, refetchPartnerRecommendations, refetchPartners]);
+  }, [refetchPets, refetchVerifications, refetchApproved, refetchReports, refetchStats, refetchAdoptions, refetchPetsAvailable, refetchPendingByTutor, refetchBugReports, refetchFeatureFlags, refetchPartnerRecommendations, refetchPartners]);
 
   useFocusEffect(
     useCallback(() => {
@@ -799,17 +822,83 @@ export default function AdminScreen() {
           subtitle="Dashboard, adoções, anúncios, denúncias e verificações."
         />
 
-        {/* Dashboard: grid de cards (quebra de linha para não cortar) */}
+        {/* Dashboard: grid de cards com ícones */}
         <View style={styles.summaryGrid}>
-          <SummaryCard title="Total de adoções" count={stats?.totalAdoptions ?? 0} colors={colors} onPress={() => scrollToSection('adoptions')} />
-          <SummaryCard title="Adoções este mês" count={stats?.adoptionsThisMonth ?? 0} colors={colors} onPress={() => scrollToSection('adoptions')} />
-          <SummaryCard title="Anúncios pendentes" count={pendingPets.length} colors={colors} onPress={() => scrollToSection('pendingPets')} />
-          <SummaryCard title="Verificações" count={pending.length} sub="pendentes" colors={colors} onPress={() => scrollToSection('verifications')} />
-          <SummaryCard title="Denúncias abertas" count={unresolvedReports.length} colors={colors} onPress={() => scrollToSection('reports')} />
-          <SummaryCard title="Marcados adotado" count={stats?.pendingAdoptionsByTutorCount ?? 0} sub="pelo tutor" colors={colors} onPress={() => scrollToSection('pendingByTutor')} />
-          <SummaryCard title="Parceiros" count={partnersList.length} colors={colors} onPress={() => scrollToSection('partners')} />
-          <SummaryCard title="Indicações" count={partnerRecommendations.length} sub="parceiros" colors={colors} onPress={() => scrollToSection('partnerRecommendations')} />
-          <SummaryCard title="Reports de bugs" count={bugReports.length} sub="beta" colors={colors} onPress={() => scrollToSection('bugReports')} />
+          <SummaryCard
+            title="Total de adoções"
+            count={stats?.totalAdoptions ?? 0}
+            colors={colors}
+            onPress={() => scrollToSection('adoptions')}
+            icon={<Ionicons name="heart" size={22} color={colors.primary} />}
+          />
+          <SummaryCard
+            title="Adoções este mês"
+            count={stats?.adoptionsThisMonth ?? 0}
+            colors={colors}
+            onPress={() => scrollToSection('adoptions')}
+            icon={<Ionicons name="calendar" size={22} color={colors.primary} />}
+          />
+          <SummaryCard
+            title="Anúncios pendentes"
+            count={pendingPets.length}
+            colors={colors}
+            onPress={() => scrollToSection('pendingPets')}
+            icon={<Ionicons name="document-text-outline" size={22} color={colors.primary} />}
+          />
+          <SummaryCard
+            title="Verificações"
+            count={pending.length}
+            sub="pendentes"
+            colors={colors}
+            onPress={() => scrollToSection('verifications')}
+            icon={<Ionicons name="shield-checkmark-outline" size={22} color={colors.primary} />}
+          />
+          <SummaryCard
+            title="Denúncias abertas"
+            count={unresolvedReports.length}
+            colors={colors}
+            onPress={() => scrollToSection('reports')}
+            icon={<Ionicons name="flag-outline" size={22} color={colors.primary} />}
+          />
+          <SummaryCard
+            title="Marcados adotado"
+            count={stats?.pendingAdoptionsByTutorCount ?? 0}
+            sub="pelo tutor"
+            colors={colors}
+            onPress={() => scrollToSection('pendingByTutor')}
+            icon={<Ionicons name="time-outline" size={22} color={colors.primary} />}
+          />
+          <SummaryCard
+            title="Parceiros"
+            count={partnersList.length}
+            colors={colors}
+            onPress={() => scrollToSection('partners')}
+            icon={<Ionicons name="business-outline" size={22} color={colors.primary} />}
+          />
+          <SummaryCard
+            title="Indicações"
+            count={partnerRecommendations.length}
+            sub="parceiros"
+            colors={colors}
+            onPress={() => scrollToSection('partnerRecommendations')}
+            icon={<Ionicons name="people-outline" size={22} color={colors.primary} />}
+          />
+          <SummaryCard
+            title="Reports de bugs"
+            count={bugReports.length}
+            sub="beta"
+            colors={colors}
+            onPress={() => scrollToSection('bugReports')}
+            icon={<Ionicons name="bug-outline" size={22} color={colors.primary} />}
+          />
+          <SummaryCard
+            title="Feature flags"
+            count={featureFlagsList.length}
+            sub="ligar/desligar"
+            colors={colors}
+            onPress={() => scrollToSection('featureFlags')}
+            icon={<Ionicons name="flag" size={22} color={colors.primary} />}
+          />
         </View>
 
         {/* Pets marcados como adotados pelo tutor (aguardando confirmação) */}
@@ -1798,6 +1887,37 @@ export default function AdminScreen() {
         )}
       </View>
 
+      {/* Feature flags */}
+      <View ref={featureFlagsRef} onLayout={(e: LayoutChangeEvent) => { sectionY.current.featureFlags = e.nativeEvent.layout.y; }} collapsable={false}>
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.xl }]}>Feature flags</Text>
+        <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
+          Habilitar ou desabilitar funcionalidades da aplicação. As flags são criadas no banco sob demanda (ao ligar/desligar).
+        </Text>
+        {featureFlagsList.length === 0 ? (
+          <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhuma feature flag cadastrada. Use a API ou o banco para criar flags (ex: require_email_verification).</Text>
+          </View>
+        ) : (
+          featureFlagsList.map((flag: FeatureFlagItem) => (
+            <View key={flag.key} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.summaryTitle, { color: colors.textPrimary }]}>{flag.key}</Text>
+                {flag.description ? (
+                  <Text style={[styles.sectionSub, { color: colors.textSecondary, marginTop: 2 }]}>{flag.description}</Text>
+                ) : null}
+              </View>
+              <Switch
+                value={flag.enabled}
+                onValueChange={(enabled) => updateFeatureFlagMutation.mutate({ key: flag.key, enabled })}
+                disabled={updateFeatureFlagMutation.isPending && updateFeatureFlagMutation.variables?.key === flag.key}
+                trackColor={{ false: colors.background, true: colors.primary + '80' }}
+                thumbColor={flag.enabled ? colors.primary : colors.textSecondary}
+              />
+            </View>
+          ))
+        )}
+      </View>
+
       {/* Modal Resolver denúncia com feedback */}
       <Modal visible={!!resolveReportModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -2165,6 +2285,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  summaryCardIcon: { marginBottom: 4 },
   summaryCount: { fontSize: 24, fontWeight: '800' },
   summaryTitle: { fontSize: 12, fontWeight: '600', marginTop: 2, textAlign: 'center' },
   summarySub: { fontSize: 11, marginTop: 1 },

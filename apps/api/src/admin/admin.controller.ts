@@ -116,4 +116,19 @@ export class AdminController {
   async updatePartner(@Param('id') id: string, @Body() dto: UpdatePartnerDto): Promise<PartnerAdminDto> {
     return this.partnersService.update(id, dto);
   }
+
+  @Get('feature-flags')
+  @ApiOperation({ summary: '[Admin] Listar feature flags (habilitar/desabilitar funcionalidades)' })
+  async getFeatureFlags(): Promise<{ key: string; enabled: boolean; description: string | null }[]> {
+    return this.adminService.getFeatureFlags();
+  }
+
+  @Patch('feature-flags/:key')
+  @ApiOperation({ summary: '[Admin] Habilitar ou desabilitar uma feature flag' })
+  async setFeatureFlag(
+    @Param('key') key: string,
+    @Body() body: { enabled: boolean },
+  ): Promise<{ key: string; enabled: boolean }> {
+    return this.adminService.setFeatureFlag(key, body.enabled);
+  }
 }

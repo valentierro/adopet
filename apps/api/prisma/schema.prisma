@@ -1,6 +1,6 @@
 generator client {
   provider = "prisma-client-js"
-  // Dentro de api/ para a função serverless incluir no bundle (Vercel não remove)
+  // Dentro de api/ para a função serverless; copiado para dist/api no build (Vercel)
   output   = "../api/prisma-generated"
 }
 
@@ -195,6 +195,7 @@ model Pet {
   adopterConfirmedAt DateTime? // quando o adotante confirmou no app que realizou a adoção; só então vai para painel admin / auto-approve
   adoptionRejectedAt DateTime? // quando um admin rejeitou a marcação de adoção; pet volta a disponível e exibe badge "Rejeitado pelo Adopet"
   adopetConfirmedAt  DateTime? // quando a Adopet confirmou a adoção (admin ou auto-approve 48h); só então exibe badge "Confirmado pelo Adopet"
+  postAdoptionFeedbackPushSentAt DateTime? // quando enviamos push "Como foi a adoção?" (uma vez, dias após confirmação)
   publicationStatus String  @default("PENDING")   // PENDING | APPROVED | REJECTED — feed só mostra APPROVED
   expiresAt        DateTime? // vida útil do anúncio (60 dias); null = legado; feed só mostra se expiresAt > now
   expiryReminder10SentAt DateTime? // aviso "expira em 10 dias" já enviado
@@ -374,4 +375,12 @@ model PartnerRecommendation {
   createdAt       DateTime @default(now())
   @@index([indicadorUserId])
   @@index([createdAt])
+}
+
+model FeatureFlag {
+  id          String   @id @default(uuid())
+  key         String   @unique // ex: REQUIRE_EMAIL_VERIFICATION, ENABLE_NEW_FEATURE
+  enabled     Boolean  @default(false)
+  description String?  // texto para o admin entender o que a flag faz
+  updatedAt   DateTime @updatedAt
 }

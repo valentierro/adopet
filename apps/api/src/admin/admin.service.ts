@@ -431,4 +431,26 @@ export class AdminService {
       ownerName: p.owner.name,
     }));
   }
+
+  /** [Admin] Listar feature flags (key, enabled, description). */
+  async getFeatureFlags(): Promise<{ key: string; enabled: boolean; description: string | null }[]> {
+    const list = await this.prisma.featureFlag.findMany({
+      orderBy: { key: 'asc' },
+      select: { key: true, enabled: true, description: true },
+    });
+    return list;
+  }
+
+  /** [Admin] Habilitar ou desabilitar uma feature flag (cria se não existir). */
+  async setFeatureFlag(key: string, enabled: boolean): Promise<{ key: string; enabled: boolean }> {
+    const keyNorm = key.trim();
+    if (!keyNorm) throw new BadRequestException('Key é obrigatória');
+    const flag = await this.prisma.featureFlag.upsert({
+      where: { key: keyNorm },
+      create: { key: keyNorm, enabled },
+      update: { enabled },
+      select: { key: true, enabled: true },
+    });
+    return flag;
+  }
 }
