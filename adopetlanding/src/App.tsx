@@ -14,6 +14,7 @@ import { TermosPage } from './pages/Termos';
 import { PrivacidadePage } from './pages/Privacidade';
 import { ExclusaoContaPage } from './pages/ExclusaoConta';
 import { ApoiePage } from './pages/Apoie';
+import { PartnerRedirectPage } from './pages/PartnerRedirect';
 
 function LandingContent() {
   return (
@@ -35,14 +36,26 @@ function LandingContent() {
 
 export default function App() {
   const [hash, setHash] = useState(() => window.location.hash || '');
+  const [pathname, setPathname] = useState(() => window.location.pathname || '/');
 
   useEffect(() => {
     const onHashChange = () => setHash(window.location.hash || '');
+    const onPopState = () => {
+      setPathname(window.location.pathname || '/');
+      setHash(window.location.hash || '');
+    };
     window.addEventListener('hashchange', onHashChange);
+    window.addEventListener('popstate', onPopState);
     setHash(window.location.hash || '');
-    return () => window.removeEventListener('hashchange', onHashChange);
+    setPathname(window.location.pathname || '/');
+    return () => {
+      window.removeEventListener('hashchange', onHashChange);
+      window.removeEventListener('popstate', onPopState);
+    };
   }, []);
 
+  if (pathname === '/partner-success') return <PartnerRedirectPage path="partner-success" />;
+  if (pathname === '/partner-cancel') return <PartnerRedirectPage path="partner-cancel" />;
   if (hash === '#apoie') return <ApoiePage />;
   if (hash === '#termos') return <TermosPage />;
   if (hash === '#privacidade') return <PrivacidadePage />;
