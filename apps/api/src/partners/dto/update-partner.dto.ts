@@ -61,6 +61,17 @@ export class UpdatePartnerDto {
   @IsBoolean()
   approve?: boolean;
 
+  @ApiPropertyOptional({ description: 'Rejeitar parceiro (admin); opcionalmente informar motivo' })
+  @IsOptional()
+  @IsBoolean()
+  reject?: boolean;
+
+  @ApiPropertyOptional({ description: 'Motivo da rejeição (usado quando reject=true)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  rejectionReason?: string;
+
   @ApiPropertyOptional({ description: 'Parceria paga: destaque na lista e boost no feed' })
   @IsOptional()
   @IsBoolean()

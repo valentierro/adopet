@@ -7,9 +7,10 @@ import { AuthModule } from '../auth/auth.module';
 import { BugReportsModule } from '../bug-reports/bug-reports.module';
 import { PartnerRecommendationsModule } from '../partner-recommendations/partner-recommendations.module';
 import { PartnersModule } from '../partners/partners.module';
+import { PartnershipRequestsModule } from '../partnership-requests/partnership-requests.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, BugReportsModule, PartnerRecommendationsModule, PartnersModule],
+  imports: [PrismaModule, AuthModule, BugReportsModule, PartnerRecommendationsModule, PartnersModule, PartnershipRequestsModule],
   controllers: [AdminController],
   providers: [AdminService, AdoptionAutoApproveScheduler],
   exports: [AdminService],

@@ -93,11 +93,36 @@ model RefreshToken {
   @@index([tokenHash])
 }
 
+model PartnershipRequest {
+  id                String    @id @default(uuid())
+  tipo              String    // ong | comercial
+  nome              String
+  email             String
+  instituicao       String
+  telefone          String
+  mensagem          String?
+  cnpj              String?
+  anoFundacao       String?
+  cep               String?
+  endereco          String?
+  personType        String?   // PF | CNPJ
+  documentoComercial String?
+  planoDesejado     String?
+  status            String    @default("PENDING") // PENDING | APPROVED | REJECTED
+  rejectionReason   String?
+  processedAt       DateTime?
+  partnerId         String?   // preenchido quando aprovado (parceiro criado)
+  partner           Partner?  @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  createdAt         DateTime  @default(now())
+  @@index([status])
+}
+
 model Partner {
   id                   String    @id @default(uuid())
   userId               String?   @unique // dono da conta parceiro (cadastro pelo app + pagamento)
   user                 User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   type                 String    // ONG | CLINIC | STORE
+  partnershipRequests  PartnershipRequest[]
   name                 String
   slug                 String    @unique
   city                 String?
@@ -114,6 +139,7 @@ model Partner {
   galleryUrls          String?   // JSON array de URLs de fotos do estabelecimento
   active               Boolean   @default(true)
   approvedAt           DateTime?
+  rejectionReason      String?   // motivo da rejeição (admin)
   isPaidPartner        Boolean   @default(false)
   subscriptionStatus   String?   // active | canceled | past_due | trialing (Stripe)
   stripeCustomerId     String?
@@ -194,9 +220,11 @@ model Pet {
   pendingAdopterId String?  // adotante indicado pelo tutor ao marcar como adotado (lista de conversas ou @username)
   adopterConfirmedAt DateTime? // quando o adotante confirmou no app que realizou a adoção; só então vai para painel admin / auto-approve
   adoptionRejectedAt DateTime? // quando um admin rejeitou a marcação de adoção; pet volta a disponível e exibe badge "Rejeitado pelo Adopet"
+  adoptionRejectionReason String? // motivo opcional quando admin rejeita a marcação de adoção (exibido ao tutor)
   adopetConfirmedAt  DateTime? // quando a Adopet confirmou a adoção (admin ou auto-approve 48h); só então exibe badge "Confirmado pelo Adopet"
   postAdoptionFeedbackPushSentAt DateTime? // quando enviamos push "Como foi a adoção?" (uma vez, dias após confirmação)
   publicationStatus String  @default("PENDING")   // PENDING | APPROVED | REJECTED — feed só mostra APPROVED
+  publicationRejectionReason String? // motivo opcional quando admin rejeita o anúncio (exibido ao tutor)
   expiresAt        DateTime? // vida útil do anúncio (60 dias); null = legado; feed só mostra se expiresAt > now
   expiryReminder10SentAt DateTime? // aviso "expira em 10 dias" já enviado
   expiryReminder5SentAt  DateTime?
@@ -336,14 +364,15 @@ model Block {
 }
 
 model Verification {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      String   // USER_VERIFIED | PET_VERIFIED
-  status    String   // PENDING | APPROVED | REJECTED
-  metadata  Json?    // para PET_VERIFIED: { "petId": "..." }
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type             String   // USER_VERIFIED | PET_VERIFIED
+  status           String   // PENDING | APPROVED | REJECTED
+  rejectionReason  String?  // motivo opcional quando admin rejeita (exibido ao usuário)
+  metadata         Json?    // para PET_VERIFIED: { "petId": "..." }
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
   @@index([userId])
   @@index([userId, type])
 }

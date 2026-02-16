@@ -47,6 +47,9 @@ export class PartnerAdminDto extends PartnerPublicDto {
   @ApiPropertyOptional()
   approvedAt?: string | null;
 
+  @ApiPropertyOptional({ description: 'Motivo da rejeição (quando não aprovado)' })
+  rejectionReason?: string | null;
+
   @ApiProperty()
   createdAt: string;
 

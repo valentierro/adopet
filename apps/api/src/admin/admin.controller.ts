@@ -6,6 +6,8 @@ import { AdminService } from './admin.service';
 import { BugReportsService } from '../bug-reports/bug-reports.service';
 import { PartnerRecommendationsService } from '../partner-recommendations/partner-recommendations.service';
 import { PartnersService } from '../partners/partners.service';
+import { PartnershipRequestsService } from '../partnership-requests/partnership-requests.service';
+import type { PartnershipRequestAdminDto } from '../partnership-requests/partnership-requests.service';
 import { AdminStatsDto } from './dto/admin-stats.dto';
 import { AdoptionItemDto } from './dto/adoption-item.dto';
 import { CreateAdoptionDto } from './dto/create-adoption.dto';
@@ -28,6 +30,7 @@ export class AdminController {
     private readonly bugReportsService: BugReportsService,
     private readonly partnerRecommendationsService: PartnerRecommendationsService,
     private readonly partnersService: PartnersService,
+    private readonly partnershipRequestsService: PartnershipRequestsService,
   ) {}
 
   @Get('stats')
@@ -57,8 +60,11 @@ export class AdminController {
 
   @Post('adoptions/:petId/reject-by-adopet')
   @ApiOperation({ summary: '[Admin] Rejeitar adoção pela Adopet (badge "Rejeitado pelo Adopet" para tutor/adotante)' })
-  async rejectAdoptionByAdopet(@Param('petId') petId: string): Promise<{ message: string }> {
-    await this.adminService.rejectAdoptionByAdopet(petId);
+  async rejectAdoptionByAdopet(
+    @Param('petId') petId: string,
+    @Body() body?: { rejectionReason?: string },
+  ): Promise<{ message: string }> {
+    await this.adminService.rejectAdoptionByAdopet(petId, body?.rejectionReason);
     return { message: 'OK' };
   }
 
@@ -82,8 +88,11 @@ export class AdminController {
 
   @Post('pending-adoptions-by-tutor/:petId/reject')
   @ApiOperation({ summary: '[Admin] Rejeitar marcação de adoção pelo tutor; pet volta a disponível e não computa pontos' })
-  async rejectPendingAdoptionByTutor(@Param('petId') petId: string): Promise<{ message: string }> {
-    await this.adminService.rejectPendingAdoptionByTutor(petId);
+  async rejectPendingAdoptionByTutor(
+    @Param('petId') petId: string,
+    @Body() body?: { rejectionReason?: string },
+  ): Promise<{ message: string }> {
+    await this.adminService.rejectPendingAdoptionByTutor(petId, body?.rejectionReason);
     return { message: 'OK' };
   }
 
@@ -99,6 +108,28 @@ export class AdminController {
     return this.partnerRecommendationsService.findAllForAdmin();
   }
 
+  @Get('partnership-requests')
+  @ApiOperation({ summary: '[Admin] Listar solicitações de parceria (formulário do app)' })
+  async getPartnershipRequests(): Promise<PartnershipRequestAdminDto[]> {
+    return this.partnershipRequestsService.findAllForAdmin();
+  }
+
+  @Post('partnership-requests/:id/approve')
+  @ApiOperation({ summary: '[Admin] Aprovar solicitação de parceria (cria parceiro e vincula)' })
+  async approvePartnershipRequest(@Param('id') id: string): Promise<{ partnerId: string }> {
+    return this.partnershipRequestsService.approve(id);
+  }
+
+  @Post('partnership-requests/:id/reject')
+  @ApiOperation({ summary: '[Admin] Rejeitar solicitação de parceria (motivo opcional)' })
+  async rejectPartnershipRequest(
+    @Param('id') id: string,
+    @Body() body?: { rejectionReason?: string },
+  ): Promise<{ message: string }> {
+    await this.partnershipRequestsService.reject(id, body?.rejectionReason);
+    return { message: 'OK' };
+  }
+
   @Get('partners')
   @ApiOperation({ summary: '[Admin] Listar todos os parceiros (ONG, clínicas, lojas)' })
   async getPartners(): Promise<PartnerAdminDto[]> {
@@ -111,8 +142,22 @@ export class AdminController {
     return this.partnersService.create(dto);
   }
 
+  @Post('partners/bulk-approve')
+  @ApiOperation({ summary: '[Admin] Aprovar vários parceiros de uma vez' })
+  async bulkApprovePartners(@Body() body: { ids: string[] }): Promise<{ updated: number }> {
+    return this.partnersService.bulkApprove(body.ids ?? []);
+  }
+
+  @Post('partners/bulk-reject')
+  @ApiOperation({ summary: '[Admin] Rejeitar vários parceiros de uma vez (com motivo opcional)' })
+  async bulkRejectPartners(
+    @Body() body: { ids: string[]; rejectionReason?: string },
+  ): Promise<{ updated: number }> {
+    return this.partnersService.bulkReject(body.ids ?? [], body.rejectionReason);
+  }
+
   @Patch('partners/:id')
-  @ApiOperation({ summary: '[Admin] Atualizar ou aprovar parceiro' })
+  @ApiOperation({ summary: '[Admin] Atualizar, aprovar ou rejeitar parceiro' })
   async updatePartner(@Param('id') id: string, @Body() dto: UpdatePartnerDto): Promise<PartnerAdminDto> {
     return this.partnersService.update(id, dto);
   }

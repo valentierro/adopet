@@ -409,7 +409,7 @@ export class PartnersService {
     return this.toAdminDto(partner);
   }
 
-  /** Atualiza parceiro (admin). Se approve=true, define approvedAt. */
+  /** Atualiza parceiro (admin). Se approve=true, define approvedAt e limpa rejeição. Se reject=true, limpa approvedAt e define rejectionReason. */
   async update(id: string, dto: UpdatePartnerDto): Promise<PartnerAdminDto> {
     const existing = await this.prisma.partner.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('Parceiro não encontrado');
@@ -424,6 +424,7 @@ export class PartnersService {
       email?: string | null;
       active?: boolean;
       approvedAt?: Date | null;
+      rejectionReason?: string | null;
       isPaidPartner?: boolean;
     } = {};
     if (dto.name !== undefined) data.name = dto.name.trim();
@@ -435,13 +436,41 @@ export class PartnersService {
     if (dto.phone !== undefined) data.phone = dto.phone?.trim() || null;
     if (dto.email !== undefined) data.email = dto.email?.trim() || null;
     if (dto.active !== undefined) data.active = dto.active;
-    if (dto.approve === true) data.approvedAt = new Date();
+    if (dto.approve === true) {
+      data.approvedAt = new Date();
+      data.rejectionReason = null;
+    }
+    if (dto.reject === true) {
+      data.approvedAt = null;
+      data.rejectionReason = dto.rejectionReason?.trim() || null;
+    }
     if (dto.isPaidPartner !== undefined) data.isPaidPartner = dto.isPaidPartner;
     const partner = await this.prisma.partner.update({
       where: { id },
       data,
     });
     return this.toAdminDto(partner);
+  }
+
+  /** [Admin] Aprovar vários parceiros de uma vez. */
+  async bulkApprove(ids: string[]): Promise<{ updated: number }> {
+    if (!ids.length) return { updated: 0 };
+    const result = await this.prisma.partner.updateMany({
+      where: { id: { in: ids } },
+      data: { approvedAt: new Date(), rejectionReason: null },
+    });
+    return { updated: result.count };
+  }
+
+  /** [Admin] Rejeitar vários parceiros de uma vez (com motivo opcional). */
+  async bulkReject(ids: string[], rejectionReason?: string): Promise<{ updated: number }> {
+    if (!ids.length) return { updated: 0 };
+    const reason = rejectionReason?.trim() || null;
+    const result = await this.prisma.partner.updateMany({
+      where: { id: { in: ids } },
+      data: { approvedAt: null, rejectionReason: reason },
+    });
+    return { updated: result.count };
   }
 
   private toPublicDto(p: {
@@ -487,6 +516,7 @@ export class PartnersService {
     email: string | null;
     active: boolean;
     approvedAt: Date | null;
+    rejectionReason: string | null;
     isPaidPartner: boolean;
     createdAt: Date;
     updatedAt: Date;
@@ -495,6 +525,7 @@ export class PartnersService {
       ...this.toPublicDto(p),
       active: p.active,
       approvedAt: p.approvedAt?.toISOString() ?? undefined,
+      rejectionReason: p.rejectionReason ?? undefined,
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString(),
     };
