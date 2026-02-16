@@ -13,6 +13,7 @@ import { Footer } from './sections/Footer';
 import { TermosPage } from './pages/Termos';
 import { PrivacidadePage } from './pages/Privacidade';
 import { ExclusaoContaPage } from './pages/ExclusaoConta';
+import { ApoiePage } from './pages/Apoie';
 
 function LandingContent() {
   return (
@@ -42,6 +43,7 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
+  if (hash === '#apoie') return <ApoiePage />;
   if (hash === '#termos') return <TermosPage />;
   if (hash === '#privacidade') return <PrivacidadePage />;
   if (hash === '#exclusao-conta') return <ExclusaoContaPage />;
