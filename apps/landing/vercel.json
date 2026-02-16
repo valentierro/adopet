@@ -1,0 +1,1 @@
+{"rewrites":[{"source":"/pet/:id","destination":"/index.html"},{"source":"/partner-success","destination":"/index.html"},{"source":"/partner-cancel","destination":"/index.html"}]}

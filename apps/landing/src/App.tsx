@@ -15,6 +15,7 @@ import { PrivacidadePage } from './pages/Privacidade';
 import { ExclusaoContaPage } from './pages/ExclusaoConta';
 import { PetPage } from './pages/Pet';
 import { ApoiePage } from './pages/Apoie';
+import { PartnerRedirectPage } from './pages/PartnerRedirect';
 
 function LandingContent() {
   return (
@@ -56,6 +57,9 @@ export default function App() {
 
   // Rota /pet/:id (link de compartilhamento do app)
   if (pathname.startsWith('/pet/')) return <PetPage />;
+  // Redirecionamento pós-pagamento Stripe (parceiro) → abre o app
+  if (pathname === '/partner-success') return <PartnerRedirectPage path="partner-success" />;
+  if (pathname === '/partner-cancel') return <PartnerRedirectPage path="partner-cancel" />;
   if (hash === '#apoie') return <ApoiePage />;
   if (hash === '#termos') return <TermosPage />;
   if (hash === '#privacidade') return <PrivacidadePage />;
