@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image as RNImage } from 'react-native';
-import { Image } from 'expo-image';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, Dimensions, Image } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useQuery } from '@tanstack/react-query';
-import type { MapPin } from '../../src/api/feed';
+import type { MapPin, FeedMapSpeciesFilter } from '../../src/api/feed';
 import { ScreenContainer, EmptyState, LoadingLogo, VerifiedBadge, StatusBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { fetchFeedMap } from '../../src/api/feed';
@@ -16,6 +16,7 @@ import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { spacing } from '../../src/theme';
 import { Ionicons } from '@expo/vector-icons';
 
+// Pin no mapa: image nativa garante que os pins apareçam (Android). Para pins menores, use um PNG 32x32 ou 48x48, ex.: map_pin_small.png
 const AdopetMarkerIcon = require('../../assets/brand/icon/app_icon_light.png');
 
 const DEFAULT_REGION = {
@@ -25,16 +26,24 @@ const DEFAULT_REGION = {
   longitudeDelta: 0.5,
 };
 
+const SPECIES_OPTIONS: { value: FeedMapSpeciesFilter; label: string }[] = [
+  { value: 'BOTH', label: 'Todos' },
+  { value: 'DOG', label: 'Cachorros' },
+  { value: 'CAT', label: 'Gatos' },
+];
+
+const MAP_MIN_HEIGHT = Dimensions.get('window').height * 0.5;
+
 export default function MapScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const mapRef = useRef<MapView | null>(null);
-  // Centro para a API; MapView fica não controlado para evitar crash ao abrir no Android
   const [apiCenter, setApiCenter] = useState(DEFAULT_REGION);
   const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
   const [locationReady, setLocationReady] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [selectedPin, setSelectedPin] = useState<MapPin | null>(null);
+  const [speciesFilter, setSpeciesFilter] = useState<FeedMapSpeciesFilter>('BOTH');
   const hasAnimatedToUser = useRef(false);
 
   const { data: prefs, refetch: refetchPrefs } = useQuery({
@@ -44,13 +53,14 @@ export default function MapScreen() {
   });
   const radiusKm = prefs?.radiusKm ?? 50;
 
-  const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['feed', 'map', apiCenter.latitude, apiCenter.longitude, radiusKm],
+  const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
+    queryKey: ['feed', 'map', apiCenter.latitude, apiCenter.longitude, radiusKm, speciesFilter],
     queryFn: () =>
       fetchFeedMap({
         lat: apiCenter.latitude,
         lng: apiCenter.longitude,
         radiusKm,
+        species: speciesFilter,
       }),
     enabled: locationGranted === true && locationReady && mapReady,
     staleTime: 60_000,
@@ -145,11 +155,45 @@ export default function MapScreen() {
   }
 
   const items = data?.items ?? [];
+  const showEmptyState = !isLoading && !isError && items.length === 0;
 
   return (
     <ScreenContainer>
-      <View style={styles.mapWrap}>
-        <MapView
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.lg }]}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching && !isLoading}
+            onRefresh={() => refetch()}
+            tintColor={colors.primary}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.chipsRow, { borderBottomColor: colors.background }]}>
+          {SPECIES_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              style={[
+                styles.chip,
+                { backgroundColor: speciesFilter === opt.value ? colors.primary : colors.surface },
+              ]}
+              onPress={() => setSpeciesFilter(opt.value)}
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  { color: speciesFilter === opt.value ? '#fff' : colors.textPrimary },
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={[styles.mapWrap, showEmptyState && styles.mapWrapEmpty]}>
+          <MapView
           ref={mapRef}
           style={styles.map}
           initialRegion={DEFAULT_REGION}
@@ -178,19 +222,33 @@ export default function MapScreen() {
                 }}
               >
                 <View style={styles.markerWrap}>
-                  <RNImage source={AdopetMarkerIcon} style={styles.markerIcon} resizeMode="contain" />
+                  <Image source={AdopetMarkerIcon} style={styles.markerImage} resizeMode="contain" />
                 </View>
               </Marker>
             );
           })}
         </MapView>
+        {showEmptyState && (
+          <View style={[styles.emptyOverlay, { backgroundColor: colors.background }]}>
+            <Ionicons name="map-outline" size={40} color={colors.textSecondary} />
+            <Text style={[styles.emptyOverlayText, { color: colors.textSecondary }]}>
+              Nenhum pet no raio de {radiusKm} km. Aumente o raio em Preferências ou volte mais tarde.
+            </Text>
+            <TouchableOpacity
+              style={[styles.emptyOverlayBtn, { backgroundColor: colors.primary }]}
+              onPress={() => router.push('/preferences')}
+            >
+              <Text style={styles.emptyOverlayBtnText}>Abrir Preferências</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {selectedPin ? (
         <View style={[styles.selectedCard, { backgroundColor: colors.surface }]}>
           <View style={styles.selectedCardRow}>
             {selectedPin.photoUrl ? (
-              <Image source={{ uri: selectedPin.photoUrl }} style={styles.selectedCardPhoto} contentFit="cover" />
+              <ExpoImage source={{ uri: selectedPin.photoUrl }} style={styles.selectedCardPhoto} contentFit="cover" />
             ) : (
               <View style={[styles.selectedCardPhoto, styles.selectedCardPhotoPlaceholder]}>
                 <Ionicons name="paw" size={24} color={colors.textSecondary} />
@@ -280,7 +338,9 @@ export default function MapScreen() {
               ? mapErrorMessage
               : isLoading
                 ? 'Carregando pets...'
-                : `${items.length} pet(s) no raio de ${radiusKm} km`}
+                : showEmptyState
+                  ? `Nenhum pet no raio de ${radiusKm} km`
+                  : `${items.length} pet(s) no raio de ${radiusKm} km`}
           </Text>
           {isError && (
             <Text style={[styles.footerHint, { color: colors.textSecondary }]}>
@@ -311,27 +371,43 @@ export default function MapScreen() {
           </TouchableOpacity>
         </View>
       </View>
+      </ScrollView>
     </ScreenContainer>
   );
 }
 
-const MARKER_SIZE = 24;
-
 const styles = StyleSheet.create({
+  scroll: { flex: 1 },
+  scrollContent: {},
+  markerWrap: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  markerImage: { width: 32, height: 32 },
+  chipsRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+  },
+  chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: 20 },
+  chipText: { fontSize: 14, fontWeight: '600' },
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.md },
   loadingText: { fontSize: 16 },
-  mapWrap: { flex: 1, position: 'relative', minHeight: 200 },
+  mapWrap: { position: 'relative', minHeight: 280, height: MAP_MIN_HEIGHT },
+  mapWrapEmpty: { minHeight: 240 },
   map: { flex: 1, width: '100%', height: '100%' },
-  markerWrap: {
-    width: MARKER_SIZE,
-    height: MARKER_SIZE,
+  emptyOverlay: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
+    bottom: spacing.md,
+    padding: spacing.lg,
+    borderRadius: 12,
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: spacing.sm,
   },
-  markerIcon: {
-    width: MARKER_SIZE,
-    height: MARKER_SIZE,
-  },
+  emptyOverlayText: { fontSize: 14, textAlign: 'center' },
+  emptyOverlayBtn: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: 20 },
+  emptyOverlayBtnText: { color: '#fff', fontWeight: '600' },
   selectedCard: {
     padding: spacing.md,
     borderTopWidth: 1,

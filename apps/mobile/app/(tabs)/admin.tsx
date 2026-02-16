@@ -12,6 +12,7 @@ import {
   Modal,
   Platform,
   Switch,
+  Linking,
   type LayoutChangeEvent,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -1035,6 +1036,28 @@ export default function AdminScreen() {
           ))}
           </View>
         )}
+
+        {/* CTA: Portal admin web */}
+        <View style={[styles.adminWebCtaWrap, { backgroundColor: colors.surface, borderColor: colors.primary + '40' }]}>
+          <Text style={[styles.adminWebCtaTitle, { color: colors.textPrimary }]}>Painel completo no navegador</Text>
+          <Text style={[styles.adminWebCtaSub, { color: colors.textSecondary }]}>
+            Acesse o portal administrativo na web para relatórios, usuários e mais opções.
+          </Text>
+          <TouchableOpacity
+            style={[styles.adminWebCtaBtn, { backgroundColor: colors.primary }]}
+            onPress={() => {
+              const url = 'https://admin.appadopet.com.br/';
+              Linking.canOpenURL(url).then((supported) => {
+                if (supported) Linking.openURL(url);
+                else Alert.alert('Abrir link', 'Não foi possível abrir. Tente acessar pelo navegador: ' + url);
+              });
+            }}
+            accessibilityLabel="Abrir portal administrativo na web"
+          >
+            <Ionicons name="open-outline" size={20} color="#fff" />
+            <Text style={styles.adminWebCtaBtnText}>Abrir admin.appadopet.com.br</Text>
+          </TouchableOpacity>
+        </View>
 
       {/* Modal Confirmação em massa */}
       <Modal visible={showMassConfirmAdoptionModal} transparent animationType="fade">
@@ -2291,6 +2314,25 @@ const styles = StyleSheet.create({
   summarySub: { fontSize: 11, marginTop: 1 },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.xs },
   sectionSub: { fontSize: 13, marginBottom: spacing.md },
+  adminWebCtaWrap: {
+    marginTop: spacing.xl,
+    marginBottom: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  adminWebCtaTitle: { fontSize: 17, fontWeight: '700', marginBottom: spacing.xs },
+  adminWebCtaSub: { fontSize: 14, marginBottom: spacing.md },
+  adminWebCtaBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 10,
+  },
+  adminWebCtaBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
   batchBar: {
     flexDirection: 'row',
     alignItems: 'center',

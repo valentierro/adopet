@@ -1,6 +1,7 @@
 import { useEffect, useCallback } from 'react';
 import { useRouter } from 'expo-router';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Share } from 'react-native';
+import Constants from 'expo-constants';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Share, Linking } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -14,6 +15,11 @@ import { requestVerification, getVerificationStatus } from '../../src/api/verifi
 import { presign, confirmAvatarUpload } from '../../src/api/uploads';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { spacing } from '../../src/theme';
+
+/** URL para doação/apoio ao app (pode usar deep link de volta ao app no futuro). */
+const DONATION_URL = 'https://appadopet.com.br/#apoie';
+
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.22';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -346,6 +352,21 @@ export default function ProfileScreen() {
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+        onPress={() => {
+          Linking.canOpenURL(DONATION_URL).then((supported) => {
+            if (supported) Linking.openURL(DONATION_URL);
+            else Alert.alert('Abrir link', 'Não foi possível abrir a página. Tente acessar pelo navegador: ' + DONATION_URL);
+          });
+        }}
+      >
+        <View style={styles.menuItemLeft}>
+          <Ionicons name="heart" size={22} color={colors.primary} style={styles.menuIcon} />
+          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Apoiar o Adopet</Text>
+        </View>
+        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
         onPress={() => router.push('/terms')}
       >
         <View style={styles.menuItemLeft}>
@@ -397,6 +418,9 @@ export default function ProfileScreen() {
           <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
         </TouchableOpacity>
       )}
+      <Text style={[styles.versionText, { color: colors.textSecondary }]}>
+        Adopet v{APP_VERSION}
+      </Text>
       <View style={styles.footer}>
         <PrimaryButton
           title="Sair"
@@ -592,6 +616,12 @@ const styles = StyleSheet.create({
   menuItemPartner: {
     borderLeftWidth: 3,
     paddingLeft: spacing.md - 3,
+  },
+  versionText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
   },
   footer: {
     marginTop: spacing.xl,
