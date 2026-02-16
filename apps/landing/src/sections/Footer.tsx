@@ -8,6 +8,12 @@ export function Footer() {
         </div>
         <nav className="flex flex-wrap items-center justify-center gap-6 text-sm">
           <a
+            href="#apoie"
+            className="hover:text-white transition-colors"
+          >
+            Apoie a Adopet
+          </a>
+          <a
             href="#privacidade"
             className="hover:text-white transition-colors"
           >

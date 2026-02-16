@@ -30,6 +30,15 @@ export function CTA() {
             Em breve na App Store
           </span>
         </div>
+        <a
+          href="#apoie"
+          className="inline-flex items-center gap-2 mt-8 px-6 py-3 rounded-2xl border-2 border-white/60 text-white font-semibold hover:bg-white/10 transition-colors"
+        >
+          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden>
+            <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+          </svg>
+          Apoie a Adopet
+        </a>
         <p className="mt-6 text-sm text-white/80">
           Seus dados são tratados conforme a LGPD.
         </p>

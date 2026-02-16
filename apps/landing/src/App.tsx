@@ -14,6 +14,7 @@ import { TermosPage } from './pages/Termos';
 import { PrivacidadePage } from './pages/Privacidade';
 import { ExclusaoContaPage } from './pages/ExclusaoConta';
 import { PetPage } from './pages/Pet';
+import { ApoiePage } from './pages/Apoie';
 
 function LandingContent() {
   return (
@@ -55,6 +56,7 @@ export default function App() {
 
   // Rota /pet/:id (link de compartilhamento do app)
   if (pathname.startsWith('/pet/')) return <PetPage />;
+  if (hash === '#apoie') return <ApoiePage />;
   if (hash === '#termos') return <TermosPage />;
   if (hash === '#privacidade') return <PrivacidadePage />;
   if (hash === '#exclusao-conta') return <ExclusaoContaPage />;
