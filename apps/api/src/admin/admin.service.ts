@@ -378,7 +378,7 @@ export class AdminService {
   }
 
   /** [Admin] Rejeita uma adoção já existente pela Adopet; exibe badge "Rejeitado pelo Adopet" para tutor e adotante. */
-  async rejectAdoptionByAdopet(petId: string): Promise<void> {
+  async rejectAdoptionByAdopet(petId: string, rejectionReason?: string): Promise<void> {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
       include: { adoption: true },
@@ -387,12 +387,15 @@ export class AdminService {
     if (!pet.adoption) throw new BadRequestException('Este pet não possui adoção registrada');
     await this.prisma.pet.update({
       where: { id: petId },
-      data: { adoptionRejectedAt: new Date() },
+      data: {
+        adoptionRejectedAt: new Date(),
+        adoptionRejectionReason: rejectionReason?.trim() || null,
+      },
     });
   }
 
   /** Rejeita a marcação de adoção pelo tutor: pet continua como ADOPTED (não volta ao feed), não cria registro de adoção (não computa pontos), exibe badge "Rejeitado pelo Adopet" para o tutor. */
-  async rejectPendingAdoptionByTutor(petId: string): Promise<void> {
+  async rejectPendingAdoptionByTutor(petId: string, rejectionReason?: string): Promise<void> {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
       include: { adoption: true },
@@ -408,7 +411,10 @@ export class AdminService {
     }
     await this.prisma.pet.update({
       where: { id: petId },
-      data: { adoptionRejectedAt: new Date() },
+      data: {
+        adoptionRejectedAt: new Date(),
+        adoptionRejectionReason: rejectionReason?.trim() || null,
+      },
     });
   }
 
