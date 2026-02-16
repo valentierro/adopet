@@ -14,6 +14,7 @@ import { CreatePartnerCouponDto } from '../partners/dto/create-partner-coupon.dt
 import { UpdatePartnerCouponDto } from '../partners/dto/update-partner-coupon.dto';
 import { CreatePartnerServiceDto } from '../partners/dto/create-partner-service.dto';
 import { UpdatePartnerServiceDto } from '../partners/dto/update-partner-service.dto';
+import { AddPartnerMemberDto } from '../partners/dto/add-partner-member.dto';
 import { CreateCheckoutSessionDto } from './dto/checkout-session.dto';
 import { CreateBillingPortalSessionDto } from './dto/billing-portal.dto';
 import type { MeResponseDto } from './dto/me-response.dto';
@@ -22,6 +23,7 @@ import type { MyAdoptionsResponseDto } from './dto/my-adoption-item.dto';
 import type { PartnerMeDto } from '../partners/dto/partner-response.dto';
 import type { PartnerCouponResponseDto } from '../partners/dto/partner-coupon-response.dto';
 import type { PartnerServiceResponseDto } from '../partners/dto/partner-service-response.dto';
+import type { PartnerMemberDto } from '../partners/partners.service';
 import { TutorStatsResponseDto } from './dto/tutor-stats-response.dto';
 
 @ApiTags('me')
@@ -161,6 +163,30 @@ export class MeController {
     @Param('id') serviceId: string,
   ): Promise<{ message: string }> {
     return this.partnersService.deleteService(user.id, serviceId);
+  }
+
+  @Get('partner/members')
+  @ApiOperation({ summary: 'Listar membros da ONG (apenas para parceiro type=ONG)' })
+  async getMyPartnerMembers(@CurrentUser() user: { id: string }): Promise<PartnerMemberDto[]> {
+    return this.partnersService.listMembersByUserId(user.id);
+  }
+
+  @Post('partner/members')
+  @ApiOperation({ summary: 'Adicionar membro à ONG (apenas para parceiro type=ONG)' })
+  async addMyPartnerMember(
+    @CurrentUser() user: { id: string },
+    @Body() dto: AddPartnerMemberDto,
+  ): Promise<PartnerMemberDto> {
+    return this.partnersService.addMemberByUserId(user.id, dto);
+  }
+
+  @Delete('partner/members/:userId')
+  @ApiOperation({ summary: 'Remover membro da ONG (apenas para parceiro type=ONG)' })
+  async removeMyPartnerMember(
+    @CurrentUser() user: { id: string },
+    @Param('userId') memberUserId: string,
+  ): Promise<{ message: string }> {
+    return this.partnersService.removeMemberByUserId(user.id, memberUserId);
   }
 
   @Get('adoptions')

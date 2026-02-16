@@ -69,4 +69,9 @@ export class CreatePartnerDto {
   @IsOptional()
   @IsBoolean()
   isPaidPartner?: boolean;
+
+  @ApiPropertyOptional({ description: 'ID do usuário dono (ex.: ao aprovar solicitação de parceria ONG)' })
+  @IsOptional()
+  @IsString()
+  userId?: string;
 }

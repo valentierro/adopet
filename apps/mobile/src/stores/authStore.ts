@@ -34,6 +34,7 @@ export type User = {
     planId?: string;
     isPaidPartner: boolean;
   };
+  partnerMemberships?: Array<{ partnerId: string; partnerName: string; partnerSlug: string }>;
 };
 
 type AuthState = {

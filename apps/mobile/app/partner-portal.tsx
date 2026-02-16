@@ -116,6 +116,16 @@ export default function PartnerPortalScreen() {
             <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Analytics</Text>
             <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
           </TouchableOpacity>
+          {partner.type === 'ONG' ? (
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+              onPress={() => router.push('/partner-members')}
+            >
+              <Ionicons name="people-outline" size={22} color={colors.primary} />
+              <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Membros da ONG</Text>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+          ) : null}
           <TouchableOpacity
             style={[styles.menuItem, { borderBottomColor: colors.surface }]}
             onPress={() => router.push('/partner-subscription')}

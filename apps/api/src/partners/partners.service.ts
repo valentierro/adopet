@@ -1,5 +1,9 @@
-import { Injectable, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuthService } from '../auth/auth.service';
+import { EmailService } from '../email/email.service';
+import { getSetPasswordEmailHtml, getSetPasswordEmailText } from '../email/templates/set-password.email';
 import type { PartnerPublicDto, PartnerMeDto } from './dto/partner-response.dto';
 import type { PartnerAdminDto } from './dto/partner-response.dto';
 import type { CreatePartnerDto } from './dto/create-partner.dto';
@@ -34,9 +38,22 @@ function ensureUniqueSlug(base: string, existing: (slug: string) => Promise<bool
   })();
 }
 
+export type PartnerMemberDto = {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  createdAt: string;
+};
+
 @Injectable()
 export class PartnersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => AuthService)) private readonly authService: AuthService,
+    private readonly emailService: EmailService,
+    private readonly config: ConfigService,
+  ) {}
 
   /** Retorna o parceiro do usuário (portal do parceiro). Null se não for parceiro. Sempre permitido para renovar assinatura. */
   async getByUserId(userId: string): Promise<PartnerMeDto | null> {
@@ -337,6 +354,95 @@ export class PartnersService {
     return { profileViews, couponCopies, byCoupon };
   }
 
+  private ensureOngAdmin(partner: { type: string; id: string } | null): asserts partner is { type: 'ONG'; id: string } {
+    if (!partner) throw new NotFoundException('Parceiro não encontrado');
+    if (partner.type !== 'ONG') {
+      throw new ForbiddenException('Apenas ONGs podem gerenciar membros.');
+    }
+  }
+
+  /** Lista membros da ONG (portal do parceiro). Apenas para parceiro type=ONG. */
+  async listMembersByUserId(userId: string): Promise<PartnerMemberDto[]> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId },
+      include: { members: { include: { user: { select: { id: true, name: true, email: true } } } } },
+    });
+    this.ensureOngAdmin(partner);
+    return partner.members.map((m) => ({
+      id: m.id,
+      userId: m.userId,
+      name: m.user.name,
+      email: m.user.email,
+      createdAt: m.createdAt.toISOString(),
+    }));
+  }
+
+  /** Adiciona membro à ONG. Se o e-mail já existir no app, apenas vincula; senão cria usuário e envia e-mail para definir senha. */
+  async addMemberByUserId(
+    userId: string,
+    dto: { email: string; name: string; phone?: string },
+  ): Promise<PartnerMemberDto> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId },
+      select: { id: true, type: true, name: true },
+    });
+    this.ensureOngAdmin(partner);
+    const emailLower = dto.email.trim().toLowerCase();
+    const { userId: newOrExistingUserId, setPasswordToken } = await this.authService.createUserWithoutPasswordIfNotExists(
+      dto.email,
+      dto.name,
+      dto.phone,
+    );
+    const existing = await this.prisma.partnerMember.findUnique({
+      where: { partnerId_userId: { partnerId: partner.id, userId: newOrExistingUserId } },
+    });
+    if (existing) {
+      throw new BadRequestException('Este usuário já é membro da ONG.');
+    }
+    const member = await this.prisma.partnerMember.create({
+      data: { partnerId: partner.id, userId: newOrExistingUserId },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+    if (setPasswordToken && this.emailService.isConfigured()) {
+      const apiUrl = this.config.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ?? '';
+      const setPasswordLink = apiUrl ? `${apiUrl}/v1/auth/set-password?token=${encodeURIComponent(setPasswordToken)}` : '';
+      const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? 'https://appadopet.com.br';
+      const logoUrl = (this.config.get<string>('LOGO_URL') || appUrl + '/logo.png').trim();
+      const emailData = {
+        setPasswordLink,
+        title: 'Você foi adicionado(a) à ONG no Adopet',
+        bodyHtml: `<p>Você foi adicionado(a) como membro da <strong>${partner.name}</strong> no app Adopet. Defina sua senha no link abaixo para acessar o app.</p>`,
+        bodyText: `Você foi adicionado(a) como membro da ${partner.name} no Adopet. Defina sua senha no link abaixo para acessar o app.`,
+      };
+      await this.emailService.sendMail({
+        to: emailLower,
+        subject: 'Defina sua senha - Adopet',
+        text: getSetPasswordEmailText(emailData),
+        html: getSetPasswordEmailHtml(emailData, logoUrl),
+      }).catch(() => {});
+    }
+    return {
+      id: member.id,
+      userId: member.userId,
+      name: member.user.name,
+      email: member.user.email,
+      createdAt: member.createdAt.toISOString(),
+    };
+  }
+
+  /** Remove membro da ONG (desvincula; não exclui a conta do usuário). */
+  async removeMemberByUserId(adminUserId: string, memberUserId: string): Promise<{ message: string }> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId: adminUserId },
+      select: { id: true, type: true },
+    });
+    this.ensureOngAdmin(partner);
+    await this.prisma.partnerMember.deleteMany({
+      where: { partnerId: partner.id, userId: memberUserId },
+    });
+    return { message: 'Membro removido da ONG.' };
+  }
+
   /** Lista todos os parceiros (admin) */
   async findAllAdmin(): Promise<PartnerAdminDto[]> {
     const list = await this.prisma.partner.findMany({
@@ -404,6 +510,7 @@ export class PartnersService {
         active,
         approvedAt,
         isPaidPartner: dto.isPaidPartner === true,
+        ...(dto.userId && { userId: dto.userId }),
       },
     });
     return this.toAdminDto(partner);

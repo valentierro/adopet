@@ -48,6 +48,7 @@ model User {
   petsPendingAsAdopter Pet[]    @relation("PetPendingAdopter")
   bugReports          BugReport[]
   partner             Partner?  // conta parceiro (se for parceiro pago)
+  partnerMemberships  PartnerMember[]  // membro de ONG (não é dono do portal)
   partnerRecommendations PartnerRecommendation[]
 }
 
@@ -151,8 +152,21 @@ model Partner {
   coupons              PartnerCoupon[]
   services             PartnerService[]
   events               PartnerEvent[]
+  members              PartnerMember[]  // membros da ONG (só type=ONG)
   @@index([type])
   @@index([active, type])
+  @@index([userId])
+}
+
+model PartnerMember {
+  id         String   @id @default(uuid())
+  partnerId  String
+  partner    Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  @@unique([partnerId, userId])
+  @@index([partnerId])
   @@index([userId])
 }
 

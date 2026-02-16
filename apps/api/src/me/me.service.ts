@@ -19,7 +19,11 @@ export class MeService {
     const [user, verified] = await Promise.all([
       this.prisma.user.findUniqueOrThrow({
         where: { id: userId },
-        include: { preferences: true, partner: true },
+        include: {
+          preferences: true,
+          partner: true,
+          partnerMemberships: { include: { partner: { select: { id: true, name: true, slug: true } } } },
+        },
       }),
       this.verificationService.isUserVerified(userId),
     ]);
@@ -383,7 +387,10 @@ export class MeService {
     verified?: boolean,
     isAdmin?: boolean,
   ): MeResponseDto {
-    const u = user as typeof user & { partner?: { id: string; name: string; slug: string; subscriptionStatus: string | null; planId: string | null; isPaidPartner: boolean } | null };
+    const u = user as typeof user & {
+      partner?: { id: string; name: string; slug: string; subscriptionStatus: string | null; planId: string | null; isPaidPartner: boolean } | null;
+      partnerMemberships?: Array<{ partner: { id: string; name: string; slug: string } }>;
+    };
     return {
       id: user.id,
       email: user.email,
@@ -411,6 +418,11 @@ export class MeService {
             isPaidPartner: !!u.partner.isPaidPartner,
           }
         : undefined,
+      partnerMemberships: u.partnerMemberships?.map((m) => ({
+        partnerId: m.partner.id,
+        partnerName: m.partner.name,
+        partnerSlug: m.partner.slug,
+      })),
     };
   }
 }

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Stack, useRouter } from 'expo-router';
-import { TouchableOpacity } from 'react-native';
+import { TouchableOpacity, Alert } from 'react-native';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { QueryClient } from '@tanstack/react-query';
@@ -12,6 +12,8 @@ import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
 import { AppWithOfflineBanner } from '../src/components/AppWithOfflineBanner';
 import { HeaderLogo } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
+import { setAuthProvider } from '../src/api/client';
+import { useAuthStore } from '../src/stores/authStore';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -65,9 +67,22 @@ const asyncStoragePersister = createAsyncStoragePersister({
 function RootLayout() {
   const router = useRouter();
   const { colors } = useTheme();
+  const getAccessToken = useAuthStore((s) => s.getAccessToken);
+  const refreshTokens = useAuthStore((s) => s.refreshTokens);
+
   useEffect(() => {
     SplashScreen.hideAsync();
   }, []);
+
+  useEffect(() => {
+    setAuthProvider(getAccessToken, refreshTokens, () => {
+      Alert.alert(
+        'Sessão expirada',
+        'Sua sessão expirou. Você será redirecionado para a tela de login.',
+        [{ text: 'OK', onPress: () => router.replace('/(auth)/welcome') }],
+      );
+    });
+  }, [getAccessToken, refreshTokens, router]);
 
   return (
     <PersistQueryClientProvider
@@ -99,6 +114,7 @@ function RootLayout() {
         <Stack.Screen name="partner-services" options={{ title: 'Serviços prestados' }} />
         <Stack.Screen name="partner-service-edit" options={{ title: 'Serviço' }} />
         <Stack.Screen name="partner-analytics" options={{ title: 'Analytics' }} />
+        <Stack.Screen name="partner-members" options={{ title: 'Membros da ONG', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="partner-subscription" options={{ title: 'Assinatura', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="partner-success" options={{ title: 'Pagamento concluído' }} />
         <Stack.Screen name="partner-cancel" options={{ title: 'Pagamento cancelado' }} />

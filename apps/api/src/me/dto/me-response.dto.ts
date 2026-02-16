@@ -58,4 +58,7 @@ export class MeResponseDto {
     planId?: string;
     isPaidPartner: boolean;
   };
+
+  @ApiPropertyOptional({ description: 'ONGs das quais o usuário é membro (badge "membro ONG")', type: 'array', items: { type: 'object', properties: { partnerId: { type: 'string' }, partnerName: { type: 'string' }, partnerSlug: { type: 'string' } } } })
+  partnerMemberships?: Array<{ partnerId: string; partnerName: string; partnerSlug: string }>;
 }

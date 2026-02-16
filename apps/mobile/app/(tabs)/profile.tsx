@@ -11,7 +11,7 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { useAuthStore } from '../../src/stores/authStore';
 import { getMe, getTutorStats, getPendingAdoptionConfirmations, deactivateAccount, exportMyData } from '../../src/api/me';
 import { getAdminStats } from '../../src/api/admin';
-import { requestVerification, getVerificationStatus } from '../../src/api/verification';
+import { getVerificationStatus } from '../../src/api/verification';
 import { presign, confirmAvatarUpload } from '../../src/api/uploads';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { spacing } from '../../src/theme';
@@ -19,7 +19,7 @@ import { spacing } from '../../src/theme';
 /** URL para doação/apoio ao app (pode usar deep link de volta ao app no futuro). */
 const DONATION_URL = 'https://appadopet.com.br/#apoie';
 
-const APP_VERSION = Constants.expoConfig?.version ?? '1.0.22';
+const APP_VERSION = Constants.expoConfig?.version ?? '1.0.25';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -62,13 +62,6 @@ export default function ProfileScreen() {
         (adminStats.pendingAdoptionsByTutorCount ?? 0) +
         (adminStats.pendingVerificationsCount ?? 0)
       : 0;
-  const requestUserVerification = useMutation({
-    mutationFn: () => requestVerification({ type: 'USER_VERIFIED' }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['verification-status'] });
-      queryClient.invalidateQueries({ queryKey: ['me'] });
-    },
-  });
 
   useEffect(() => {
     if (user) setUser(user);
@@ -77,13 +70,14 @@ export default function ProfileScreen() {
   const userVerificationRequest = verificationStatus?.requests?.find(
     (r) => r.type === 'USER_VERIFIED',
   );
-  const canRequestUserVerification =
-    !user?.verified && !userVerificationRequest && !requestUserVerification.isPending;
+  const canRequestUserVerification = !user?.verified && !userVerificationRequest;
   const verificationFeedback =
     userVerificationRequest?.status === 'PENDING'
       ? 'Solicitação em análise'
       : userVerificationRequest?.status === 'REJECTED'
-        ? 'Solicitação não aprovada'
+        ? userVerificationRequest.rejectionReason
+          ? `Solicitação não aprovada: ${userVerificationRequest.rejectionReason}. Você pode solicitar novamente após ajustes.`
+          : 'Solicitação não aprovada. Você pode solicitar novamente após ajustes.'
         : null;
 
   const profileComplete = !!(user?.avatarUrl && user?.phone);
@@ -203,6 +197,14 @@ export default function ProfileScreen() {
       {user?.username ? (
         <Text style={[styles.username, { color: colors.textSecondary }]}>@{user.username}</Text>
       ) : null}
+      {user?.partnerMemberships && user.partnerMemberships.length > 0 ? (
+        <View style={[styles.badgeRow, { backgroundColor: colors.primary + '18' }]}>
+          <Ionicons name="people" size={16} color={colors.primary} style={styles.badgeRowIcon} />
+          <Text style={[styles.badgeRowText, { color: colors.primary }]}>
+            Membro da{user.partnerMemberships.length === 1 ? '' : 's'} ONG{user.partnerMemberships.length === 1 ? '' : 's'}: {user.partnerMemberships.map((m) => m.partnerName).join(', ')}
+          </Text>
+        </View>
+      ) : null}
       {user?.city ? (
         <Text style={[styles.city, { color: colors.textSecondary }]}>{user.city}</Text>
       ) : null}
@@ -228,18 +230,29 @@ export default function ProfileScreen() {
           {verificationFeedback}
         </Text>
       )}
+      {(verificationFeedback || canRequestUserVerification || user?.verified) && (
+        <View style={[styles.verificationDisclaimer, { backgroundColor: colors.surface, borderColor: colors.textSecondary + '40' }]}>
+          <Text style={[styles.verificationHint, { color: colors.textSecondary }]}>
+            O selo "Verificado" indica que o perfil ou anúncio passou por análise da equipe Adopet (fotos e dados). O Adopet não garante identidade, posse do animal ou sucesso da adoção. O encontro responsável com o tutor continua essencial.
+          </Text>
+        </View>
+      )}
       {canRequestUserVerification && (
         <View style={styles.verificationCta}>
           <SecondaryButton
             title="Solicitar verificação"
-            onPress={() => requestUserVerification.mutate()}
-            disabled={requestUserVerification.isPending}
+            onPress={() => {
+              if (!profileComplete) {
+                Alert.alert(
+                  'Complete seu perfil',
+                  'Para solicitar verificação é preciso ter foto e telefone no perfil. Você será levado à página de edição, onde pode adicionar a foto e preencher o telefone. Depois, volte aqui e solicite a verificação.',
+                  [{ text: 'Completar perfil', onPress: () => router.push('/profile-edit') }],
+                );
+                return;
+              }
+              router.push('/verification-request?type=USER_VERIFIED');
+            }}
           />
-          {requestUserVerification.isError && (
-            <Text style={[styles.errorText, { color: colors.error }]}>
-              {getFriendlyErrorMessage(requestUserVerification.error, 'Não foi possível enviar.')}
-            </Text>
-          )}
         </View>
       )}
       {tutorStats && (
@@ -524,7 +537,18 @@ const styles = StyleSheet.create({
   verificationFeedback: {
     fontSize: 14,
     textAlign: 'center',
+  },
+  verificationDisclaimer: {
+    marginTop: spacing.xs,
     marginBottom: spacing.sm,
+    padding: spacing.md,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  verificationHint: {
+    fontSize: 12,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   verificationCta: {
     marginBottom: spacing.md,
@@ -542,6 +566,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    marginTop: 6,
+  },
+  badgeRowIcon: { marginRight: 6 },
+  badgeRowText: { fontSize: 13, fontWeight: '600', flex: 1 },
   username: {
     fontSize: 14,
     textAlign: 'center',

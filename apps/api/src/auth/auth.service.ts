@@ -17,6 +17,7 @@ import { ConfigService } from '@nestjs/config';
 import { getTempPasswordEmailHtml, getTempPasswordEmailText } from '../email/templates/temp-password.email';
 import { getConfirmResetEmailHtml, getConfirmResetEmailText } from '../email/templates/confirm-reset.email';
 import { getConfirmEmailHtml, getConfirmEmailText } from '../email/templates/confirm-email.email';
+import { getSetPasswordEmailHtml, getSetPasswordEmailText } from '../email/templates/set-password.email';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import type { ChangePasswordDto } from './dto/change-password.dto';
 import * as crypto from 'crypto';
@@ -26,6 +27,7 @@ const REFRESH_TOKEN_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const SALT_ROUNDS = 10;
 const TEMP_PASSWORD_LENGTH = 12;
 const CONFIRM_RESET_TOKEN_EXPIRES = '1h';
+const SET_PASSWORD_TOKEN_EXPIRES = '48h';
 /** Tolerância (segundos) na verificação do exp para evitar "expirado" por diferença de relógio entre envio do e-mail e o servidor que processa o clique. */
 const CONFIRM_RESET_CLOCK_TOLERANCE_SEC = 300;
 
@@ -125,7 +127,12 @@ export class AuthService {
         userId: user.id,
       };
     }
-    return this.issueTokens(user.id, user.email);
+    try {
+      return await this.issueTokens(user.id, user.email);
+    } catch (e) {
+      await this.prisma.user.delete({ where: { id: user.id } }).catch(() => {});
+      throw e;
+    }
   }
 
   /** Confirma o e-mail do usuário via token enviado no cadastro. */
@@ -178,16 +185,21 @@ export class AuthService {
       if (!payload?.sub) throw new BadRequestException('Falha ao obter usuário criado');
       userId = payload.sub;
     }
-    await this.partnersService.createForUser(
-      userId,
-      dto.establishmentName,
-      dto.planId,
-      dto.address?.trim() || null,
-      documentType,
-      document,
-      dto.legalName?.trim() || null,
-      dto.tradeName?.trim() || null,
-    );
+    try {
+      await this.partnersService.createForUser(
+        userId,
+        dto.establishmentName,
+        dto.planId,
+        dto.address?.trim() || null,
+        documentType,
+        document,
+        dto.legalName?.trim() || null,
+        dto.tradeName?.trim() || null,
+      );
+    } catch (e) {
+      await this.prisma.user.delete({ where: { id: userId } }).catch(() => {});
+      throw e;
+    }
     if ('accessToken' in signupResult) return signupResult as AuthResponseDto;
     return { message: (signupResult as { message: string }).message, requiresEmailVerification: true as const };
   }
@@ -201,8 +213,11 @@ export class AuthService {
       where: { email: emailNorm },
       select: { id: true, email: true, passwordHash: true, deactivatedAt: true, emailVerificationToken: true },
     });
-    if (!user?.passwordHash) {
+    if (!user) {
       throw new UnauthorizedException('Email ou senha inválidos');
+    }
+    if (!user.passwordHash) {
+      throw new UnauthorizedException('Defina sua senha primeiro. Use o link que enviamos por e-mail (válido por 48h). Se o link expirou, peça um novo ao administrador da ONG ou à equipe Adopet.');
     }
     if (user.deactivatedAt) {
       throw new UnauthorizedException('Conta desativada. Entre em contato para reativar.');
@@ -362,6 +377,104 @@ export class AuthService {
   private hashRefreshToken(token: string): string {
     const crypto = require('crypto');
     return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
+  /**
+   * Cria usuário sem senha se o e-mail não existir (ex.: convite como membro ONG). Retorna userId e token (null se já existia).
+   */
+  async createUserWithoutPasswordIfNotExists(
+    email: string,
+    name: string,
+    phone?: string,
+  ): Promise<{ userId: string; setPasswordToken: string | null }> {
+    const emailLower = email.trim().toLowerCase();
+    const existing = await this.prisma.user.findUnique({ where: { email: emailLower }, select: { id: true } });
+    if (existing) {
+      return { userId: existing.id, setPasswordToken: null };
+    }
+    const phoneNorm = phone ? String(phone).replace(/\D/g, '').slice(-11) : null;
+    const user = await this.prisma.user.create({
+      data: {
+        email: emailLower,
+        name: name.trim(),
+        phone: phoneNorm && phoneNorm.length >= 10 ? phoneNorm : null,
+        username: null,
+        passwordHash: null,
+      },
+    });
+    const setPasswordToken = this.jwtService.sign(
+      { sub: user.id, type: 'set-password' },
+      { expiresIn: SET_PASSWORD_TOKEN_EXPIRES } as object,
+    );
+    return { userId: user.id, setPasswordToken };
+  }
+
+  /**
+   * Cria usuário sem senha (ex.: admin da ONG ao aprovar parceria). Retorna token para enviar por e-mail (link definir senha).
+   */
+  async createUserForOngAdmin(
+    email: string,
+    name: string,
+    phone?: string,
+  ): Promise<{ userId: string; setPasswordToken: string }> {
+    const emailLower = email.trim().toLowerCase();
+    const existing = await this.prisma.user.findUnique({ where: { email: emailLower } });
+    if (existing) {
+      throw new ConflictException('Este e-mail já está cadastrado.');
+    }
+    const phoneNorm = phone ? String(phone).replace(/\D/g, '').slice(-11) : null;
+    const user = await this.prisma.user.create({
+      data: {
+        email: emailLower,
+        name: name.trim(),
+        phone: phoneNorm && phoneNorm.length >= 10 ? phoneNorm : null,
+        username: null,
+        passwordHash: null,
+      },
+    });
+    const setPasswordToken = this.jwtService.sign(
+      { sub: user.id, type: 'set-password' },
+      { expiresIn: SET_PASSWORD_TOKEN_EXPIRES } as object,
+    );
+    return { userId: user.id, setPasswordToken };
+  }
+
+  /**
+   * Define a senha usando o token enviado por e-mail (conta criada por aprovação de parceria ou convite como membro ONG).
+   */
+  async setPassword(token: string, newPassword: string): Promise<{ message: string }> {
+    const raw = typeof token === 'string' ? token.trim() : '';
+    if (!raw) {
+      throw new BadRequestException('Token inválido. Use o link completo que veio no e-mail.');
+    }
+    let payload: { sub?: string; type?: string };
+    try {
+      payload = this.jwtService.verify(raw, {
+        clockTolerance: CONFIRM_RESET_CLOCK_TOLERANCE_SEC,
+      } as object) as { sub?: string; type?: string };
+    } catch (err: unknown) {
+      const isExpired = err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'TokenExpiredError';
+      if (isExpired) {
+        throw new BadRequestException('Este link já expirou. O link é válido por 48 horas. Solicite um novo link ao administrador.');
+      }
+      throw new BadRequestException('Link inválido. Verifique se abriu o link completo do e-mail.');
+    }
+    if (payload.type !== 'set-password' || !payload.sub) {
+      throw new BadRequestException('Link inválido.');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { id: true },
+    });
+    if (!user) {
+      throw new BadRequestException('Usuário não encontrado.');
+    }
+    const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+    return { message: 'Senha definida com sucesso. Faça login no app com seu e-mail e a nova senha.' };
   }
 
   /** Altera a senha do usuário logado (requer senha atual). */

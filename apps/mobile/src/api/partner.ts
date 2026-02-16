@@ -197,3 +197,29 @@ export type PartnerAnalytics = {
 export async function getPartnerAnalytics(): Promise<PartnerAnalytics> {
   return api.get<PartnerAnalytics>('/me/partner/analytics');
 }
+
+export type PartnerMember = {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  createdAt: string;
+};
+
+export async function getMyPartnerMembers(): Promise<PartnerMember[]> {
+  return api.get<PartnerMember[]>('/me/partner/members');
+}
+
+export type AddPartnerMemberBody = {
+  email: string;
+  name: string;
+  phone?: string;
+};
+
+export async function addMyPartnerMember(body: AddPartnerMemberBody): Promise<PartnerMember> {
+  return api.post<PartnerMember>('/me/partner/members', body);
+}
+
+export async function removeMyPartnerMember(memberUserId: string): Promise<{ message: string }> {
+  return api.delete<{ message: string }>(`/me/partner/members/${memberUserId}`);
+}
