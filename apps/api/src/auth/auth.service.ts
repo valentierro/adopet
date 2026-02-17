@@ -484,9 +484,15 @@ export class AuthService {
         clockTolerance: CONFIRM_RESET_CLOCK_TOLERANCE_SEC,
       } as object) as { sub?: string; type?: string };
     } catch (err: unknown) {
-      const isExpired = err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'TokenExpiredError';
-      if (isExpired) {
+      const name = err && typeof err === 'object' && 'name' in err ? (err as { name: string }).name : '';
+      const message = err && typeof err === 'object' && 'message' in err ? String((err as { message: string }).message) : '';
+      if (name === 'TokenExpiredError') {
         throw new BadRequestException('Este link já expirou. O link é válido por 48 horas. Solicite um novo link ao administrador.');
+      }
+      if (name === 'JsonWebTokenError' && (message === 'invalid signature' || message.includes('signature'))) {
+        throw new BadRequestException(
+          'O link não pôde ser validado. Se o e-mail foi enviado de outro ambiente (ex.: seu computador) e a API está na Vercel, confira se a variável JWT_SECRET na Vercel é exatamente a mesma usada ao enviar o e-mail. Peça também ao admin reenviar o e-mail de confirmação pela API já deployada.',
+        );
       }
       throw new BadRequestException(
         'Link inválido ou incompleto. Abra o link completo do e-mail (evite clicar se o link quebrar em duas linhas). Se continuar falhando, peça ao admin reenviar o e-mail de confirmação.',
