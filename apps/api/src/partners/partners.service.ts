@@ -7,6 +7,10 @@ import { FeedService } from '../feed/feed.service';
 import { TutorStatsService } from '../me/tutor-stats.service';
 import { VerificationService } from '../verification/verification.service';
 import { getSetPasswordEmailHtml, getSetPasswordEmailText } from '../email/templates/set-password.email';
+import {
+  getPartnerMemberInviteEmailHtml,
+  getPartnerMemberInviteEmailText,
+} from '../email/templates/partner-member-invite.email';
 import type { PartnerPublicDto, PartnerMeDto } from './dto/partner-response.dto';
 import type { PartnerAdminDto } from './dto/partner-response.dto';
 import type { CreatePartnerDto } from './dto/create-partner.dto';
@@ -422,17 +426,16 @@ export class PartnersService {
       const setPasswordLink = apiUrl ? `${apiUrl}/v1/auth/set-password?token=${encodeURIComponent(setPasswordToken)}` : '';
       const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? 'https://appadopet.com.br';
       const logoUrl = (this.config.get<string>('LOGO_URL') || appUrl + '/logo.png').trim();
-      const emailData = {
+      const memberInviteData = {
         setPasswordLink,
-        title: 'Você foi adicionado(a) à ONG no Adopet',
-        bodyHtml: `<p>Você foi adicionado(a) como membro da <strong>${partner.name}</strong> no app Adopet. Defina sua senha no link abaixo para acessar o app.</p>`,
-        bodyText: `Você foi adicionado(a) como membro da ${partner.name} no Adopet. Defina sua senha no link abaixo para acessar o app.`,
+        ongName: partner.name,
+        recipientName: dto.name?.trim() || '',
       };
       await this.emailService.sendMail({
         to: emailLower,
-        subject: 'Defina sua senha - Adopet',
-        text: getSetPasswordEmailText(emailData),
-        html: getSetPasswordEmailHtml(emailData, logoUrl),
+        subject: 'Você foi adicionado(a) à equipe da ONG - Adopet',
+        text: getPartnerMemberInviteEmailText(memberInviteData),
+        html: getPartnerMemberInviteEmailHtml(memberInviteData, logoUrl),
       }).catch(() => {});
     }
     return {

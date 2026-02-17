@@ -92,8 +92,8 @@ android {
         applicationId 'br.com.adopet.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 27
-        versionName "1.0.22"
+        versionCode 32
+        versionName "1.0.27"
 
         // API key do Google Maps (EAS injeta GOOGLE_MAPS_API_KEY no build)
         manifestPlaceholders = [googleMapsApiKey: System.getenv("GOOGLE_MAPS_API_KEY") ?: ""]
