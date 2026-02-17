@@ -13,6 +13,9 @@ export class TutorStatsResponseDto {
   @ApiProperty({ example: 2, description: 'Quantidade de pets com selo de verificação' })
   verifiedCount: number;
 
-  @ApiProperty({ example: 1, description: 'Quantidade de pets adotados' })
+  @ApiProperty({ example: 1, description: 'Quantidade de adoções (como tutor ou adotante) confirmadas' })
   adoptedCount: number;
+
+  @ApiProperty({ example: 2, description: 'Quantidade de anúncios (pets) do usuário' })
+  petsCount: number;
 }

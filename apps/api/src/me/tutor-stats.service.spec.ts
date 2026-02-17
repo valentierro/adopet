@@ -46,6 +46,7 @@ describe('TutorStatsService', () => {
       expect(res.points).toBe(0);
       expect(res.adoptedCount).toBe(0);
       expect(res.verifiedCount).toBe(0);
+      expect(res.petsCount).toBe(0);
     });
 
     it('deve contar apenas adoções com adopetConfirmedAt preenchido (tutor)', async () => {
@@ -57,6 +58,7 @@ describe('TutorStatsService', () => {
 
       const res = await service.getStats('user-1');
       expect(res.adoptedCount).toBe(0);
+      expect(res.petsCount).toBe(1);
       expect(res.points).toBe(0);
       expect(prisma.adoption.count).toHaveBeenNthCalledWith(1, {
         where: { tutorId: 'user-1', pet: { adopetConfirmedAt: { not: null } } },
@@ -75,6 +77,7 @@ describe('TutorStatsService', () => {
 
       const res = await service.getStats('user-1');
       expect(res.adoptedCount).toBe(1);
+      expect(res.petsCount).toBe(1);
       const expectedPoints =
         1 * POINTS_PER_ADOPTED_PET + BONUS_FIRST_ADOPTION;
       expect(res.points).toBe(expectedPoints);
@@ -87,7 +90,7 @@ describe('TutorStatsService', () => {
         .mockResolvedValueOnce(2); // adopter: 2 adoções confirmadas
 
       const res = await service.getStats('user-1');
-      expect(res.adoptedCount).toBe(0); // adoptedCount = só tutor
+      expect(res.adoptedCount).toBe(2); // adoptedCount = total (tutor + adopter)
       const expectedPoints =
         2 * POINTS_PER_ADOPTED_PET + BONUS_FIRST_ADOPTION;
       expect(res.points).toBe(expectedPoints);
@@ -113,17 +116,18 @@ describe('TutorStatsService', () => {
 
       const res = await service.getStats('user-1');
       expect(res.verifiedCount).toBe(2);
+      expect(res.petsCount).toBe(2);
       expect(res.points).toBe(2 * POINTS_PER_VERIFIED_PET);
     });
 
-    it('adoptedCount no retorno deve ser só adoções como tutor (doou), não como adotante', async () => {
+    it('adoptedCount no retorno deve ser total (tutor + adotante) para bater com Minhas adoções', async () => {
       prisma.pet.findMany.mockResolvedValue([]);
       prisma.adoption.count
         .mockResolvedValueOnce(2) // tutor doou 2
         .mockResolvedValueOnce(3); // adotou 3
 
       const res = await service.getStats('user-1');
-      expect(res.adoptedCount).toBe(2);
+      expect(res.adoptedCount).toBe(5); // total tutor + adopter
       const totalAdopted = 5;
       const expectedPoints =
         totalAdopted * POINTS_PER_ADOPTED_PET +

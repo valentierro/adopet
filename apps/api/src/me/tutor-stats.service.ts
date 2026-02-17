@@ -16,6 +16,8 @@ export type TutorStatsDto = {
   title: string;
   verifiedCount: number;
   adoptedCount: number;
+  /** Quantidade de anúncios (pets) do usuário */
+  petsCount: number;
 };
 
 @Injectable()
@@ -43,8 +45,8 @@ export class TutorStatsService {
       where: { adopterId: userId, pet: { adopetConfirmedAt: { not: null } } },
     });
     const totalAdoptedCount = adoptedCountAsTutor + adoptedCountAsAdopter;
-    // adoptedCount no retorno = pets que doou com adoção confirmada (para exibir "X adoções" no perfil)
-    const adoptedCount = adoptedCountAsTutor;
+    // adoptedCount no retorno = total (tutor + adotante) para bater com "Minhas adoções" e header da home
+    const adoptedCount = totalAdoptedCount;
 
     let points = verifiedCount * POINTS_PER_VERIFIED_PET + totalAdoptedCount * POINTS_PER_ADOPTED_PET;
     if (totalAdoptedCount >= 1) points += BONUS_FIRST_ADOPTION;
@@ -54,10 +56,11 @@ export class TutorStatsService {
     points = Math.max(0, Math.round(points));
     if (Number.isNaN(points)) points = 0;
 
-    return this.toStats(points, verifiedCount, adoptedCount);
+    const petsCount = pets.length;
+    return this.toStats(points, verifiedCount, adoptedCount, petsCount);
   }
 
-  private toStats(points: number, verifiedCount: number, adoptedCount: number): TutorStatsDto {
+  private toStats(points: number, verifiedCount: number, adoptedCount: number, petsCount: number): TutorStatsDto {
     const safePoints = Number.isFinite(points) && points >= 0 ? points : 0;
     const levelEntry =
       TUTOR_LEVELS.find((l) => safePoints >= l.minPoints) ?? TUTOR_LEVELS[TUTOR_LEVELS.length - 1];
@@ -67,6 +70,7 @@ export class TutorStatsService {
       title: levelEntry.title,
       verifiedCount: Math.max(0, Number.isFinite(verifiedCount) ? verifiedCount : 0),
       adoptedCount: Math.max(0, Number.isFinite(adoptedCount) ? adoptedCount : 0),
+      petsCount: Math.max(0, Number.isFinite(petsCount) ? petsCount : 0),
     };
   }
 }
