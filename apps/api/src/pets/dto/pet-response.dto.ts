@@ -67,8 +67,44 @@ export class PetResponseDto {
   @ApiPropertyOptional({ description: 'É adestrado' })
   isTrained?: boolean;
 
+  @ApiPropertyOptional({ description: 'Preferência de tutor (para match); apenas para dono/edição', enum: ['CASA', 'APARTAMENTO', 'INDIFERENTE'] })
+  preferredTutorHousingType?: string;
+
+  @ApiPropertyOptional({ description: 'Pet prefere tutor com quintal' })
+  preferredTutorHasYard?: boolean;
+
+  @ApiPropertyOptional({ description: 'Pet se adapta a outros pets no local' })
+  preferredTutorHasOtherPets?: boolean;
+
+  @ApiPropertyOptional({ description: 'Pet se adapta a crianças em casa' })
+  preferredTutorHasChildren?: boolean;
+
+  @ApiPropertyOptional({ enum: ['MOST_DAY', 'HALF_DAY', 'LITTLE'] })
+  preferredTutorTimeAtHome?: string;
+
+  @ApiPropertyOptional({ enum: ['YES', 'NO', 'UNSURE'] })
+  preferredTutorPetsAllowedAtHome?: string;
+
+  @ApiPropertyOptional({ enum: ['NEVER', 'HAD_BEFORE', 'HAVE_NOW'] })
+  preferredTutorDogExperience?: string;
+
+  @ApiPropertyOptional({ enum: ['NEVER', 'HAD_BEFORE', 'HAVE_NOW'] })
+  preferredTutorCatExperience?: string;
+
+  @ApiPropertyOptional({ enum: ['YES', 'DISCUSSING'] })
+  preferredTutorHouseholdAgrees?: string;
+
+  @ApiPropertyOptional({ enum: ['DAILY', 'FEW_TIMES_WEEK', 'RARELY', 'INDIFERENTE'], description: 'Prefere tutor que passeie com essa frequência' })
+  preferredTutorWalkFrequency?: string;
+
+  @ApiPropertyOptional({ description: 'Pet tem gastos contínuos (medicação, ração especial)' })
+  hasOngoingCosts?: boolean;
+
   @ApiProperty({ required: false })
   distanceKm?: number;
+
+  @ApiPropertyOptional({ description: 'Score de match com o usuário atual (0–100); apenas no feed quando o pet tem preferências' })
+  matchScore?: number | null;
 
   @ApiPropertyOptional({ description: 'Cidade do tutor (para exibir no feed/mapa)' })
   city?: string;
@@ -115,6 +151,9 @@ export class PetResponseDto {
   @ApiPropertyOptional({ description: 'Indica se o pet possui verificação aprovada' })
   verified?: boolean;
 
+  @ApiPropertyOptional({ description: 'Quantidade de pessoas que favoritaram o pet (apenas em GET /pets/mine)' })
+  favoritesCount?: number;
+
   @ApiPropertyOptional({ description: 'Parceiro (ONG/Clínica/Loja) quando o anúncio é em parceria' })
   partner?: {
     id: string;
@@ -157,4 +196,13 @@ export class PetResponseDto {
 
   @ApiPropertyOptional({ description: 'Mídias com id para edição (reordenar/remover)' })
   mediaItems?: { id: string; url: string; sortOrder: number }[];
+}
+
+/** Item da lista "Pets similares": pet + score de similaridade (0–100) */
+export class SimilarPetItemDto {
+  @ApiProperty({ type: PetResponseDto })
+  pet: PetResponseDto;
+
+  @ApiProperty({ description: 'Score de similaridade com o pet de referência (0–100)' })
+  similarityScore: number;
 }

@@ -10,6 +10,9 @@ export class PreferencesResponseDto {
   @ApiPropertyOptional({ description: 'Preferência de tamanho: BOTH | small | medium | large | xlarge' })
   sizePref?: string | null;
 
+  @ApiPropertyOptional({ description: 'Preferência de sexo do pet: BOTH | male | female' })
+  sexPref?: string | null;
+
   @ApiPropertyOptional()
   latitude?: number | null;
 

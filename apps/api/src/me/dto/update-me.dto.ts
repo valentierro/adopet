@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MinLength, MaxLength, IsUrl, IsBoolean, Matches } from 'class-validator';
+import { IsOptional, IsString, MinLength, MaxLength, IsUrl, IsBoolean, Matches, IsIn } from 'class-validator';
 
 export class UpdateMeDto {
   @ApiPropertyOptional()
@@ -82,6 +82,36 @@ export class UpdateMeDto {
   @IsString()
   @MaxLength(500)
   whyAdopt?: string;
+
+  @ApiPropertyOptional({ enum: ['LOW', 'MEDIUM', 'HIGH'], description: 'Nível de atividade (para match com energia do pet)' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['LOW', 'MEDIUM', 'HIGH'])
+  activityLevel?: string;
+
+  @ApiPropertyOptional({ enum: ['PUPPY', 'ADULT', 'SENIOR', 'ANY'], description: 'Idade preferida do pet' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['PUPPY', 'ADULT', 'SENIOR', 'ANY'])
+  preferredPetAge?: string;
+
+  @ApiPropertyOptional({ enum: ['YES', 'NO'], description: 'Compromisso com cuidados veterinários (para pets com necessidades especiais)' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['YES', 'NO'])
+  commitsToVetCare?: string;
+
+  @ApiPropertyOptional({ enum: ['DAILY', 'FEW_TIMES_WEEK', 'RARELY', 'NOT_APPLICABLE'], description: 'Frequência de passeios com o pet' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['DAILY', 'FEW_TIMES_WEEK', 'RARELY', 'NOT_APPLICABLE'])
+  walkFrequency?: string;
+
+  @ApiPropertyOptional({ enum: ['LOW', 'MEDIUM', 'HIGH'], description: 'Orçamento mensal para o pet (para match com pets que têm gastos contínuos)' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['LOW', 'MEDIUM', 'HIGH'])
+  monthlyBudgetForPet?: string;
 
   @ApiPropertyOptional({ example: 'maria.silva', description: 'Nome de usuário único (@nome) para ser encontrado na hora de indicar adotante' })
   @IsOptional()

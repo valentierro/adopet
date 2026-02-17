@@ -29,6 +29,11 @@ model User {
   catExperience        String?   // NEVER | HAD_BEFORE | HAVE_NOW — experiência com gato
   householdAgreesToAdoption String?   // YES | DISCUSSING — todos em casa concordam com a adoção
   whyAdopt              String?   @db.VarChar(500) // por que quer adotar (texto livre para triagem)
+  activityLevel         String?   // LOW | MEDIUM | HIGH — nível de atividade (para match com energyLevel do pet)
+  preferredPetAge       String?   // PUPPY | ADULT | SENIOR | ANY — idade preferida do pet
+  commitsToVetCare      String?   // YES | NO — compromisso com cuidados veterinários (match com pet hasSpecialNeeds)
+  walkFrequency         String?   // DAILY | FEW_TIMES_WEEK | RARELY | NOT_APPLICABLE — frequência de passeios
+  monthlyBudgetForPet   String?   // LOW | MEDIUM | HIGH — orçamento mensal para o pet (match com hasOngoingCosts)
   pushToken    String?   // Expo push token para notificações
   emailVerificationToken String?   // token para confirmar e-mail (limpo após confirmação)
   emailVerifiedAt        DateTime? // quando o e-mail foi confirmado
@@ -64,6 +69,7 @@ model UserPreferences {
   species          String   @default("BOTH") // DOG | CAT | BOTH
   radiusKm         Int      @default(50)
   sizePref         String?  // BOTH | small | medium | large | xlarge (para recomendação)
+  sexPref          String?  // BOTH | male | female — preferência de sexo do pet (match)
   latitude         Float?   // última localização (para notificação "novos pets na região")
   longitude        Float?
   notifyNewPets           Boolean  @default(true)
@@ -245,6 +251,18 @@ model Pet {
   temperament     String?   // CALM | PLAYFUL | SHY | SOCIABLE | INDEPENDENT — temperamento
   isDocile        Boolean?  // é dócil (manso/calmo com pessoas)
   isTrained       Boolean?  // é adestrado
+  // Preferência de tutor (para engine de match adotante x pet); null = indiferente
+  preferredTutorHousingType       String?   // CASA | APARTAMENTO
+  preferredTutorHasYard           Boolean?  // prefere tutor com quintal
+  preferredTutorHasOtherPets      Boolean?  // OK com outros pets no local
+  preferredTutorHasChildren       Boolean?  // OK com crianças em casa
+  preferredTutorTimeAtHome       String?   // MOST_DAY | HALF_DAY | LITTLE
+  preferredTutorPetsAllowedAtHome String?   // YES | NO | UNSURE — pets permitidos no local
+  preferredTutorDogExperience    String?   // NEVER | HAD_BEFORE | HAVE_NOW
+  preferredTutorCatExperience    String?   // NEVER | HAD_BEFORE | HAVE_NOW
+  preferredTutorHouseholdAgrees  String?   // YES | DISCUSSING
+  preferredTutorWalkFrequency    String?   // DAILY | FEW_TIMES_WEEK | RARELY | INDIFERENTE — prefere tutor que passeie
+  hasOngoingCosts               Boolean?  // pet tem gastos contínuos (medicação, ração especial) — match com orçamento
   status          String    @default("AVAILABLE") // AVAILABLE | IN_PROCESS | ADOPTED
   markedAdoptedAt DateTime? // quando o tutor marcou como adotado; após 48h sem registro manual (e após adotante confirmar), sistema auto-valida
   pendingAdopterId String?  // adotante indicado pelo tutor ao marcar como adotado (lista de conversas ou @username)

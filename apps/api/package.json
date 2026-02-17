@@ -18,7 +18,8 @@
     "db:reset-keep-admin": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/reset-db-keep-admin.ts",
     "db:assign-placeholder-photos": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/assign-placeholder-pet-photos.ts",
     "db:fix-seed-photo-urls": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/fix-seed-photo-urls.ts",
-    "db:backfill-pet-city": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-pet-city.ts"
+    "db:backfill-pet-city": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-pet-city.ts",
+    "db:backfill-match-fields": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-match-fields.ts"
   },
   "dependencies": {
     "@adopet/shared": "workspace:*",

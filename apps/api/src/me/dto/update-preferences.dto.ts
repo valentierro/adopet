@@ -20,6 +20,12 @@ export class UpdatePreferencesDto {
   @IsIn(['BOTH', 'small', 'medium', 'large', 'xlarge'])
   sizePref?: string | null;
 
+  @ApiPropertyOptional({ description: 'Preferência de sexo do pet para match: BOTH | male | female' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['BOTH', 'male', 'female'])
+  sexPref?: string | null;
+
   @ApiPropertyOptional({ description: 'Latitude para notificação "novos pets na região"' })
   @IsOptional()
   @ValidateIf((_, v) => v != null)

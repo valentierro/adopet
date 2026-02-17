@@ -52,6 +52,19 @@ describe('FeedService', () => {
       favorite: { findMany: jest.fn().mockResolvedValue([]), groupBy: jest.fn().mockResolvedValue([]) },
       userPreferences: { findUnique: jest.fn().mockResolvedValue(null) },
       swipe: { findMany: jest.fn().mockResolvedValue([]) },
+      user: {
+        findUnique: jest.fn().mockResolvedValue({
+          housingType: null,
+          hasYard: null,
+          hasOtherPets: null,
+          hasChildren: null,
+          timeAtHome: null,
+          petsAllowedAtHome: null,
+          dogExperience: null,
+          catExperience: null,
+          householdAgreesToAdoption: null,
+        }),
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({

@@ -2,10 +2,29 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { VerificationService } from '../verification/verification.service';
+import { computeMatchScore } from '../match-engine/compute-match-score';
+import type { AdopterProfile } from '../match-engine/match-engine.types';
 import type { UpdateMeDto } from './dto/update-me.dto';
 import type { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import type { MeResponseDto } from './dto/me-response.dto';
 import type { PreferencesResponseDto } from './dto/preferences-response.dto';
+
+const ADOPTER_SELECT = {
+  housingType: true,
+  hasYard: true,
+  hasOtherPets: true,
+  hasChildren: true,
+  timeAtHome: true,
+  petsAllowedAtHome: true,
+  dogExperience: true,
+  catExperience: true,
+  householdAgreesToAdoption: true,
+  activityLevel: true,
+  preferredPetAge: true,
+  commitsToVetCare: true,
+  walkFrequency: true,
+  monthlyBudgetForPet: true,
+} as const;
 
 @Injectable()
 export class MeService {
@@ -71,6 +90,11 @@ export class MeService {
           ...(dto.catExperience !== undefined && { catExperience: dto.catExperience || null }),
           ...(dto.householdAgreesToAdoption !== undefined && { householdAgreesToAdoption: dto.householdAgreesToAdoption || null }),
           ...(dto.whyAdopt !== undefined && { whyAdopt: dto.whyAdopt?.trim() || null }),
+          ...(dto.activityLevel !== undefined && { activityLevel: dto.activityLevel || null }),
+          ...(dto.preferredPetAge !== undefined && { preferredPetAge: dto.preferredPetAge || null }),
+          ...(dto.commitsToVetCare !== undefined && { commitsToVetCare: dto.commitsToVetCare || null }),
+          ...(dto.walkFrequency !== undefined && { walkFrequency: dto.walkFrequency || null }),
+          ...(dto.monthlyBudgetForPet !== undefined && { monthlyBudgetForPet: dto.monthlyBudgetForPet || null }),
           ...(dto.username !== undefined && { username: dto.username || null }),
         },
         include: { preferences: true },
@@ -154,27 +178,44 @@ export class MeService {
       vaccinated?: boolean;
       neutered?: boolean;
       partner?: { isPaidPartner?: boolean };
+      matchScore?: number | null;
     }>;
   }> {
-    const adoptions = await this.prisma.adoption.findMany({
-      where: {
-        adopterId: userId,
-        ...(species && species !== 'BOTH' && { pet: { species: species.toUpperCase() } }),
-      },
-      orderBy: { adoptedAt: 'desc' },
-      include: {
-        tutor: { select: { name: true } },
-        pet: {
-          include: {
-            media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-            partner: { select: { isPaidPartner: true } },
+    const [adoptions, adopterProfile, prefs] = await Promise.all([
+      this.prisma.adoption.findMany({
+        where: {
+          adopterId: userId,
+          ...(species && species !== 'BOTH' && { pet: { species: species.toUpperCase() } }),
+        },
+        orderBy: { adoptedAt: 'desc' },
+        include: {
+          tutor: { select: { name: true } },
+          pet: {
+            include: {
+              media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+              partner: { select: { isPaidPartner: true } },
+            },
           },
         },
-      },
-    });
+      }),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: ADOPTER_SELECT,
+      }),
+      this.prisma.userPreferences.findUnique({
+        where: { userId },
+        select: { sizePref: true, species: true, sexPref: true },
+      }),
+    ]);
+    const profileForMatch = adopterProfile ? { ...adopterProfile, sizePref: prefs?.sizePref ?? undefined, speciesPref: prefs?.species ?? undefined, sexPref: prefs?.sexPref ?? undefined } as AdopterProfile : null;
     const items = adoptions.map((a) => {
       const pet = a.pet as { adoptionRejectedAt?: Date | null; adopetConfirmedAt?: Date | null };
       const partner = a.pet.partner as { isPaidPartner?: boolean } | null;
+      let matchScore: number | null | undefined;
+      if (profileForMatch && a.pet) {
+        const matchResult = computeMatchScore(profileForMatch, a.pet);
+        matchScore = matchResult.score;
+      }
       return {
         adoptionId: a.id,
         petId: a.petId,
@@ -188,6 +229,7 @@ export class MeService {
         vaccinated: a.pet.vaccinated,
         neutered: a.pet.neutered,
         ...(partner != null && { partner: { isPaidPartner: partner.isPaidPartner } }),
+        ...(matchScore != null && { matchScore }),
       };
     });
     return { items };
@@ -211,6 +253,7 @@ export class MeService {
       species: prefs.species as 'DOG' | 'CAT' | 'BOTH',
       radiusKm: prefs.radiusKm,
       sizePref: prefs.sizePref ?? undefined,
+      sexPref: prefs.sexPref ?? undefined,
       latitude: prefs.latitude ?? undefined,
       longitude: prefs.longitude ?? undefined,
       notifyNewPets: prefs.notifyNewPets,
@@ -228,6 +271,7 @@ export class MeService {
         species: dto.species ?? 'BOTH',
         radiusKm: dto.radiusKm ?? 50,
         sizePref: dto.sizePref ?? undefined,
+        sexPref: dto.sexPref ?? undefined,
         latitude: dto.latitude ?? undefined,
         longitude: dto.longitude ?? undefined,
         notifyNewPets: dto.notifyNewPets ?? true,
@@ -239,6 +283,7 @@ export class MeService {
         ...(dto.species !== undefined && { species: dto.species }),
         ...(dto.radiusKm !== undefined && { radiusKm: dto.radiusKm }),
         ...(dto.sizePref !== undefined && { sizePref: dto.sizePref }),
+        ...(dto.sexPref !== undefined && { sexPref: dto.sexPref }),
         ...(dto.latitude !== undefined && { latitude: dto.latitude }),
         ...(dto.longitude !== undefined && { longitude: dto.longitude }),
         ...(dto.notifyNewPets !== undefined && { notifyNewPets: dto.notifyNewPets }),
@@ -251,6 +296,7 @@ export class MeService {
       species: prefs.species,
       radiusKm: prefs.radiusKm,
       sizePref: prefs.sizePref ?? undefined,
+      sexPref: prefs.sexPref ?? undefined,
       latitude: prefs.latitude ?? undefined,
       longitude: prefs.longitude ?? undefined,
       notifyNewPets: prefs.notifyNewPets,
@@ -392,6 +438,11 @@ export class MeService {
       catExperience?: string | null;
       householdAgreesToAdoption?: string | null;
       whyAdopt?: string | null;
+      activityLevel?: string | null;
+      preferredPetAge?: string | null;
+      commitsToVetCare?: string | null;
+      walkFrequency?: string | null;
+      monthlyBudgetForPet?: string | null;
       createdAt: Date;
     },
     verified?: boolean,
@@ -421,6 +472,11 @@ export class MeService {
       catExperience: user.catExperience ?? undefined,
       householdAgreesToAdoption: user.householdAgreesToAdoption ?? undefined,
       whyAdopt: user.whyAdopt ?? undefined,
+      activityLevel: user.activityLevel ?? undefined,
+      preferredPetAge: user.preferredPetAge ?? undefined,
+      commitsToVetCare: user.commitsToVetCare ?? undefined,
+      walkFrequency: user.walkFrequency ?? undefined,
+      monthlyBudgetForPet: user.monthlyBudgetForPet ?? undefined,
       verified,
       isAdmin,
       partner: u.partner

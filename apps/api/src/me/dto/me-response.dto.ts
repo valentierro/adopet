@@ -58,6 +58,21 @@ export class MeResponseDto {
   @ApiPropertyOptional({ description: 'Por que quer adotar' })
   whyAdopt?: string;
 
+  @ApiPropertyOptional({ enum: ['LOW', 'MEDIUM', 'HIGH'], description: 'Nível de atividade' })
+  activityLevel?: string;
+
+  @ApiPropertyOptional({ enum: ['PUPPY', 'ADULT', 'SENIOR', 'ANY'], description: 'Idade preferida do pet' })
+  preferredPetAge?: string;
+
+  @ApiPropertyOptional({ enum: ['YES', 'NO'], description: 'Compromisso com cuidados veterinários' })
+  commitsToVetCare?: string;
+
+  @ApiPropertyOptional({ enum: ['DAILY', 'FEW_TIMES_WEEK', 'RARELY', 'NOT_APPLICABLE'], description: 'Frequência de passeios' })
+  walkFrequency?: string;
+
+  @ApiPropertyOptional({ enum: ['LOW', 'MEDIUM', 'HIGH'], description: 'Orçamento mensal para o pet' })
+  monthlyBudgetForPet?: string;
+
   @ApiPropertyOptional({ description: 'Indica se o usuário possui verificação aprovada' })
   verified?: boolean;
 

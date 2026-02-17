@@ -1,7 +1,26 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { computeMatchScore } from '../match-engine/compute-match-score';
+import type { AdopterProfile } from '../match-engine/match-engine.types';
 import type { CreateSwipeDto } from './dto/create-swipe.dto';
 import type { PetResponseDto } from '../pets/dto/pet-response.dto';
+
+const ADOPTER_SELECT = {
+  housingType: true,
+  hasYard: true,
+  hasOtherPets: true,
+  hasChildren: true,
+  timeAtHome: true,
+  petsAllowedAtHome: true,
+  dogExperience: true,
+  catExperience: true,
+  householdAgreesToAdoption: true,
+  activityLevel: true,
+  preferredPetAge: true,
+  commitsToVetCare: true,
+  walkFrequency: true,
+  monthlyBudgetForPet: true,
+} as const;
 
 export type CreateSwipeInput = CreateSwipeDto & { userId: string };
 
@@ -26,19 +45,37 @@ export class SwipesService {
 
   /** Lista pets que o usuário passou (PASS), para "reconsiderar". */
   async getPassed(userId: string): Promise<{ items: PetResponseDto[] }> {
-    const swipes = await this.prisma.swipe.findMany({
-      where: { userId, action: 'PASS' },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        pet: {
-          include: {
-            media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }], take: 5 },
-            partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+    const [swipes, adopterProfile, prefs] = await Promise.all([
+      this.prisma.swipe.findMany({
+        where: { userId, action: 'PASS' },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          pet: {
+            include: {
+              media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }], take: 5 },
+              partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+            },
           },
         },
-      },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: ADOPTER_SELECT,
+      }),
+      this.prisma.userPreferences.findUnique({
+        where: { userId },
+        select: { sizePref: true, species: true, sexPref: true },
+      }),
+    ]);
+    const profileForMatch = adopterProfile ? { ...adopterProfile, sizePref: prefs?.sizePref ?? undefined, speciesPref: prefs?.species ?? undefined, sexPref: prefs?.sexPref ?? undefined } as AdopterProfile : null;
+    const items = swipes.map((s) => {
+      const dto = this.petToDto(s.pet);
+      if (profileForMatch && s.pet) {
+        const matchResult = computeMatchScore(profileForMatch, s.pet);
+        dto.matchScore = matchResult.score;
+      }
+      return dto;
     });
-    const items = swipes.map((s) => this.petToDto(s.pet));
     return { items };
   }
 

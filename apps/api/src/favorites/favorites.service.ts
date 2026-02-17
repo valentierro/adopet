@@ -1,7 +1,26 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { VerificationService } from '../verification/verification.service';
+import { computeMatchScore } from '../match-engine/compute-match-score';
+import type { AdopterProfile } from '../match-engine/match-engine.types';
 import type { FavoriteItemDto } from './dto/favorite-response.dto';
+
+const ADOPTER_SELECT = {
+  housingType: true,
+  hasYard: true,
+  hasOtherPets: true,
+  hasChildren: true,
+  timeAtHome: true,
+  petsAllowedAtHome: true,
+  dogExperience: true,
+  catExperience: true,
+  householdAgreesToAdoption: true,
+  activityLevel: true,
+  preferredPetAge: true,
+  commitsToVetCare: true,
+  walkFrequency: true,
+  monthlyBudgetForPet: true,
+} as const;
 
 @Injectable()
 export class FavoritesService {
@@ -75,9 +94,27 @@ export class FavoritesService {
     const items = withPet.slice(0, this.PAGE_SIZE);
     const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].id : null;
     const petIds = items.map((f) => f.pet!.id);
-    const verifiedIds = await this.verificationService.getVerifiedPetIds(petIds);
+    const [verifiedIds, adopterProfile, prefs] = await Promise.all([
+      this.verificationService.getVerifiedPetIds(petIds),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: ADOPTER_SELECT,
+      }),
+      this.prisma.userPreferences.findUnique({
+        where: { userId },
+        select: { sizePref: true, species: true, sexPref: true },
+      }),
+    ]);
+    const profileForMatch = adopterProfile ? { ...adopterProfile, sizePref: prefs?.sizePref ?? undefined, speciesPref: prefs?.species ?? undefined, sexPref: prefs?.sexPref ?? undefined } as AdopterProfile : null;
     const dtos = items
-      .map((f) => this.toItemDto(f, verifiedIds.has(f.pet!.id)))
+      .map((f) => {
+        const dto = this.toItemDto(f, verifiedIds.has(f.pet!.id));
+        if (dto && profileForMatch && f.pet) {
+          const matchResult = computeMatchScore(profileForMatch, f.pet);
+          dto.pet.matchScore = matchResult.score;
+        }
+        return dto;
+      })
       .filter((d): d is FavoriteItemDto => d != null);
     return { items: dtos, nextCursor };
   }

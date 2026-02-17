@@ -28,5 +28,7 @@ export class FavoriteItemDto {
     /** Cidade do tutor */
     city?: string | null;
     partner?: { id: string; name: string; slug: string; logoUrl?: string | null; isPaidPartner?: boolean };
+    /** Score de compatibilidade 0–100 (adotante logado vs preferências do pet). */
+    matchScore?: number | null;
   };
 }

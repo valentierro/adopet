@@ -5,8 +5,9 @@ import { VerificationService } from '../verification/verification.service';
 import { TutorStatsService } from '../me/tutor-stats.service';
 import { PushService } from '../notifications/push.service';
 import { AdminService } from '../admin/admin.service';
+import { SimilarPetsEngineService } from '../similar-pets-engine/similar-pets-engine.service';
 import { reverseGeocode } from '../common/geocoding';
-import type { PetResponseDto } from './dto/pet-response.dto';
+import type { PetResponseDto, SimilarPetItemDto } from './dto/pet-response.dto';
 import type { CreatePetDto } from './dto/create-pet.dto';
 import type { UpdatePetDto } from './dto/update-pet.dto';
 
@@ -19,6 +20,7 @@ export class PetsService {
     private readonly config: ConfigService,
     private readonly push: PushService,
     private readonly adminService: AdminService,
+    private readonly similarPetsEngine: SimilarPetsEngineService,
   ) {}
 
   private mapToDto(
@@ -55,6 +57,17 @@ export class PetsService {
       temperament?: string | null;
       isDocile?: boolean | null;
       isTrained?: boolean | null;
+      preferredTutorHousingType?: string | null;
+      preferredTutorHasYard?: boolean | null;
+      preferredTutorHasOtherPets?: boolean | null;
+      preferredTutorHasChildren?: boolean | null;
+      preferredTutorTimeAtHome?: string | null;
+      preferredTutorPetsAllowedAtHome?: string | null;
+      preferredTutorDogExperience?: string | null;
+      preferredTutorCatExperience?: string | null;
+      preferredTutorHouseholdAgrees?: string | null;
+      preferredTutorWalkFrequency?: string | null;
+      hasOngoingCosts?: boolean | null;
       adoptionRejectedAt?: Date | null;
       adoptionRejectionReason?: string | null;
       media: { id: string; url: string; sortOrder?: number }[];
@@ -99,6 +112,17 @@ export class PetsService {
     if (pet.temperament != null) dto.temperament = pet.temperament;
     if (pet.isDocile != null) dto.isDocile = pet.isDocile;
     if (pet.isTrained != null) dto.isTrained = pet.isTrained;
+    if (pet.preferredTutorHousingType != null) dto.preferredTutorHousingType = pet.preferredTutorHousingType;
+    if (pet.preferredTutorHasYard != null) dto.preferredTutorHasYard = pet.preferredTutorHasYard;
+    if (pet.preferredTutorHasOtherPets != null) dto.preferredTutorHasOtherPets = pet.preferredTutorHasOtherPets;
+    if (pet.preferredTutorHasChildren != null) dto.preferredTutorHasChildren = pet.preferredTutorHasChildren;
+    if (pet.preferredTutorTimeAtHome != null) dto.preferredTutorTimeAtHome = pet.preferredTutorTimeAtHome;
+    if (pet.preferredTutorPetsAllowedAtHome != null) dto.preferredTutorPetsAllowedAtHome = pet.preferredTutorPetsAllowedAtHome;
+    if (pet.preferredTutorDogExperience != null) dto.preferredTutorDogExperience = pet.preferredTutorDogExperience;
+    if (pet.preferredTutorCatExperience != null) dto.preferredTutorCatExperience = pet.preferredTutorCatExperience;
+    if (pet.preferredTutorHouseholdAgrees != null) dto.preferredTutorHouseholdAgrees = pet.preferredTutorHouseholdAgrees;
+    if (pet.preferredTutorWalkFrequency != null) dto.preferredTutorWalkFrequency = pet.preferredTutorWalkFrequency;
+    if (pet.hasOngoingCosts != null) dto.hasOngoingCosts = pet.hasOngoingCosts;
     if (pet.city != null) dto.city = pet.city;
     if (pet.publicationStatus != null) dto.publicationStatus = pet.publicationStatus;
     if (pet.publicationRejectionReason != null) dto.publicationRejectionReason = pet.publicationRejectionReason;
@@ -507,7 +531,7 @@ export class PetsService {
       where,
       take: this.MINE_PAGE_SIZE + 1,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ favorites: { _count: 'desc' } }, { createdAt: 'desc' }],
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
         partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
@@ -517,13 +541,22 @@ export class PetsService {
     const hasMore = pets.length > this.MINE_PAGE_SIZE;
     const items = pets.slice(0, this.MINE_PAGE_SIZE);
     const petIds = items.map((p) => p.id);
-    const verifiedIds = await this.verificationService.getVerifiedPetIds(petIds);
+    const [verifiedIds, favoriteCounts] = await Promise.all([
+      this.verificationService.getVerifiedPetIds(petIds),
+      this.prisma.favorite.groupBy({
+        by: ['petId'],
+        where: { petId: { in: petIds } },
+        _count: { id: true },
+      }).then((rows) => new Map(rows.map((r) => [r.petId, r._count.id]))),
+    ]);
     const dtos = items.map((p) => {
       const dto = this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id));
       if (p.adoption?.adoptedAt) dto.adoptedAt = p.adoption.adoptedAt.toISOString();
       if (p.adoption?.adopter?.username) dto.adopterUsername = p.adoption.adopter.username;
       if (p.adoptionRejectedAt) dto.adoptionRejectedAt = p.adoptionRejectedAt.toISOString();
       if (p.adoption) dto.confirmedByAdopet = !p.adoptionRejectedAt && !!(p as { adopetConfirmedAt?: Date | null }).adopetConfirmedAt;
+      const count = favoriteCounts.get(p.id);
+      if (count !== undefined) dto.favoritesCount = count;
       return dto;
     });
     const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].id : null;
@@ -567,6 +600,17 @@ export class PetsService {
         temperament: dto.temperament ?? null,
         isDocile: dto.isDocile ?? null,
         isTrained: dto.isTrained ?? null,
+        preferredTutorHousingType: dto.preferredTutorHousingType ?? null,
+        preferredTutorHasYard: dto.preferredTutorHasYard ?? null,
+        preferredTutorHasOtherPets: dto.preferredTutorHasOtherPets ?? null,
+        preferredTutorHasChildren: dto.preferredTutorHasChildren ?? null,
+        preferredTutorTimeAtHome: dto.preferredTutorTimeAtHome ?? null,
+        preferredTutorPetsAllowedAtHome: dto.preferredTutorPetsAllowedAtHome ?? null,
+        preferredTutorDogExperience: dto.preferredTutorDogExperience ?? null,
+        preferredTutorCatExperience: dto.preferredTutorCatExperience ?? null,
+        preferredTutorHouseholdAgrees: dto.preferredTutorHouseholdAgrees ?? null,
+        preferredTutorWalkFrequency: dto.preferredTutorWalkFrequency ?? null,
+        hasOngoingCosts: dto.hasOngoingCosts ?? null,
         latitude: dto.latitude,
         longitude: dto.longitude,
         city,
@@ -655,6 +699,17 @@ export class PetsService {
         ...(dto.temperament !== undefined && { temperament: dto.temperament ?? null }),
         ...(dto.isDocile !== undefined && { isDocile: dto.isDocile ?? null }),
         ...(dto.isTrained !== undefined && { isTrained: dto.isTrained ?? null }),
+        ...(dto.preferredTutorHousingType !== undefined && { preferredTutorHousingType: dto.preferredTutorHousingType ?? null }),
+        ...(dto.preferredTutorHasYard !== undefined && { preferredTutorHasYard: dto.preferredTutorHasYard ?? null }),
+        ...(dto.preferredTutorHasOtherPets !== undefined && { preferredTutorHasOtherPets: dto.preferredTutorHasOtherPets ?? null }),
+        ...(dto.preferredTutorHasChildren !== undefined && { preferredTutorHasChildren: dto.preferredTutorHasChildren ?? null }),
+        ...(dto.preferredTutorTimeAtHome !== undefined && { preferredTutorTimeAtHome: dto.preferredTutorTimeAtHome ?? null }),
+        ...(dto.preferredTutorPetsAllowedAtHome !== undefined && { preferredTutorPetsAllowedAtHome: dto.preferredTutorPetsAllowedAtHome ?? null }),
+        ...(dto.preferredTutorDogExperience !== undefined && { preferredTutorDogExperience: dto.preferredTutorDogExperience ?? null }),
+        ...(dto.preferredTutorCatExperience !== undefined && { preferredTutorCatExperience: dto.preferredTutorCatExperience ?? null }),
+        ...(dto.preferredTutorHouseholdAgrees !== undefined && { preferredTutorHouseholdAgrees: dto.preferredTutorHouseholdAgrees ?? null }),
+        ...(dto.preferredTutorWalkFrequency !== undefined && { preferredTutorWalkFrequency: dto.preferredTutorWalkFrequency ?? null }),
+        ...(dto.hasOngoingCosts !== undefined && { hasOngoingCosts: dto.hasOngoingCosts ?? null }),
         ...(dto.latitude !== undefined && { latitude: dto.latitude }),
         ...(dto.longitude !== undefined && { longitude: dto.longitude }),
         ...(cityUpdate !== undefined && cityUpdate),
@@ -894,30 +949,38 @@ export class PetsService {
     return { confirmed: true };
   }
 
-  /** Pets parecidos / quem viu este pet também viu: mesma espécie e porte, disponíveis. */
-  async getSimilarPets(petId: string, limit = 12): Promise<PetResponseDto[]> {
-    const pet = await this.prisma.pet.findUnique({
-      where: { id: petId },
-      select: { species: true, size: true },
-    });
-    if (!pet) return [];
+  /**
+   * Retorna pets em ordem pelos ids informados (para preservar ordem da engine de similares).
+   */
+  async findManyByIds(ids: string[]): Promise<PetResponseDto[]> {
+    if (ids.length === 0) return [];
     const now = new Date();
-    const similar = await this.prisma.pet.findMany({
+    const pets = await this.prisma.pet.findMany({
       where: {
-        id: { not: petId },
-        status: 'AVAILABLE',
+        id: { in: ids },
         publicationStatus: 'APPROVED',
-        species: pet.species,
+        status: 'AVAILABLE',
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
         partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
       },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
     });
-    const verifiedIds = await this.verificationService.getVerifiedPetIds(similar.map((p) => p.id));
-    return similar.map((p) => this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id)));
+    const verifiedIds = await this.verificationService.getVerifiedPetIds(pets.map((p) => p.id));
+    const byId = new Map(pets.map((p) => [p.id, this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id))]));
+    return ids.filter((id) => byId.has(id)).map((id) => byId.get(id)!);
+  }
+
+  /** Pets similares ao pet informado (engine por porte, idade, energia, temperamento, sexo, raça). */
+  async getSimilarPetsWithScores(petId: string, limit = 12): Promise<SimilarPetItemDto[]> {
+    const scores = await this.similarPetsEngine.getSimilarScores(petId, limit);
+    if (scores.length === 0) return [];
+    const ids = scores.map((s) => s.petId);
+    const pets = await this.findManyByIds(ids);
+    const byId = new Map(pets.map((p) => [p.id, p]));
+    return scores
+      .map((s) => ({ pet: byId.get(s.petId), similarityScore: s.similarityScore }))
+      .filter((x): x is SimilarPetItemDto => x.pet != null);
   }
 }

@@ -5,6 +5,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ReportsService } from '../moderation/reports.service';
 import { BlocksService } from '../moderation/blocks.service';
 import { VerificationService } from '../verification/verification.service';
+import { computeMatchScore } from '../match-engine/compute-match-score';
+import type { AdopterProfile } from '../match-engine/match-engine.types';
 import type { FeedQueryDto } from './dto/feed-query.dto';
 import type { FeedResponseDto } from './dto/feed-response.dto';
 import type { PetResponseDto } from '../pets/dto/pet-response.dto';
@@ -214,7 +216,7 @@ export class FeedService {
       return this.getFeedByOwnerId(queryOwnerId, cursor ?? undefined, userId);
     }
 
-    const [prefs, swipedPetIds, reportedPetIds, blockedByMe, blockedMe, favoritePets] = await Promise.all([
+    const [prefs, swipedPetIds, reportedPetIds, blockedByMe, blockedMe, favoritePets, adopterProfile] = await Promise.all([
       userId
         ? this.prisma.userPreferences.findUnique({ where: { userId } })
         : Promise.resolve(null),
@@ -230,6 +232,27 @@ export class FeedService {
             include: { pet: { select: { species: true, size: true } } },
           })
         : Promise.resolve([]),
+      userId
+        ? this.prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+              housingType: true,
+              hasYard: true,
+              hasOtherPets: true,
+              hasChildren: true,
+              timeAtHome: true,
+              petsAllowedAtHome: true,
+              dogExperience: true,
+              catExperience: true,
+              householdAgreesToAdoption: true,
+              activityLevel: true,
+              preferredPetAge: true,
+              commitsToVetCare: true,
+              walkFrequency: true,
+              monthlyBudgetForPet: true,
+            },
+          })
+        : Promise.resolve(null),
     ]);
     const speciesPref = querySpecies ?? prefs?.species;
     const speciesFilter =
@@ -394,6 +417,11 @@ export class FeedService {
           const op = partnerByOwnerId[pet.ownerId];
           dto.partner = { id: op.id, name: op.name, slug: op.slug, logoUrl: op.logoUrl ?? undefined, isPaidPartner: op.isPaidPartner };
         }
+        if (adopterProfile) {
+          const profileForMatch = { ...adopterProfile, sizePref: prefs?.sizePref ?? undefined, speciesPref: prefs?.species ?? undefined, sexPref: prefs?.sexPref ?? undefined } as AdopterProfile;
+          const matchResult = computeMatchScore(profileForMatch, pet);
+          dto.matchScore = matchResult.score;
+        }
         return dto;
       }),
       nextCursor,
@@ -417,8 +445,30 @@ export class FeedService {
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       ...(reportedPetIds.length > 0 ? { id: { notIn: reportedPetIds } } : {}),
     };
-    const [totalCount] = await Promise.all([
+    const [totalCount, adopterProfile, prefs] = await Promise.all([
       this.prisma.pet.count({ where }),
+      userId
+        ? this.prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+              housingType: true,
+              hasYard: true,
+              hasOtherPets: true,
+              hasChildren: true,
+              timeAtHome: true,
+              petsAllowedAtHome: true,
+              dogExperience: true,
+              catExperience: true,
+              householdAgreesToAdoption: true,
+              activityLevel: true,
+              preferredPetAge: true,
+              commitsToVetCare: true,
+              walkFrequency: true,
+              monthlyBudgetForPet: true,
+            },
+          })
+        : Promise.resolve(null),
+      userId ? this.prisma.userPreferences.findUnique({ where: { userId } }) : Promise.resolve(null),
     ]);
     const include = {
       media: { orderBy: { sortOrder: 'asc' as const } },
@@ -451,6 +501,11 @@ export class FeedService {
         if (!dto.partner && partnerByOwnerId[pet.ownerId]) {
           const op = partnerByOwnerId[pet.ownerId];
           dto.partner = { id: op.id, name: op.name, slug: op.slug, logoUrl: op.logoUrl ?? undefined, isPaidPartner: op.isPaidPartner };
+        }
+        if (adopterProfile) {
+          const profileForMatch = { ...adopterProfile, sizePref: prefs?.sizePref ?? undefined, speciesPref: prefs?.species ?? undefined, sexPref: prefs?.sexPref ?? undefined } as AdopterProfile;
+          const matchResult = computeMatchScore(profileForMatch, pet);
+          dto.matchScore = matchResult.score;
         }
         return dto;
       }),

@@ -71,7 +71,7 @@ export class ConversationsService {
   ): Promise<{
     id: string;
     otherUser: { id: string; name: string };
-    pet?: { name: string; photoUrl?: string };
+    pet?: { name: string; photoUrl?: string; species?: string; size?: string; age?: number };
     otherUserTyping?: boolean;
   } | null> {
     const conv = await this.prisma.conversation.findFirst({
@@ -129,7 +129,7 @@ export class ConversationsService {
         hasChildren?: boolean;
         timeAtHome?: string;
       };
-      pet?: { name: string; photoUrl?: string; adoptionFinalized?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string };
+      pet?: { name: string; photoUrl?: string; species?: string; size?: string; age?: number; adoptionFinalized?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string };
       otherUserTyping?: boolean;
     } = {
       id: conv.id,
@@ -154,6 +154,9 @@ export class ConversationsService {
       result.pet = {
         name: conv.pet.name,
         photoUrl: conv.pet.media?.[0]?.url,
+        species: conv.pet.species ?? undefined,
+        size: conv.pet.size ?? undefined,
+        age: conv.pet.age ?? undefined,
         adoptionFinalized,
         pendingAdopterId: conv.pet.pendingAdopterId ?? undefined,
         isTutor: conv.pet.ownerId === userId,

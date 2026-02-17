@@ -25,6 +25,7 @@ import { PartnersModule } from './partners/partners.module';
 import { PublicModule } from './public/public.module';
 import { PaymentsModule } from './payments/payments.module';
 import { EmailModule } from './email/email.module';
+import { PriorityEngineModule } from './priority-engine/priority-engine.module';
 
 @Module({
   providers: [
@@ -50,6 +51,7 @@ import { EmailModule } from './email/email.module';
     ModerationModule,
     VerificationModule,
     SavedSearchModule,
+    PriorityEngineModule,
     AdminModule,
     BugReportsModule,
     PartnerRecommendationsModule,

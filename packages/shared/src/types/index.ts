@@ -59,7 +59,19 @@ export interface Pet {
   isDocile?: boolean;
   /** É adestrado */
   isTrained?: boolean;
+  /** Preferência de tutor (para match); apenas para dono/edição */
+  preferredTutorHousingType?: string;
+  preferredTutorHasYard?: boolean;
+  preferredTutorHasOtherPets?: boolean;
+  preferredTutorHasChildren?: boolean;
+  preferredTutorTimeAtHome?: string;
+  preferredTutorPetsAllowedAtHome?: string;
+  preferredTutorDogExperience?: string;
+  preferredTutorCatExperience?: string;
+  preferredTutorHouseholdAgrees?: string;
   distanceKm?: number;
+  /** Score de match com o usuário atual (0–100); apenas no feed quando o pet tem preferências de tutor */
+  matchScore?: number | null;
   /** Cidade do tutor (para exibir no feed/mapa) */
   city?: string;
   photos: string[];

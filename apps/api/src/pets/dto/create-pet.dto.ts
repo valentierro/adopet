@@ -150,4 +150,66 @@ export class CreatePetDto {
   @IsOptional()
   @IsString()
   partnerId?: string;
+
+  @ApiPropertyOptional({ enum: ['CASA', 'APARTAMENTO', 'INDIFERENTE'], description: 'Preferência de moradia do tutor (match); INDIFERENTE dá match com casa ou apartamento' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['CASA', 'APARTAMENTO', 'INDIFERENTE'])
+  preferredTutorHousingType?: string;
+
+  @ApiPropertyOptional({ description: 'Pet prefere tutor com quintal' })
+  @IsOptional()
+  @IsBoolean()
+  preferredTutorHasYard?: boolean;
+
+  @ApiPropertyOptional({ description: 'Pet se adapta a outros pets no local' })
+  @IsOptional()
+  @IsBoolean()
+  preferredTutorHasOtherPets?: boolean;
+
+  @ApiPropertyOptional({ description: 'Pet se adapta a crianças em casa' })
+  @IsOptional()
+  @IsBoolean()
+  preferredTutorHasChildren?: boolean;
+
+  @ApiPropertyOptional({ enum: ['MOST_DAY', 'HALF_DAY', 'LITTLE'], description: 'Preferência de tempo em casa do tutor' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['MOST_DAY', 'HALF_DAY', 'LITTLE'])
+  preferredTutorTimeAtHome?: string;
+
+  @ApiPropertyOptional({ enum: ['YES', 'NO', 'UNSURE'], description: 'Pets permitidos no local do tutor' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['YES', 'NO', 'UNSURE'])
+  preferredTutorPetsAllowedAtHome?: string;
+
+  @ApiPropertyOptional({ enum: ['NEVER', 'HAD_BEFORE', 'HAVE_NOW'], description: 'Preferência de experiência com cachorro' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['NEVER', 'HAD_BEFORE', 'HAVE_NOW'])
+  preferredTutorDogExperience?: string;
+
+  @ApiPropertyOptional({ enum: ['NEVER', 'HAD_BEFORE', 'HAVE_NOW'], description: 'Preferência de experiência com gato' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['NEVER', 'HAD_BEFORE', 'HAVE_NOW'])
+  preferredTutorCatExperience?: string;
+
+  @ApiPropertyOptional({ enum: ['YES', 'DISCUSSING'], description: 'Preferência: todos em casa concordam com adoção' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['YES', 'DISCUSSING'])
+  preferredTutorHouseholdAgrees?: string;
+
+  @ApiPropertyOptional({ enum: ['DAILY', 'FEW_TIMES_WEEK', 'RARELY', 'INDIFERENTE'], description: 'Prefere tutor que passeie com essa frequência' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['DAILY', 'FEW_TIMES_WEEK', 'RARELY', 'INDIFERENTE'])
+  preferredTutorWalkFrequency?: string;
+
+  @ApiPropertyOptional({ description: 'Pet tem gastos contínuos (medicação, ração especial) — para match com orçamento do adotante' })
+  @IsOptional()
+  @IsBoolean()
+  hasOngoingCosts?: boolean;
 }

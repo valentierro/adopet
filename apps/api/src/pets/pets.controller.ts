@@ -10,6 +10,7 @@ import {
   Query,
   UseGuards,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -17,16 +18,20 @@ import { AdminGuard } from '../auth/admin.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { PetOwnerGuard } from './pet-owner.guard';
 import { PetsService } from './pets.service';
+import { MatchEngineService } from '../match-engine/match-engine.service';
 import { CreatePetDto } from './dto/create-pet.dto';
 import { UpdatePetDto } from './dto/update-pet.dto';
 import { PatchStatusDto } from './dto/patch-status.dto';
 import { ReorderMediaDto } from './dto/reorder-media.dto';
-import { PetResponseDto } from './dto/pet-response.dto';
+import { PetResponseDto, SimilarPetItemDto } from './dto/pet-response.dto';
 
 @ApiTags('pets')
 @Controller('pets')
 export class PetsController {
-  constructor(private readonly petsService: PetsService) {}
+  constructor(
+    private readonly petsService: PetsService,
+    private readonly matchEngineService: MatchEngineService,
+  ) {}
 
   @Get('mine')
   @UseGuards(JwtAuthGuard)
@@ -111,9 +116,13 @@ export class PetsController {
   }
 
   @Get(':id/similar')
-  @ApiOperation({ summary: 'Pets parecidos / quem viu este pet também viu' })
-  async getSimilar(@Param('id') id: string): Promise<PetResponseDto[]> {
-    return this.petsService.getSimilarPets(id);
+  @ApiOperation({ summary: 'Pets similares (engine: porte, idade, energia, temperamento, sexo, raça)' })
+  async getSimilar(
+    @Param('id') id: string,
+    @Query('limit') limit?: string,
+  ): Promise<SimilarPetItemDto[]> {
+    const limitNum = limit != null ? Math.min(24, Math.max(1, parseInt(limit, 10) || 12)) : 12;
+    return this.petsService.getSimilarPetsWithScores(id, limitNum);
   }
 
   @Post(':id/confirm-adoption')
@@ -125,6 +134,21 @@ export class PetsController {
     @CurrentUser() user: { id: string },
   ): Promise<{ confirmed: boolean }> {
     return this.petsService.confirmAdoption(id, user.id);
+  }
+
+  @Get(':id/match-score')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Score de match entre o pet e um adotante (tutor ou adotante)' })
+  async getMatchScore(
+    @Param('id') id: string,
+    @Query('adopterId') adopterId: string,
+    @CurrentUser() user: { id: string },
+  ) {
+    if (!adopterId?.trim()) {
+      throw new BadRequestException('adopterId é obrigatório');
+    }
+    return this.matchEngineService.getMatchScore(id, adopterId.trim(), user.id);
   }
 
   @Get(':id')
