@@ -85,13 +85,15 @@ export class PetsService {
     if (pet.adoptionRejectedAt != null) dto.adoptionRejectedAt = pet.adoptionRejectedAt.toISOString();
     if (pet.adoptionRejectionReason != null) dto.adoptionRejectionReason = pet.adoptionRejectionReason;
     if (pet.partner != null) {
+      const rawType = (pet.partner as { type?: string }).type;
+      const typeNorm = rawType?.toUpperCase?.() || rawType;
       dto.partner = {
         id: pet.partner.id,
         name: pet.partner.name,
         slug: pet.partner.slug,
         logoUrl: pet.partner.logoUrl ?? undefined,
         isPaidPartner: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner,
-        type: (pet.partner as { type?: string }).type,
+        type: typeNorm,
       };
     }
     return dto;
@@ -240,10 +242,12 @@ export class PetsService {
         : [];
     const partnerByOwnerId = Object.fromEntries(ownerPartners.map((p) => [p.userId, p]));
     const dtos = pets.map((p) => this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id)));
+    // Inclui partner para qualquer tipo (ONG, CLINIC, STORE) quando o dono do pet é o admin do parceiro
     dtos.forEach((dto, i) => {
       if (!dto.partner && partnerByOwnerId[pets[i].ownerId]) {
         const op = partnerByOwnerId[pets[i].ownerId];
-        dto.partner = { id: op.id, name: op.name, slug: op.slug, logoUrl: op.logoUrl ?? undefined, isPaidPartner: op.isPaidPartner, type: op.type };
+        const typeNorm = op.type?.toUpperCase?.() || op.type;
+        dto.partner = { id: op.id, name: op.name, slug: op.slug, logoUrl: op.logoUrl ?? undefined, isPaidPartner: op.isPaidPartner, type: typeNorm };
       }
     });
     return dtos;

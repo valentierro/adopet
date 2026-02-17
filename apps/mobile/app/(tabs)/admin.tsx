@@ -120,6 +120,16 @@ function SummaryCard({
   return card;
 }
 
+/** Rótulo do tipo de parceiro para badges (ONG, Clínica, Loja) — aceita qualquer capitalização. */
+function getPartnerTypeLabel(type: string | undefined): string {
+  if (!type) return '';
+  const u = type.toUpperCase();
+  if (u === 'ONG') return 'ONG';
+  if (u === 'CLINIC') return 'Clínica';
+  if (u === 'STORE') return 'Loja';
+  return type;
+}
+
 export default function AdminScreen() {
   const router = useRouter();
   const { colors } = useTheme();
@@ -1657,14 +1667,23 @@ export default function AdminScreen() {
                 <View style={styles.petInfo}>
                   <View style={styles.petNameRow}>
                     <Text style={[styles.petName, { color: colors.textPrimary }]} numberOfLines={1}>{pet.name}</Text>
-                    {pet.partner && (
-                      <View style={[styles.partnerBadge, { backgroundColor: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? colors.primary + '25' : colors.textSecondary + '20' }]}>
-                        <Ionicons name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={12} color={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? colors.primary : colors.textSecondary} />
-                        <Text style={[styles.partnerBadgeText, { color: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? colors.primary : colors.textSecondary }]}>
-                          {(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'Patrocinado' : 'Parceiro'}
-                        </Text>
-                      </View>
-                    )}
+                    <View style={styles.pendingPetBadges}>
+                      {pet.partner && (
+                        <View style={[styles.partnerBadge, { backgroundColor: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? colors.primary + '25' : colors.textSecondary + '20' }]}>
+                          <Ionicons name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={12} color={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? colors.primary : colors.textSecondary} />
+                          <Text style={[styles.partnerBadgeText, { color: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? colors.primary : colors.textSecondary }]}>
+                            {(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'Patrocinado' : 'Parceiro'}
+                          </Text>
+                        </View>
+                      )}
+                      {pet.partner?.type && getPartnerTypeLabel(pet.partner.type) ? (
+                        <View style={[styles.partnerBadge, styles.partnerTypeBadge, { backgroundColor: colors.primary + '18' }]}>
+                          <Text style={[styles.partnerBadgeText, { color: colors.primary }]}>
+                            {getPartnerTypeLabel(pet.partner.type)}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
                   <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>{pet.species} • {pet.age} ano(s)</Text>
                 </View>
@@ -2994,6 +3013,7 @@ const styles = StyleSheet.create({
   petInfo: { flex: 1, marginLeft: spacing.sm, minWidth: 0 },
   petNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   petName: { fontSize: 16, fontWeight: '600', flex: 1, minWidth: 0 },
+  pendingPetBadges: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap' },
   partnerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3003,6 +3023,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   partnerBadgeText: { fontSize: 11, fontWeight: '600' },
+  partnerTypeBadge: {},
   linkRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.sm },
   linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   linkText: { fontSize: 13, fontWeight: '500' },
