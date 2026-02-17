@@ -1,15 +1,21 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { PushService } from '../notifications/push.service';
 import type { VerificationStatusDto, VerificationItemDto } from './dto/verification-status.dto';
 
 @Injectable()
 export class VerificationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly push: PushService,
+  ) {}
 
   async request(
     userId: string,
     type: 'USER_VERIFIED' | 'PET_VERIFIED',
     petId?: string,
+    evidenceUrls?: string[],
+    skipEvidenceReason?: string,
   ): Promise<VerificationItemDto> {
     if (type === 'PET_VERIFIED' && !petId) {
       throw new BadRequestException('petId é obrigatório para verificação de pet');
@@ -23,12 +29,50 @@ export class VerificationService {
       }
     }
 
+    const urls = evidenceUrls?.filter((u) => typeof u === 'string' && u.trim().length > 0) ?? [];
+    const skipReason = skipEvidenceReason?.trim() || undefined;
+
+    if (!skipReason) {
+      if (type === 'USER_VERIFIED' && urls.length < 1) {
+        throw new BadRequestException(
+          'Envie pelo menos uma foto de rosto (sem óculos escuros) para solicitar verificação de perfil. Se você não puder enviar fotos, use a opção "Não consigo enviar fotos".',
+        );
+      }
+      if (type === 'PET_VERIFIED' && urls.length < 2) {
+        throw new BadRequestException(
+          'Envie duas fotos: uma do seu rosto (sem óculos escuros) e outra sua com o pet. Se você não puder enviar fotos, use a opção "Não consigo enviar fotos".',
+        );
+      }
+    }
+
+    const existingPending = await this.prisma.verification.findFirst({
+      where: {
+        userId,
+        status: 'PENDING',
+        ...(type === 'PET_VERIFIED' && petId
+          ? { type: 'PET_VERIFIED', metadata: { path: ['petId'], equals: petId } }
+          : { type: 'USER_VERIFIED' }),
+      },
+    });
+    if (existingPending) {
+      throw new BadRequestException(
+        type === 'PET_VERIFIED'
+          ? 'Você já tem uma solicitação de verificação em análise para este pet. Aguarde a resposta antes de solicitar novamente.'
+          : 'Você já tem uma solicitação de verificação de perfil em análise. Aguarde a resposta antes de solicitar novamente.',
+      );
+    }
+
+    const metadata: { petId?: string; evidenceUrls?: string[]; skipEvidenceReason?: string } =
+      type === 'PET_VERIFIED' && petId ? { petId } : {};
+    if (urls.length > 0) metadata.evidenceUrls = urls;
+    if (skipReason) metadata.skipEvidenceReason = skipReason;
+
     const verification = await this.prisma.verification.create({
       data: {
         userId,
         type,
         status: 'PENDING',
-        metadata: type === 'PET_VERIFIED' && petId ? { petId } : undefined,
+        metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       },
     });
     return this.toItemDto(verification);
@@ -69,22 +113,108 @@ export class VerificationService {
     return !!v;
   }
 
-  /** Lista solicitações pendentes (admin). */
+  /** Lista solicitações pendentes (admin) com dados do usuário e do pet para cards. */
   async listPending(): Promise<VerificationItemDto[]> {
     const list = await this.prisma.verification.findMany({
       where: { status: 'PENDING' },
       orderBy: { createdAt: 'asc' },
+      include: {
+        user: { select: { id: true, name: true, avatarUrl: true, city: true, username: true } },
+      },
     });
-    return list.map((v) => this.toItemDto(v));
+    const petIds = list
+      .map((v) => (v.metadata as { petId?: string } | null)?.petId)
+      .filter((id): id is string => !!id);
+    let petMap = new Map<
+      string,
+      { name: string; species: string; age: number; sex: string; vaccinated: boolean; neutered: boolean; photoUrl?: string; ownerName?: string }
+    >();
+    if (petIds.length > 0) {
+      const pets = await this.prisma.pet.findMany({
+        where: { id: { in: petIds } },
+        select: {
+          id: true,
+          name: true,
+          species: true,
+          age: true,
+          sex: true,
+          vaccinated: true,
+          neutered: true,
+          media: { orderBy: { sortOrder: 'asc' }, take: 1, select: { url: true } },
+          owner: { select: { name: true } },
+        },
+      });
+      for (const p of pets) {
+        petMap.set(p.id, {
+          name: p.name,
+          species: p.species,
+          age: p.age,
+          sex: p.sex,
+          vaccinated: p.vaccinated,
+          neutered: p.neutered,
+          photoUrl: p.media[0]?.url,
+          ownerName: p.owner?.name,
+        });
+      }
+    }
+    return list.map((v) => {
+      const dto = this.toItemDto(v);
+      dto.userId = v.user?.id;
+      dto.userName = v.user?.name;
+      dto.userAvatarUrl = v.user?.avatarUrl ?? undefined;
+      dto.userCity = v.user?.city ?? undefined;
+      dto.userUsername = v.user?.username ?? undefined;
+      const meta = v.metadata as { petId?: string } | null;
+      if (meta?.petId && petMap.has(meta.petId)) {
+        const pet = petMap.get(meta.petId)!;
+        dto.petName = pet.name;
+        dto.petSpecies = pet.species;
+        dto.petAge = pet.age;
+        dto.petSex = pet.sex;
+        dto.petVaccinated = pet.vaccinated;
+        dto.petNeutered = pet.neutered;
+        dto.petPhotoUrl = pet.photoUrl;
+        dto.petOwnerName = pet.ownerName;
+      }
+      return dto;
+    });
   }
 
-  /** Aprovar ou rejeitar solicitação (admin). */
-  async resolve(id: string, status: 'APPROVED' | 'REJECTED'): Promise<VerificationItemDto> {
+  /** Aprovar ou rejeitar solicitação (admin). Envia push ao usuário com o resultado. */
+  async resolve(
+    id: string,
+    status: 'APPROVED' | 'REJECTED',
+    rejectionReason?: string,
+  ): Promise<VerificationItemDto> {
     const v = await this.prisma.verification.update({
       where: { id },
-      data: { status },
+      data: {
+        status,
+        rejectionReason: status === 'REJECTED' ? (rejectionReason?.trim() || null) : null,
+      },
+      include: { user: { select: { name: true } } },
     });
-    return this.toItemDto(v);
+    const dto = this.toItemDto(v);
+    const meta = v.metadata as { petId?: string } | null;
+    const petName = meta?.petId
+      ? await this.prisma.pet.findUnique({ where: { id: meta.petId }, select: { name: true } }).then((p) => p?.name)
+      : null;
+    const targetLabel = v.type === 'PET_VERIFIED' && petName ? `pet ${petName}` : 'perfil';
+    if (status === 'APPROVED') {
+      this.push
+        .sendToUser(v.userId, 'Verificação aprovada', `Sua verificação de ${targetLabel} foi aprovada!`, {
+          screen: 'verification',
+        })
+        .catch((e) => console.warn('[VerificationService] push approved failed', e));
+    } else {
+      const body = rejectionReason
+        ? `Sua solicitação de verificação não foi aprovada: ${rejectionReason}. Você pode solicitar novamente após ajustes.`
+        : 'Sua solicitação de verificação não foi aprovada. Você pode solicitar novamente após ajustes.';
+      this.push
+        .sendToUser(v.userId, 'Verificação não aprovada', body, { screen: 'verification' })
+        .catch((e) => console.warn('[VerificationService] push rejected failed', e));
+    }
+    return dto;
   }
 
   /** [Admin] Revogar verificação aprovada (passa a não contar mais como verificada). */
@@ -148,18 +278,23 @@ export class VerificationService {
     id: string;
     type: string;
     status: string;
+    rejectionReason?: string | null;
     metadata: unknown;
     createdAt: Date;
     updatedAt: Date;
   }): VerificationItemDto {
-    const meta = v.metadata as { petId?: string } | null;
-    return {
+    const meta = (v.metadata as { petId?: string; evidenceUrls?: string[]; skipEvidenceReason?: string } | null) ?? {};
+    const dto: VerificationItemDto = {
       id: v.id,
       type: v.type,
       status: v.status,
-      petId: meta?.petId,
+      petId: meta.petId,
       createdAt: v.createdAt.toISOString(),
       updatedAt: v.updatedAt.toISOString(),
     };
+    if (v.rejectionReason != null) dto.rejectionReason = v.rejectionReason;
+    if (meta.evidenceUrls?.length) dto.evidenceUrls = meta.evidenceUrls;
+    if (meta.skipEvidenceReason) dto.skipEvidenceReason = meta.skipEvidenceReason;
+    return dto;
   }
 }

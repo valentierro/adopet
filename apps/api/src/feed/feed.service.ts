@@ -54,6 +54,7 @@ export class FeedService {
       | 'createdAt'
       | 'updatedAt'
     > & {
+      city?: string | null;
       breed?: string | null;
       adoptionReason?: string | null;
       feedingType?: string | null;
@@ -92,7 +93,10 @@ export class FeedService {
     if (pet.adoptionReason != null) dto.adoptionReason = pet.adoptionReason;
     if (pet.feedingType != null) dto.feedingType = pet.feedingType;
     if (pet.feedingNotes != null) dto.feedingNotes = pet.feedingNotes;
-    if (pet.owner?.city != null) dto.city = pet.owner.city;
+    // Cidade = local do anúncio (pet.city, preenchido por reverse geocode das coordenadas). Fallback = cidade do tutor.
+    // Distância = do usuário que pediu o feed (userLat/userLng) até as coordenadas do pet.
+    if (pet.city != null) dto.city = pet.city;
+    else if (pet.owner?.city != null) dto.city = pet.owner.city;
     if (pet.partner != null) {
       dto.partner = {
         id: pet.partner.id,
@@ -207,7 +211,8 @@ export class FeedService {
       status: 'AVAILABLE' as const,
       publicationStatus: 'APPROVED' as const,
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      ...(speciesFilter ? { species: speciesFilter } : {}),
+      // species no banco pode ser "cat"/"dog" (create) ou "CAT"/"DOG"; filtro case-insensitive
+      ...(speciesFilter ? { species: { equals: speciesFilter, mode: 'insensitive' as const } } : {}),
       ...(breedFilter ? { breed: { equals: breedFilter, mode: 'insensitive' as const } } : {}),
       ...(swipedIds.length > 0 ? { id: { notIn: swipedIds } } : {}),
       ...(reportedPetIds.length > 0 ? { id: { notIn: reportedPetIds } } : {}),
@@ -256,11 +261,14 @@ export class FeedService {
     const radiusKm = Number(queryRadiusKm ?? prefs?.radiusKm ?? 50) || 50;
     const hasUserLocation = lat != null && lng != null;
     const scored = candidates.map((pet) => {
+      // Pet sem coordenadas: não excluir do feed. Trata como dentro do raio (distanceKm = radiusKm)
+      // para passar no filtro quando o usuário enviou localização (evita que anúncios do próprio usuário
+      // ou outros sem localização sumam do feed).
       const distanceKm =
         hasUserLocation && pet.latitude != null && pet.longitude != null
           ? this.haversineKm(lat!, lng!, pet.latitude, pet.longitude)
           : hasUserLocation
-            ? Infinity
+            ? radiusKm
             : 50;
       const daysSinceCreated = (nowMs - pet.createdAt.getTime()) / (1000 * 60 * 60 * 24);
       const favoriteCount = favByPetId[pet.id] ?? 0;
@@ -414,6 +422,7 @@ export class FeedService {
     lng: number,
     radiusKm: number,
     userId?: string,
+    species?: 'DOG' | 'CAT',
   ): Promise<{
     items: {
       id: string;
@@ -445,6 +454,7 @@ export class FeedService {
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
         latitude: { not: null },
         longitude: { not: null },
+        ...(species ? { species } : {}),
         ...(reportedPetIds.length > 0 ? { id: { notIn: reportedPetIds } } : {}),
         ...(excludeOwnerIds.length > 0 ? { ownerId: { notIn: excludeOwnerIds } } : {}),
       },
@@ -458,6 +468,7 @@ export class FeedService {
         ownerId: true,
         latitude: true,
         longitude: true,
+        city: true,
         media: { orderBy: { sortOrder: 'asc' }, take: 1, select: { url: true } },
         owner: { select: { city: true } },
         partner: { select: { isPaidPartner: true } },
@@ -499,7 +510,7 @@ export class FeedService {
         species: p.species,
         size: p.size,
         vaccinated: p.vaccinated,
-        ...(p.owner?.city != null && { city: p.owner.city }),
+        ...((p.city ?? p.owner?.city) != null && { city: p.city ?? p.owner?.city ?? undefined }),
         latitude: p.latitude!,
         longitude: p.longitude!,
         photoUrl: p.media[0]?.url ?? '',

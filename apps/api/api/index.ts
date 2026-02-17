@@ -1,6 +1,6 @@
 /**
  * Handler serverless da Vercel: repassa todas as requisições para o Nest (Express).
- * Prisma Client é gerado em ./api/prisma-generated no build para ser incluído no bundle da função.
+ * Prisma Client em api/prisma-generated; build copia para dist/api para a Vercel incluir.
  * CORS: aplicado aqui e em vercel.json para o painel admin (admin.appadopet.com.br).
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node';

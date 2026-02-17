@@ -5,7 +5,7 @@
   "scripts": {
     "build": "prisma generate --schema=./prisma/schema.prisma && nest build && cp -r api/prisma-generated dist/api/ && cp -r api/prisma-generated src/prisma-generated",
     "postinstall": "prisma generate --schema=./prisma/schema.prisma",
-    "dev": "nest build && nest start --watch",
+    "dev": "prisma generate --schema=./prisma/schema.prisma && nest build && cp -r api/prisma-generated dist/api/ && nest start --watch",
     "start": "nest start",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "test": "jest",
@@ -17,7 +17,8 @@
     "prisma:seed": "prisma db seed",
     "db:reset-keep-admin": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/reset-db-keep-admin.ts",
     "db:assign-placeholder-photos": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/assign-placeholder-pet-photos.ts",
-    "db:fix-seed-photo-urls": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/fix-seed-photo-urls.ts"
+    "db:fix-seed-photo-urls": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/fix-seed-photo-urls.ts",
+    "db:backfill-pet-city": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-pet-city.ts"
   },
   "dependencies": {
     "@adopet/shared": "workspace:*",

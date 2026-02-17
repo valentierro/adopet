@@ -19,6 +19,40 @@ export class VerificationItemDto {
   @ApiProperty({ required: false, description: 'Nome do pet (listApproved, PET_VERIFIED)' })
   petName?: string;
 
+  @ApiProperty({ required: false, description: '[Admin] ID do usuário que solicitou' })
+  userId?: string;
+  @ApiProperty({ required: false, description: '[Admin] Avatar do usuário' })
+  userAvatarUrl?: string;
+  @ApiProperty({ required: false, description: '[Admin] Cidade do usuário' })
+  userCity?: string;
+  @ApiProperty({ required: false, description: '[Admin] @username do usuário' })
+  userUsername?: string;
+
+  /** [Admin listPending PET_VERIFIED] Dados do pet para card */
+  @ApiProperty({ required: false })
+  petSpecies?: string;
+  @ApiProperty({ required: false })
+  petAge?: number;
+  @ApiProperty({ required: false })
+  petSex?: string;
+  @ApiProperty({ required: false })
+  petVaccinated?: boolean;
+  @ApiProperty({ required: false })
+  petNeutered?: boolean;
+  @ApiProperty({ required: false, description: 'URL da primeira foto do pet' })
+  petPhotoUrl?: string;
+  @ApiProperty({ required: false, description: 'Nome do tutor do pet' })
+  petOwnerName?: string;
+
+  @ApiProperty({ required: false, description: 'Motivo da rejeição (quando status === REJECTED)' })
+  rejectionReason?: string;
+
+  @ApiProperty({ required: false, description: 'URLs das fotos anexadas na solicitação (rosto; tutor com pet)', type: [String] })
+  evidenceUrls?: string[];
+
+  @ApiProperty({ required: false, description: 'Motivo informado pelo usuário para não enviar fotos (análise apenas por dados)' })
+  skipEvidenceReason?: string;
+
   @ApiProperty()
   createdAt: string;
 

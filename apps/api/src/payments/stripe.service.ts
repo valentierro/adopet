@@ -17,7 +17,11 @@ export class StripeService {
     if (key) {
       this.stripe = new Stripe(key, { apiVersion: '2026-01-28.clover' });
     }
-    this.webhookSecret = this.config.get<string>('STRIPE_WEBHOOK_SECRET');
+    // Sandbox (sk_test_*) usa STRIPE_WEBHOOK_SECRET_SANDBOX (ou fallback em STRIPE_WEBHOOK_SECRET); produção usa STRIPE_WEBHOOK_SECRET
+    const isTestMode = key?.startsWith('sk_test_');
+    const secretSandbox = this.config.get<string>('STRIPE_WEBHOOK_SECRET_SANDBOX');
+    const secretProd = this.config.get<string>('STRIPE_WEBHOOK_SECRET');
+    this.webhookSecret = isTestMode ? (secretSandbox || secretProd) : secretProd;
     this.priceIds = {
       BASIC: this.config.get<string>('STRIPE_PRICE_BASIC') ?? '',
       DESTAQUE: this.config.get<string>('STRIPE_PRICE_DESTAQUE') ?? '',

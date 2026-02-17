@@ -34,15 +34,40 @@ describe('Me (e2e)', () => {
     expect(body).toHaveProperty('email');
   });
 
-  it('GET /v1/me/tutor-stats retorna pontuação e nível', async () => {
+  it('GET /v1/me/tutor-stats retorna pontuação, nível e contadores para exibição', async () => {
     if (!accessToken) return;
     const res = await getAgent(app)
       .get('/v1/me/tutor-stats')
       .set(authHeaders(accessToken))
       .expect(200);
-    const body = responseBody(res);
+    const body = responseBody<{ points: number; level: string; title: string; verifiedCount: number; adoptedCount: number; petsCount: number }>(res);
     expect(body).toHaveProperty('level');
     expect(body).toHaveProperty('points');
+    expect(body).toHaveProperty('title');
+    expect(body).toHaveProperty('verifiedCount');
+    expect(body).toHaveProperty('adoptedCount');
+    expect(body).toHaveProperty('petsCount');
+    expect(typeof body.points).toBe('number');
+    expect(typeof body.verifiedCount).toBe('number');
+    expect(typeof body.adoptedCount).toBe('number');
+    expect(typeof body.petsCount).toBe('number');
+    expect(body.points).toBeGreaterThanOrEqual(0);
+    expect(body.verifiedCount).toBeGreaterThanOrEqual(0);
+    expect(body.adoptedCount).toBeGreaterThanOrEqual(0);
+    expect(body.petsCount).toBeGreaterThanOrEqual(0);
+    expect(body.level).toMatch(/^(BEGINNER|ACTIVE|TRUSTED|STAR|GOLD)$/);
+    expect(body.title.length).toBeGreaterThan(0);
+  });
+
+  it('GET /v1/me/tutor-stats contadores são consistentes (verifiedCount <= petsCount)', async () => {
+    if (!accessToken) return;
+    const res = await getAgent(app)
+      .get('/v1/me/tutor-stats')
+      .set(authHeaders(accessToken))
+      .expect(200);
+    const body = responseBody<{ points: number; verifiedCount: number; adoptedCount: number; petsCount: number }>(res);
+    expect(body.verifiedCount).toBeLessThanOrEqual(body.petsCount);
+    expect(body.points).toBeGreaterThanOrEqual(0);
   });
 
   it('GET /v1/me/preferences retorna preferências', async () => {

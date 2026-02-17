@@ -23,12 +23,13 @@ export class FeedController {
   }
 
   @Get('map')
-  @ApiOperation({ summary: 'Pins de pets no mapa (lat, lng, radiusKm)' })
+  @ApiOperation({ summary: 'Pins de pets no mapa (lat, lng, radiusKm, species)' })
   async getMap(
     @CurrentUser() user: { id: string },
     @Query('lat') lat: string,
     @Query('lng') lng: string,
     @Query('radiusKm') radiusKm?: string,
+    @Query('species') species?: string,
   ): Promise<{ items: { id: string; name: string; age: number; species: string; city?: string; latitude: number; longitude: number; photoUrl: string }[] }> {
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
@@ -36,6 +37,7 @@ export class FeedController {
     if (Number.isNaN(latNum) || Number.isNaN(lngNum)) {
       return { items: [] };
     }
-    return this.feedService.getMapPins(latNum, lngNum, radius, user.id);
+    const speciesFilter = species === 'DOG' || species === 'CAT' ? species : undefined;
+    return this.feedService.getMapPins(latNum, lngNum, radius, user.id, speciesFilter);
   }
 }

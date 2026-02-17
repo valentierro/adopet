@@ -5,6 +5,7 @@ import { VerificationService } from '../verification/verification.service';
 import { TutorStatsService } from '../me/tutor-stats.service';
 import { PushService } from '../notifications/push.service';
 import { AdminService } from '../admin/admin.service';
+import { reverseGeocode } from '../common/geocoding';
 import type { PetResponseDto } from './dto/pet-response.dto';
 import type { CreatePetDto } from './dto/create-pet.dto';
 import type { UpdatePetDto } from './dto/update-pet.dto';
@@ -40,6 +41,7 @@ export class PetsService {
       updatedAt: Date;
       latitude?: number | null;
       longitude?: number | null;
+      city?: string | null;
       breed?: string | null;
       adoptionReason?: string | null;
       feedingType?: string | null;
@@ -79,6 +81,7 @@ export class PetsService {
     if (pet.adoptionReason != null) dto.adoptionReason = pet.adoptionReason;
     if (pet.feedingType != null) dto.feedingType = pet.feedingType;
     if (pet.feedingNotes != null) dto.feedingNotes = pet.feedingNotes;
+    if (pet.city != null) dto.city = pet.city;
     if (pet.publicationStatus != null) dto.publicationStatus = pet.publicationStatus;
     if (pet.publicationRejectionReason != null) dto.publicationRejectionReason = pet.publicationRejectionReason;
     if (pet.expiresAt != null) dto.expiresAt = pet.expiresAt.toISOString();
@@ -187,6 +190,7 @@ export class PetsService {
       pet.owner ? this.verificationService.isUserVerified(pet.owner.id) : Promise.resolve(false),
     ]);
     const dto = this.mapToDto(pet, userLat, userLng, verified);
+    if (dto.city == null && pet.owner?.city != null) dto.city = pet.owner.city;
     if (pet.owner) {
       dto.owner = this.mapOwnerToPublicDto(pet.owner, petsCount, ownerVerified);
       try {
@@ -487,11 +491,15 @@ export class PetsService {
         throw new BadRequestException('Parceiro inválido ou não aprovado. Escolha uma ONG parceira da lista.');
       }
     }
+    let city: string | null = null;
+    if (dto.latitude != null && dto.longitude != null) {
+      city = await reverseGeocode(dto.latitude, dto.longitude);
+    }
     const pet = await this.prisma.pet.create({
       data: {
         ownerId,
         name: dto.name,
-        species: dto.species,
+        species: dto.species.toUpperCase(),
         breed: dto.breed,
         age: dto.age,
         sex: dto.sex,
@@ -504,6 +512,7 @@ export class PetsService {
         feedingNotes: dto.feedingNotes ?? null,
         latitude: dto.latitude,
         longitude: dto.longitude,
+        city,
         partnerId: dto.partnerId ?? null,
         status: 'AVAILABLE',
         publicationStatus: 'PENDING',
@@ -548,11 +557,28 @@ export class PetsService {
         }
       }
     }
+    const latitudeChanged = dto.latitude !== undefined;
+    const longitudeChanged = dto.longitude !== undefined;
+    let cityUpdate: { city: string | null } | undefined;
+    if (latitudeChanged || longitudeChanged) {
+      const current = await this.prisma.pet.findUnique({
+        where: { id },
+        select: { latitude: true, longitude: true },
+      });
+      const finalLat = dto.latitude !== undefined ? dto.latitude : current?.latitude ?? null;
+      const finalLng = dto.longitude !== undefined ? dto.longitude : current?.longitude ?? null;
+      if (finalLat != null && finalLng != null) {
+        const city = await reverseGeocode(finalLat, finalLng);
+        cityUpdate = { city };
+      } else {
+        cityUpdate = { city: null };
+      }
+    }
     const pet = await this.prisma.pet.update({
       where: { id },
       data: {
         ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.species !== undefined && { species: dto.species }),
+        ...(dto.species !== undefined && { species: dto.species.toUpperCase() }),
         ...(dto.breed !== undefined && { breed: dto.breed }),
         ...(dto.age !== undefined && { age: dto.age }),
         ...(dto.sex !== undefined && { sex: dto.sex }),
@@ -565,6 +591,7 @@ export class PetsService {
         ...(dto.feedingNotes !== undefined && { feedingNotes: dto.feedingNotes ?? null }),
         ...(dto.latitude !== undefined && { latitude: dto.latitude }),
         ...(dto.longitude !== undefined && { longitude: dto.longitude }),
+        ...(cityUpdate !== undefined && cityUpdate),
         ...(dto.partnerId !== undefined && { partnerId: dto.partnerId || null }),
       },
       include: {

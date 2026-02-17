@@ -23,6 +23,7 @@ export async function createApp(): Promise<NestExpressApplication> {
   app.setGlobalPrefix('v1');
   app.use('/v1/payments/stripe-webhook', express.raw({ type: 'application/json' }));
   app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
   app.useStaticAssets(join(process.cwd(), 'prisma', 'seed-images'), { prefix: '/v1/seed-photos/' });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 

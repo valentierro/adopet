@@ -17,12 +17,18 @@ export class VerificationController {
   constructor(private readonly verificationService: VerificationService) {}
 
   @Post('request')
-  @ApiOperation({ summary: 'Solicitar verificação (usuário ou pet)' })
+  @ApiOperation({ summary: 'Solicitar verificação (usuário ou pet) com fotos de evidência' })
   async request(
     @CurrentUser() user: { id: string },
     @Body() dto: RequestVerificationDto,
   ): Promise<VerificationItemDto> {
-    return this.verificationService.request(user.id, dto.type, dto.petId);
+    return this.verificationService.request(
+      user.id,
+      dto.type,
+      dto.petId,
+      dto.evidenceUrls,
+      dto.skipEvidenceReason,
+    );
   }
 
   @Get('status')
@@ -45,7 +51,7 @@ export class VerificationController {
     @Param('id') id: string,
     @Body() dto: ResolveVerificationDto,
   ): Promise<VerificationItemDto> {
-    return this.verificationService.resolve(id, dto.status);
+    return this.verificationService.resolve(id, dto.status, dto.rejectionReason);
   }
 
   @Get('admin/approved')

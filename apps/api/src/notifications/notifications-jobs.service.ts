@@ -8,6 +8,9 @@ const REMINDERS_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12h
 const LISTING_REMINDER_INTERVAL_MS = 24 * 60 * 60 * 1000; // job 1x/dia
 const LISTING_REMINDER_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // não enviar de novo por 30 dias
 const LISTING_EXPIRY_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1x/dia: lembretes de expiração + expirar anúncios
+const POST_ADOPTION_FEEDBACK_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1x/dia
+const POST_ADOPTION_FEEDBACK_DAYS_MIN = 3;
+const POST_ADOPTION_FEEDBACK_DAYS_MAX = 4; // janela de 1 dia para enviar uma vez
 const NEW_PETS_LOOKBACK_MS = 24 * 60 * 60 * 1000; // 24h
 const REMINDER_AFTER_MS = 24 * 60 * 60 * 1000; // lembrar se última msg do outro > 24h
 const REMINDER_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // não enviar de novo por 7 dias
@@ -30,12 +33,48 @@ export class NotificationsJobsService implements OnModuleInit {
     this.runTutorListingReminderJob();
     this.runExpiryRemindersJob();
     this.runExpireListingsJob();
+    this.runPostAdoptionFeedbackJob();
     setInterval(() => this.runNewPetsJob(), NEW_PETS_INTERVAL_MS);
     setInterval(() => this.runRemindersJob(), REMINDERS_INTERVAL_MS);
     setInterval(() => this.runSavedSearchAlertsJob(), NEW_PETS_INTERVAL_MS);
     setInterval(() => this.runTutorListingReminderJob(), LISTING_REMINDER_INTERVAL_MS);
     setInterval(() => this.runExpiryRemindersJob(), LISTING_EXPIRY_INTERVAL_MS);
     setInterval(() => this.runExpireListingsJob(), LISTING_EXPIRY_INTERVAL_MS);
+    setInterval(() => this.runPostAdoptionFeedbackJob(), POST_ADOPTION_FEEDBACK_INTERVAL_MS);
+  }
+
+  /** Push "Como foi a adoção?" alguns dias após a confirmação (tutor e adotante), uma vez por pet. */
+  private async runPostAdoptionFeedbackJob(): Promise<void> {
+    try {
+      const now = new Date();
+      const minDate = new Date(now.getTime() - POST_ADOPTION_FEEDBACK_DAYS_MAX * MS_PER_DAY); // 4 dias atrás
+      const maxDate = new Date(now.getTime() - POST_ADOPTION_FEEDBACK_DAYS_MIN * MS_PER_DAY); // 3 dias atrás
+      const pets = await this.prisma.pet.findMany({
+        where: {
+          adopetConfirmedAt: { not: null, gte: minDate, lte: maxDate },
+          postAdoptionFeedbackPushSentAt: null,
+          adoption: { isNot: null },
+        },
+        select: { id: true, name: true, adoption: { select: { tutorId: true, adopterId: true } } },
+      });
+      for (const pet of pets) {
+        const adoption = pet.adoption as { tutorId: string; adopterId: string } | null;
+        if (!adoption) continue;
+        const title = 'Como foi a adoção?';
+        const body = `Conte sua experiência com a adoção de ${pet.name}. Sua opinião nos ajuda a melhorar.`;
+        const data = { screen: 'my-adoptions' };
+        await this.push.sendToUser(adoption.tutorId, title, body, data);
+        if (adoption.adopterId !== adoption.tutorId) {
+          await this.push.sendToUser(adoption.adopterId, title, body, data);
+        }
+        await this.prisma.pet.update({
+          where: { id: pet.id },
+          data: { postAdoptionFeedbackPushSentAt: new Date() },
+        });
+      }
+    } catch (e) {
+      console.warn('[NotificationsJobs] runPostAdoptionFeedbackJob failed', e);
+    }
   }
 
   /** Push "X novos pets na sua região" para usuários com notifyNewPets, pushToken e localização. */

@@ -63,11 +63,22 @@ export class PetsController {
   @ApiOperation({ summary: '[Admin] Aprovar ou rejeitar anúncio para o feed' })
   async setPublicationStatus(
     @Param('id') id: string,
-    @Body() body: { status: 'APPROVED' | 'REJECTED' },
+    @Body() body: { status: 'APPROVED' | 'REJECTED'; rejectionReason?: string },
   ): Promise<PetResponseDto> {
-    const pet = await this.petsService.setPublicationStatus(id, body.status);
+    const pet = await this.petsService.setPublicationStatus(id, body.status, body.rejectionReason);
     if (!pet) throw new NotFoundException('Pet não encontrado');
     return pet;
+  }
+
+  @Post(':id/resubmit-publication')
+  @UseGuards(JwtAuthGuard, PetOwnerGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reenviar anúncio rejeitado para análise (apenas dono)' })
+  async resubmitPublication(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ): Promise<PetResponseDto> {
+    return this.petsService.resubmitPublication(id, user.id);
   }
 
   @Get(':petId/owner-profile')

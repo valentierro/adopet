@@ -131,7 +131,7 @@ describe('Fluxo de adoção completo (confirmação e pontuação)', () => {
 
     const res = await stats.getStats(adopterId);
 
-    expect(res.adoptedCount).toBe(0); // adoptedCount = só doações como tutor
+    expect(res.adoptedCount).toBe(1); // adoptedCount = total (tutor + adotante) para exibir em Minhas adoções
     expect(res.points).toBeGreaterThanOrEqual(POINTS_PER_ADOPTED_PET + BONUS_FIRST_ADOPTION);
   });
 
