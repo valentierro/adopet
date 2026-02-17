@@ -70,6 +70,12 @@ export class PetResponseDto {
   @ApiPropertyOptional({ description: 'Data em que um admin rejeitou a marcação de adoção; exibe badge "Rejeitado pelo Adopet"' })
   adoptionRejectedAt?: string;
 
+  @ApiPropertyOptional({ description: 'Motivo da rejeição da marcação de adoção (quando adoptionRejectedAt está preenchido)' })
+  adoptionRejectionReason?: string;
+
+  @ApiPropertyOptional({ description: 'Motivo da rejeição do anúncio na moderação (quando publicationStatus === REJECTED)' })
+  publicationRejectionReason?: string;
+
   @ApiPropertyOptional({ description: 'True quando a Adopet confirmou a adoção (admin ou 48h); apenas para pet adotado' })
   confirmedByAdopet?: boolean;
 
@@ -82,7 +88,7 @@ export class PetResponseDto {
   @ApiPropertyOptional({ description: 'Indica se o pet possui verificação aprovada' })
   verified?: boolean;
 
-  @ApiPropertyOptional({ description: 'Parceiro (ONG) quando o anúncio é em parceria' })
+  @ApiPropertyOptional({ description: 'Parceiro (ONG/Clínica/Loja) quando o anúncio é em parceria' })
   partner?: {
     id: string;
     name: string;
@@ -90,6 +96,8 @@ export class PetResponseDto {
     logoUrl?: string;
     /** Parceria paga: destaque e boost no feed' */
     isPaidPartner?: boolean;
+    /** ONG | CLINIC | STORE */
+    type?: string;
   };
 
   @ApiPropertyOptional({ description: 'Dados do tutor (apenas em GET /pets/:id)' })

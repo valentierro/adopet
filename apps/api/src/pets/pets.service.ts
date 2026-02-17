@@ -34,6 +34,7 @@ export class PetsService {
       ownerId: string;
       status: string;
       publicationStatus?: string | null;
+      publicationRejectionReason?: string | null;
       expiresAt?: Date | null;
       createdAt: Date;
       updatedAt: Date;
@@ -43,8 +44,10 @@ export class PetsService {
       adoptionReason?: string | null;
       feedingType?: string | null;
       feedingNotes?: string | null;
+      adoptionRejectedAt?: Date | null;
+      adoptionRejectionReason?: string | null;
       media: { id: string; url: string; sortOrder?: number }[];
-      partner?: { id: string; name: string; slug: string; logoUrl: string | null } | null;
+      partner?: { id: string; name: string; slug: string; logoUrl: string | null; type?: string } | null;
     },
     userLat?: number,
     userLng?: number,
@@ -77,7 +80,10 @@ export class PetsService {
     if (pet.feedingType != null) dto.feedingType = pet.feedingType;
     if (pet.feedingNotes != null) dto.feedingNotes = pet.feedingNotes;
     if (pet.publicationStatus != null) dto.publicationStatus = pet.publicationStatus;
+    if (pet.publicationRejectionReason != null) dto.publicationRejectionReason = pet.publicationRejectionReason;
     if (pet.expiresAt != null) dto.expiresAt = pet.expiresAt.toISOString();
+    if (pet.adoptionRejectedAt != null) dto.adoptionRejectedAt = pet.adoptionRejectedAt.toISOString();
+    if (pet.adoptionRejectionReason != null) dto.adoptionRejectionReason = pet.adoptionRejectionReason;
     if (pet.partner != null) {
       dto.partner = {
         id: pet.partner.id,
@@ -85,6 +91,7 @@ export class PetsService {
         slug: pet.partner.slug,
         logoUrl: pet.partner.logoUrl ?? undefined,
         isPaidPartner: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner,
+        type: (pet.partner as { type?: string }).type,
       };
     }
     return dto;
@@ -218,7 +225,7 @@ export class PetsService {
       orderBy: { createdAt: 'desc' },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
       },
     });
     const petIds = pets.map((p) => p.id);
@@ -228,7 +235,7 @@ export class PetsService {
       ownerIdsWithoutPartner.length > 0
         ? await this.prisma.partner.findMany({
             where: { userId: { in: ownerIdsWithoutPartner } },
-            select: { userId: true, id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true },
+            select: { userId: true, id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true },
           })
         : [];
     const partnerByOwnerId = Object.fromEntries(ownerPartners.map((p) => [p.userId, p]));
@@ -236,7 +243,7 @@ export class PetsService {
     dtos.forEach((dto, i) => {
       if (!dto.partner && partnerByOwnerId[pets[i].ownerId]) {
         const op = partnerByOwnerId[pets[i].ownerId];
-        dto.partner = { id: op.id, name: op.name, slug: op.slug, logoUrl: op.logoUrl ?? undefined, isPaidPartner: op.isPaidPartner };
+        dto.partner = { id: op.id, name: op.name, slug: op.slug, logoUrl: op.logoUrl ?? undefined, isPaidPartner: op.isPaidPartner, type: op.type };
       }
     });
     return dtos;
@@ -246,7 +253,11 @@ export class PetsService {
   private static readonly LISTING_LIFETIME_DAYS = 60;
 
   /** [Admin] Aprovar ou rejeitar anúncio (publicação no feed). Ao aprovar, define expiresAt = now + 60 dias. */
-  async setPublicationStatus(petId: string, status: 'APPROVED' | 'REJECTED'): Promise<PetResponseDto | null> {
+  async setPublicationStatus(
+    petId: string,
+    status: 'APPROVED' | 'REJECTED',
+    rejectionReason?: string,
+  ): Promise<PetResponseDto | null> {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
       include: {
@@ -264,6 +275,7 @@ export class PetsService {
       where: { id: petId },
       data: {
         publicationStatus: status,
+        publicationRejectionReason: status === 'REJECTED' ? (rejectionReason?.trim() || null) : null,
         ...(expiresAt && {
           expiresAt,
           expiryReminder10SentAt: null,
@@ -271,6 +283,32 @@ export class PetsService {
           expiryReminder1SentAt: null,
         }),
       },
+      include: {
+        media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+      },
+    });
+    const verified = await this.verificationService.isPetVerified(updated.id);
+    return this.mapToDto(updated, undefined, undefined, verified);
+  }
+
+  /** Reenviar anúncio rejeitado para análise (publicationStatus REJECTED → PENDING). Apenas dono. */
+  async resubmitPublication(petId: string, ownerId: string): Promise<PetResponseDto> {
+    const pet = await this.prisma.pet.findUnique({
+      where: { id: petId },
+      include: {
+        media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+      },
+    });
+    if (!pet) throw new NotFoundException('Pet não encontrado');
+    if (pet.ownerId !== ownerId) throw new ForbiddenException('Apenas o tutor pode reenviar o anúncio.');
+    if (pet.publicationStatus !== 'REJECTED') {
+      throw new BadRequestException('Só é possível reenviar anúncios que foram rejeitados. Edite o pet e use "Enviar novamente para análise".');
+    }
+    const updated = await this.prisma.pet.update({
+      where: { id: petId },
+      data: { publicationStatus: 'PENDING', publicationRejectionReason: null },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
         partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
