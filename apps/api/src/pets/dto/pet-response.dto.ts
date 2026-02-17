@@ -40,6 +40,33 @@ export class PetResponseDto {
   @ApiPropertyOptional({ description: 'Dieta especial, alergias ou observações (opcional)' })
   feedingNotes?: string;
 
+  @ApiPropertyOptional({ enum: ['LOW', 'MEDIUM', 'HIGH'], description: 'Nível de energia' })
+  energyLevel?: string;
+
+  @ApiPropertyOptional({ description: 'Comorbidades ou necessidades especiais' })
+  healthNotes?: string;
+
+  @ApiPropertyOptional({ description: 'Necessita cuidados especiais' })
+  hasSpecialNeeds?: boolean;
+
+  @ApiPropertyOptional({ enum: ['YES', 'NO', 'UNKNOWN'], description: 'Se dá bem com outros cachorros' })
+  goodWithDogs?: string;
+
+  @ApiPropertyOptional({ enum: ['YES', 'NO', 'UNKNOWN'], description: 'Se dá bem com gatos' })
+  goodWithCats?: string;
+
+  @ApiPropertyOptional({ enum: ['YES', 'NO', 'UNKNOWN'], description: 'Se dá bem com crianças' })
+  goodWithChildren?: string;
+
+  @ApiPropertyOptional({ enum: ['CALM', 'PLAYFUL', 'SHY', 'SOCIABLE', 'INDEPENDENT'], description: 'Temperamento' })
+  temperament?: string;
+
+  @ApiPropertyOptional({ description: 'É dócil (manso/calmo com pessoas)' })
+  isDocile?: boolean;
+
+  @ApiPropertyOptional({ description: 'É adestrado' })
+  isTrained?: boolean;
+
   @ApiProperty({ required: false })
   distanceKm?: number;
 
@@ -114,6 +141,11 @@ export class PetResponseDto {
     hasOtherPets?: boolean;
     hasChildren?: boolean;
     timeAtHome?: string;
+    petsAllowedAtHome?: string;
+    dogExperience?: string;
+    catExperience?: string;
+    householdAgreesToAdoption?: string;
+    whyAdopt?: string;
     tutorStats?: {
       points: number;
       level: string;

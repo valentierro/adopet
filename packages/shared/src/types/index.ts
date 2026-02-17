@@ -9,6 +9,8 @@ export interface TutorStats {
   title: string;
   verifiedCount: number;
   adoptedCount: number;
+  /** Quantidade de anúncios (pets) do usuário */
+  petsCount?: number;
 }
 
 export interface User {
@@ -39,6 +41,24 @@ export interface Pet {
   feedingType?: string;
   /** Dieta especial, alergias ou observações */
   feedingNotes?: string;
+  /** Nível de energia: LOW | MEDIUM | HIGH */
+  energyLevel?: string;
+  /** Comorbidades ou necessidades especiais */
+  healthNotes?: string;
+  /** Necessita cuidados especiais */
+  hasSpecialNeeds?: boolean;
+  /** Se dá bem com outros cachorros: YES | NO | UNKNOWN */
+  goodWithDogs?: string;
+  /** Se dá bem com gatos: YES | NO | UNKNOWN */
+  goodWithCats?: string;
+  /** Se dá bem com crianças: YES | NO | UNKNOWN */
+  goodWithChildren?: string;
+  /** Temperamento: CALM | PLAYFUL | SHY | SOCIABLE | INDEPENDENT */
+  temperament?: string;
+  /** É dócil (manso/calmo com pessoas) */
+  isDocile?: boolean;
+  /** É adestrado */
+  isTrained?: boolean;
   distanceKm?: number;
   /** Cidade do tutor (para exibir no feed/mapa) */
   city?: string;
@@ -52,15 +72,21 @@ export interface Pet {
   adopterUsername?: string;
   /** Data em que um admin rejeitou a marcação de adoção; exibe badge "Rejeitado pelo Adopet" */
   adoptionRejectedAt?: string;
+  /** Motivo da rejeição da marcação de adoção (quando adoptionRejectedAt está preenchido) */
+  adoptionRejectionReason?: string;
   /** True quando a Adopet confirmou a adoção (admin ou 48h); apenas para pet adotado (GET /pets/mine) */
   confirmedByAdopet?: boolean;
   /** Status de moderação do anúncio: PENDING = Em análise, APPROVED = aprovado, REJECTED = rejeitado */
   publicationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  /** Motivo da rejeição do anúncio (quando publicationStatus === REJECTED) */
+  publicationRejectionReason?: string;
+  /** Data em que o anúncio expira (vida útil 60 dias); null = sem expiração */
+  expiresAt?: string;
   createdAt: string;
   updatedAt: string;
   /** Indica se o pet possui verificação aprovada */
   verified?: boolean;
-  /** Parceiro (ONG) quando o anúncio é em parceria */
+  /** Parceiro (ONG/Clínica/Loja) quando o anúncio é em parceria */
   partner?: {
     id: string;
     name: string;
@@ -68,6 +94,8 @@ export interface Pet {
     logoUrl?: string;
     /** Parceria paga: destaque na lista e boost no feed */
     isPaidPartner?: boolean;
+    /** ONG | CLINIC | STORE */
+    type?: string;
   };
   /** Dados do tutor (apenas em GET /pets/:id) */
   owner?: {
@@ -83,6 +111,11 @@ export interface Pet {
     hasOtherPets?: boolean;
     hasChildren?: boolean;
     timeAtHome?: string;
+    petsAllowedAtHome?: string;
+    dogExperience?: string;
+    catExperience?: string;
+    householdAgreesToAdoption?: string;
+    whyAdopt?: string;
     /** Pontuação e nível do tutor (pets verificados/adotados) */
     tutorStats?: TutorStats;
   };

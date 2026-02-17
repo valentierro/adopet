@@ -59,6 +59,15 @@ export class FeedService {
       adoptionReason?: string | null;
       feedingType?: string | null;
       feedingNotes?: string | null;
+      energyLevel?: string | null;
+      healthNotes?: string | null;
+      hasSpecialNeeds?: boolean | null;
+      goodWithDogs?: string | null;
+      goodWithCats?: string | null;
+      goodWithChildren?: string | null;
+      temperament?: string | null;
+      isDocile?: boolean | null;
+      isTrained?: boolean | null;
       media?: { url: string }[];
       owner?: { city: string | null } | null;
       partner?: { id: string; name: string; slug: string; logoUrl: string | null; isPaidPartner: boolean } | null;
@@ -93,6 +102,15 @@ export class FeedService {
     if (pet.adoptionReason != null) dto.adoptionReason = pet.adoptionReason;
     if (pet.feedingType != null) dto.feedingType = pet.feedingType;
     if (pet.feedingNotes != null) dto.feedingNotes = pet.feedingNotes;
+    if (pet.energyLevel != null) dto.energyLevel = pet.energyLevel;
+    if (pet.healthNotes != null) dto.healthNotes = pet.healthNotes;
+    if (pet.hasSpecialNeeds != null) dto.hasSpecialNeeds = pet.hasSpecialNeeds;
+    if (pet.goodWithDogs != null) dto.goodWithDogs = pet.goodWithDogs;
+    if (pet.goodWithCats != null) dto.goodWithCats = pet.goodWithCats;
+    if (pet.goodWithChildren != null) dto.goodWithChildren = pet.goodWithChildren;
+    if (pet.temperament != null) dto.temperament = pet.temperament;
+    if (pet.isDocile != null) dto.isDocile = pet.isDocile;
+    if (pet.isTrained != null) dto.isTrained = pet.isTrained;
     // Cidade = local do anúncio (pet.city, preenchido por reverse geocode das coordenadas). Fallback = cidade do tutor.
     // Distância = do usuário que pediu o feed (userLat/userLng) até as coordenadas do pet.
     if (pet.city != null) dto.city = pet.city;
@@ -171,7 +189,24 @@ export class FeedService {
   }
 
   async getFeed(query: FeedQueryDto): Promise<FeedResponseDto> {
-    const { lat, lng, radiusKm: queryRadiusKm, cursor, userId, species: querySpecies, breed: queryBreed, ownerId: queryOwnerId } = query;
+    const {
+      lat,
+      lng,
+      radiusKm: queryRadiusKm,
+      cursor,
+      userId,
+      species: querySpecies,
+      breed: queryBreed,
+      energyLevel: queryEnergyLevel,
+      temperament: queryTemperament,
+      goodWithChildren: queryGoodWithChildren,
+      goodWithDogs: queryGoodWithDogs,
+      goodWithCats: queryGoodWithCats,
+      hasSpecialNeeds: queryHasSpecialNeeds,
+      isDocile: queryIsDocile,
+      isTrained: queryIsTrained,
+      ownerId: queryOwnerId,
+    } = query;
     const pageSize = DEFAULT_PAGE_SIZE;
 
     // Listagem por dono (ex.: "Ver anúncios" no perfil do tutor): sem geo, ordenação por data
@@ -214,6 +249,14 @@ export class FeedService {
       // species no banco pode ser "cat"/"dog" (create) ou "CAT"/"DOG"; filtro case-insensitive
       ...(speciesFilter ? { species: { equals: speciesFilter, mode: 'insensitive' as const } } : {}),
       ...(breedFilter ? { breed: { equals: breedFilter, mode: 'insensitive' as const } } : {}),
+      ...(queryEnergyLevel ? { energyLevel: queryEnergyLevel } : {}),
+      ...(queryTemperament ? { temperament: queryTemperament } : {}),
+      ...(queryGoodWithChildren ? { goodWithChildren: queryGoodWithChildren } : {}),
+      ...(queryGoodWithDogs ? { goodWithDogs: queryGoodWithDogs } : {}),
+      ...(queryGoodWithCats ? { goodWithCats: queryGoodWithCats } : {}),
+      ...(queryHasSpecialNeeds === true ? { hasSpecialNeeds: true } : {}),
+      ...(queryIsDocile === true ? { isDocile: true } : {}),
+      ...(queryIsTrained === true ? { isTrained: true } : {}),
       ...(swipedIds.length > 0 ? { id: { notIn: swipedIds } } : {}),
       ...(reportedPetIds.length > 0 ? { id: { notIn: reportedPetIds } } : {}),
       ...(excludeOwnerIds.length > 0 ? { ownerId: { notIn: excludeOwnerIds } } : {}),

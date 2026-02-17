@@ -66,6 +66,11 @@ export class MeService {
           ...(dto.hasOtherPets !== undefined && { hasOtherPets: dto.hasOtherPets }),
           ...(dto.hasChildren !== undefined && { hasChildren: dto.hasChildren }),
           ...(dto.timeAtHome !== undefined && { timeAtHome: dto.timeAtHome }),
+          ...(dto.petsAllowedAtHome !== undefined && { petsAllowedAtHome: dto.petsAllowedAtHome || null }),
+          ...(dto.dogExperience !== undefined && { dogExperience: dto.dogExperience || null }),
+          ...(dto.catExperience !== undefined && { catExperience: dto.catExperience || null }),
+          ...(dto.householdAgreesToAdoption !== undefined && { householdAgreesToAdoption: dto.householdAgreesToAdoption || null }),
+          ...(dto.whyAdopt !== undefined && { whyAdopt: dto.whyAdopt?.trim() || null }),
           ...(dto.username !== undefined && { username: dto.username || null }),
         },
         include: { preferences: true },
@@ -382,6 +387,11 @@ export class MeService {
       hasOtherPets: boolean | null;
       hasChildren: boolean | null;
       timeAtHome: string | null;
+      petsAllowedAtHome?: string | null;
+      dogExperience?: string | null;
+      catExperience?: string | null;
+      householdAgreesToAdoption?: string | null;
+      whyAdopt?: string | null;
       createdAt: Date;
     },
     verified?: boolean,
@@ -406,6 +416,11 @@ export class MeService {
       hasOtherPets: user.hasOtherPets ?? undefined,
       hasChildren: user.hasChildren ?? undefined,
       timeAtHome: user.timeAtHome ?? undefined,
+      petsAllowedAtHome: user.petsAllowedAtHome ?? undefined,
+      dogExperience: user.dogExperience ?? undefined,
+      catExperience: user.catExperience ?? undefined,
+      householdAgreesToAdoption: user.householdAgreesToAdoption ?? undefined,
+      whyAdopt: user.whyAdopt ?? undefined,
       verified,
       isAdmin,
       partner: u.partner

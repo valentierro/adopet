@@ -24,6 +24,11 @@ model User {
   hasOtherPets Boolean?  // tem outros pets
   hasChildren  Boolean?  // tem crianças em casa
   timeAtHome   String?   // MOST_DAY | HALF_DAY | LITTLE — quanto tempo passa em casa
+  petsAllowedAtHome     String?   // YES | NO | UNSURE — pets permitidos no local (condomínio/locador)
+  dogExperience        String?   // NEVER | HAD_BEFORE | HAVE_NOW — experiência com cachorro
+  catExperience        String?   // NEVER | HAD_BEFORE | HAVE_NOW — experiência com gato
+  householdAgreesToAdoption String?   // YES | DISCUSSING — todos em casa concordam com a adoção
+  whyAdopt              String?   @db.VarChar(500) // por que quer adotar (texto livre para triagem)
   pushToken    String?   // Expo push token para notificações
   emailVerificationToken String?   // token para confirmar e-mail (limpo após confirmação)
   emailVerifiedAt        DateTime? // quando o e-mail foi confirmado
@@ -231,6 +236,15 @@ model Pet {
   adoptionReason  String?   // por que está doando (opcional)
   feedingType     String?   // seca, úmida, mista, natural, outra (opcional)
   feedingNotes    String?   // alergias, dieta especial, observações (opcional)
+  energyLevel     String?   // LOW | MEDIUM | HIGH — nível de energia (calmo / moderado / agitado)
+  healthNotes     String?   @db.VarChar(500) // comorbidades, necessidades especiais (texto livre)
+  hasSpecialNeeds Boolean?  // necessita cuidados especiais
+  goodWithDogs    String?   // YES | NO | UNKNOWN — se dá bem com outros cachorros
+  goodWithCats    String?   // YES | NO | UNKNOWN — se dá bem com gatos
+  goodWithChildren String?  // YES | NO | UNKNOWN — se dá bem com crianças
+  temperament     String?   // CALM | PLAYFUL | SHY | SOCIABLE | INDEPENDENT — temperamento
+  isDocile        Boolean?  // é dócil (manso/calmo com pessoas)
+  isTrained       Boolean?  // é adestrado
   status          String    @default("AVAILABLE") // AVAILABLE | IN_PROCESS | ADOPTED
   markedAdoptedAt DateTime? // quando o tutor marcou como adotado; após 48h sem registro manual (e após adotante confirmar), sistema auto-valida
   pendingAdopterId String?  // adotante indicado pelo tutor ao marcar como adotado (lista de conversas ou @username)

@@ -598,6 +598,11 @@ export class PartnersService {
         hasOtherPets: true,
         hasChildren: true,
         timeAtHome: true,
+        petsAllowedAtHome: true,
+        dogExperience: true,
+        catExperience: true,
+        householdAgreesToAdoption: true,
+        whyAdopt: true,
         phone: true,
       },
     });
@@ -621,6 +626,11 @@ export class PartnersService {
       hasOtherPets?: boolean;
       hasChildren?: boolean;
       timeAtHome?: string;
+      petsAllowedAtHome?: string;
+      dogExperience?: string;
+      catExperience?: string;
+      householdAgreesToAdoption?: string;
+      whyAdopt?: string;
       tutorStats?: { points: number; level: string; title: string; verifiedCount: number; adoptedCount: number };
       phone?: string;
     } = {
@@ -638,6 +648,11 @@ export class PartnersService {
     if (user.hasOtherPets != null) profile.hasOtherPets = user.hasOtherPets;
     if (user.hasChildren != null) profile.hasChildren = user.hasChildren;
     if (user.timeAtHome != null) profile.timeAtHome = user.timeAtHome;
+    if (user.petsAllowedAtHome != null) profile.petsAllowedAtHome = user.petsAllowedAtHome;
+    if (user.dogExperience != null) profile.dogExperience = user.dogExperience;
+    if (user.catExperience != null) profile.catExperience = user.catExperience;
+    if (user.householdAgreesToAdoption != null) profile.householdAgreesToAdoption = user.householdAgreesToAdoption;
+    if (user.whyAdopt != null) profile.whyAdopt = user.whyAdopt;
     if (user.phone != null) profile.phone = user.phone;
     return { profile, pets: feedResult.items };
   }

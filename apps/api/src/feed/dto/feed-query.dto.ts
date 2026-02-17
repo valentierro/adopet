@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsNumber, IsString, Min, Max } from 'class-validator';
+import { IsOptional, IsNumber, IsString, IsBoolean, Min, Max } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class FeedQueryDto {
@@ -41,6 +41,49 @@ export class FeedQueryDto {
   @IsOptional()
   @IsString()
   breed?: string;
+
+  @ApiPropertyOptional({ enum: ['LOW', 'MEDIUM', 'HIGH'], description: 'Filtro por nível de energia' })
+  @IsOptional()
+  @IsString()
+  energyLevel?: string;
+
+  @ApiPropertyOptional({ enum: ['CALM', 'PLAYFUL', 'SHY', 'SOCIABLE', 'INDEPENDENT'], description: 'Filtro por temperamento' })
+  @IsOptional()
+  @IsString()
+  temperament?: string;
+
+  @ApiPropertyOptional({ enum: ['YES', 'NO'], description: 'Se dá bem com crianças' })
+  @IsOptional()
+  @IsString()
+  goodWithChildren?: string;
+
+  @ApiPropertyOptional({ enum: ['YES', 'NO'], description: 'Se dá bem com cachorros' })
+  @IsOptional()
+  @IsString()
+  goodWithDogs?: string;
+
+  @ApiPropertyOptional({ enum: ['YES', 'NO'], description: 'Se dá bem com gatos' })
+  @IsOptional()
+  @IsString()
+  goodWithCats?: string;
+
+  @ApiPropertyOptional({ description: 'Apenas pets com necessidades especiais' })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  hasSpecialNeeds?: boolean;
+
+  @ApiPropertyOptional({ description: 'Apenas pets dóceis' })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  isDocile?: boolean;
+
+  @ApiPropertyOptional({ description: 'Apenas pets adestrados' })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  isTrained?: boolean;
 
   @ApiPropertyOptional({ description: 'ID do usuário (preenchido pelo token)' })
   @IsOptional()

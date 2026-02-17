@@ -43,6 +43,21 @@ export class MeResponseDto {
   @ApiPropertyOptional({ enum: ['MOST_DAY', 'HALF_DAY', 'LITTLE'] })
   timeAtHome?: string;
 
+  @ApiPropertyOptional({ enum: ['YES', 'NO', 'UNSURE'], description: 'Pets permitidos no local' })
+  petsAllowedAtHome?: string;
+
+  @ApiPropertyOptional({ enum: ['NEVER', 'HAD_BEFORE', 'HAVE_NOW'], description: 'Experiência com cachorro' })
+  dogExperience?: string;
+
+  @ApiPropertyOptional({ enum: ['NEVER', 'HAD_BEFORE', 'HAVE_NOW'], description: 'Experiência com gato' })
+  catExperience?: string;
+
+  @ApiPropertyOptional({ enum: ['YES', 'DISCUSSING'], description: 'Todos em casa concordam com a adoção' })
+  householdAgreesToAdoption?: string;
+
+  @ApiPropertyOptional({ description: 'Por que quer adotar' })
+  whyAdopt?: string;
+
   @ApiPropertyOptional({ description: 'Indica se o usuário possui verificação aprovada' })
   verified?: boolean;
 

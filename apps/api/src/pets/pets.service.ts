@@ -46,6 +46,15 @@ export class PetsService {
       adoptionReason?: string | null;
       feedingType?: string | null;
       feedingNotes?: string | null;
+      energyLevel?: string | null;
+      healthNotes?: string | null;
+      hasSpecialNeeds?: boolean | null;
+      goodWithDogs?: string | null;
+      goodWithCats?: string | null;
+      goodWithChildren?: string | null;
+      temperament?: string | null;
+      isDocile?: boolean | null;
+      isTrained?: boolean | null;
       adoptionRejectedAt?: Date | null;
       adoptionRejectionReason?: string | null;
       media: { id: string; url: string; sortOrder?: number }[];
@@ -81,6 +90,15 @@ export class PetsService {
     if (pet.adoptionReason != null) dto.adoptionReason = pet.adoptionReason;
     if (pet.feedingType != null) dto.feedingType = pet.feedingType;
     if (pet.feedingNotes != null) dto.feedingNotes = pet.feedingNotes;
+    if (pet.energyLevel != null) dto.energyLevel = pet.energyLevel;
+    if (pet.healthNotes != null) dto.healthNotes = pet.healthNotes;
+    if (pet.hasSpecialNeeds != null) dto.hasSpecialNeeds = pet.hasSpecialNeeds;
+    if (pet.goodWithDogs != null) dto.goodWithDogs = pet.goodWithDogs;
+    if (pet.goodWithCats != null) dto.goodWithCats = pet.goodWithCats;
+    if (pet.goodWithChildren != null) dto.goodWithChildren = pet.goodWithChildren;
+    if (pet.temperament != null) dto.temperament = pet.temperament;
+    if (pet.isDocile != null) dto.isDocile = pet.isDocile;
+    if (pet.isTrained != null) dto.isTrained = pet.isTrained;
     if (pet.city != null) dto.city = pet.city;
     if (pet.publicationStatus != null) dto.publicationStatus = pet.publicationStatus;
     if (pet.publicationRejectionReason != null) dto.publicationRejectionReason = pet.publicationRejectionReason;
@@ -114,6 +132,11 @@ export class PetsService {
       hasOtherPets: boolean | null;
       hasChildren: boolean | null;
       timeAtHome: string | null;
+      petsAllowedAtHome?: string | null;
+      dogExperience?: string | null;
+      catExperience?: string | null;
+      householdAgreesToAdoption?: string | null;
+      whyAdopt?: string | null;
     },
     petsCount: number,
     verified?: boolean,
@@ -132,6 +155,11 @@ export class PetsService {
     if (owner.hasOtherPets != null) dto.hasOtherPets = owner.hasOtherPets;
     if (owner.hasChildren != null) dto.hasChildren = owner.hasChildren;
     if (owner.timeAtHome != null) dto.timeAtHome = owner.timeAtHome;
+    if (owner.petsAllowedAtHome != null) dto.petsAllowedAtHome = owner.petsAllowedAtHome;
+    if (owner.dogExperience != null) dto.dogExperience = owner.dogExperience;
+    if (owner.catExperience != null) dto.catExperience = owner.catExperience;
+    if (owner.householdAgreesToAdoption != null) dto.householdAgreesToAdoption = owner.householdAgreesToAdoption;
+    if (owner.whyAdopt != null) dto.whyAdopt = owner.whyAdopt;
     return dto;
   }
 
@@ -179,6 +207,11 @@ export class PetsService {
             hasOtherPets: true,
             hasChildren: true,
             timeAtHome: true,
+            petsAllowedAtHome: true,
+            dogExperience: true,
+            catExperience: true,
+            householdAgreesToAdoption: true,
+            whyAdopt: true,
           },
         },
       },
@@ -379,6 +412,11 @@ export class PetsService {
             hasOtherPets: true,
             hasChildren: true,
             timeAtHome: true,
+            petsAllowedAtHome: true,
+            dogExperience: true,
+            catExperience: true,
+            householdAgreesToAdoption: true,
+            whyAdopt: true,
           },
         },
       },
@@ -410,6 +448,11 @@ export class PetsService {
             hasOtherPets: true,
             hasChildren: true,
             timeAtHome: true,
+            petsAllowedAtHome: true,
+            dogExperience: true,
+            catExperience: true,
+            householdAgreesToAdoption: true,
+            whyAdopt: true,
             phone: true,
           },
         },
@@ -432,6 +475,11 @@ export class PetsService {
         hasOtherPets: pet.owner.hasOtherPets,
         hasChildren: pet.owner.hasChildren,
         timeAtHome: pet.owner.timeAtHome,
+        petsAllowedAtHome: pet.owner.petsAllowedAtHome,
+        dogExperience: pet.owner.dogExperience,
+        catExperience: pet.owner.catExperience,
+        householdAgreesToAdoption: pet.owner.householdAgreesToAdoption,
+        whyAdopt: pet.owner.whyAdopt,
       },
       petsCount,
       ownerVerified,
@@ -510,6 +558,15 @@ export class PetsService {
         adoptionReason: dto.adoptionReason,
         feedingType: dto.feedingType ?? null,
         feedingNotes: dto.feedingNotes ?? null,
+        energyLevel: dto.energyLevel ?? null,
+        healthNotes: dto.healthNotes?.trim() || null,
+        hasSpecialNeeds: dto.hasSpecialNeeds ?? null,
+        goodWithDogs: dto.goodWithDogs ?? null,
+        goodWithCats: dto.goodWithCats ?? null,
+        goodWithChildren: dto.goodWithChildren ?? null,
+        temperament: dto.temperament ?? null,
+        isDocile: dto.isDocile ?? null,
+        isTrained: dto.isTrained ?? null,
         latitude: dto.latitude,
         longitude: dto.longitude,
         city,
@@ -589,6 +646,15 @@ export class PetsService {
         ...(dto.adoptionReason !== undefined && { adoptionReason: dto.adoptionReason }),
         ...(dto.feedingType !== undefined && { feedingType: dto.feedingType ?? null }),
         ...(dto.feedingNotes !== undefined && { feedingNotes: dto.feedingNotes ?? null }),
+        ...(dto.energyLevel !== undefined && { energyLevel: dto.energyLevel ?? null }),
+        ...(dto.healthNotes !== undefined && { healthNotes: dto.healthNotes?.trim() || null }),
+        ...(dto.hasSpecialNeeds !== undefined && { hasSpecialNeeds: dto.hasSpecialNeeds ?? null }),
+        ...(dto.goodWithDogs !== undefined && { goodWithDogs: dto.goodWithDogs ?? null }),
+        ...(dto.goodWithCats !== undefined && { goodWithCats: dto.goodWithCats ?? null }),
+        ...(dto.goodWithChildren !== undefined && { goodWithChildren: dto.goodWithChildren ?? null }),
+        ...(dto.temperament !== undefined && { temperament: dto.temperament ?? null }),
+        ...(dto.isDocile !== undefined && { isDocile: dto.isDocile ?? null }),
+        ...(dto.isTrained !== undefined && { isTrained: dto.isTrained ?? null }),
         ...(dto.latitude !== undefined && { latitude: dto.latitude }),
         ...(dto.longitude !== undefined && { longitude: dto.longitude }),
         ...(cityUpdate !== undefined && cityUpdate),

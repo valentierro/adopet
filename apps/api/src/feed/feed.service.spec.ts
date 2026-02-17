@@ -49,8 +49,9 @@ describe('FeedService', () => {
     const fullPrisma = {
       ...prisma,
       adoption: { findMany: jest.fn(), findUnique: jest.fn() },
-      favorite: { groupBy: jest.fn().mockResolvedValue([]) },
+      favorite: { findMany: jest.fn().mockResolvedValue([]), groupBy: jest.fn().mockResolvedValue([]) },
       userPreferences: { findUnique: jest.fn().mockResolvedValue(null) },
+      swipe: { findMany: jest.fn().mockResolvedValue([]) },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -131,6 +132,94 @@ describe('FeedService', () => {
       res.items.forEach((item) => {
         expect(item.distanceKm).toBeLessThanOrEqual(10);
       });
+    });
+  });
+
+  describe('getFeed', () => {
+    const baseQuery = {
+      lat,
+      lng,
+      radiusKm,
+      userId: 'user-1',
+    };
+
+    it('inclui energyLevel no where quando energyLevel é passado', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, energyLevel: 'HIGH' });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ energyLevel: 'HIGH' }),
+        }),
+      );
+    });
+
+    it('inclui temperament no where quando temperament é passado', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, temperament: 'CALM' });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ temperament: 'CALM' }),
+        }),
+      );
+    });
+
+    it('inclui goodWithChildren no where quando goodWithChildren é passado', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, goodWithChildren: 'YES' });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ goodWithChildren: 'YES' }),
+        }),
+      );
+    });
+
+    it('inclui hasSpecialNeeds: true no where quando hasSpecialNeeds é true', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, hasSpecialNeeds: true });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ hasSpecialNeeds: true }),
+        }),
+      );
+    });
+
+    it('pode combinar múltiplos filtros de triagem', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({
+        ...baseQuery,
+        energyLevel: 'MEDIUM',
+        temperament: 'PLAYFUL',
+        goodWithDogs: 'YES',
+      });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            energyLevel: 'MEDIUM',
+            temperament: 'PLAYFUL',
+            goodWithDogs: 'YES',
+          }),
+        }),
+      );
+    });
+
+    it('inclui isDocile: true no where quando isDocile é true', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, isDocile: true });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isDocile: true }),
+        }),
+      );
+    });
+
+    it('inclui isTrained: true no where quando isTrained é true', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, isTrained: true });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isTrained: true }),
+        }),
+      );
     });
   });
 });

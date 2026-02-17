@@ -79,6 +79,57 @@ export class CreatePetDto {
   @MaxLength(500)
   feedingNotes?: string;
 
+  @ApiPropertyOptional({ enum: ['LOW', 'MEDIUM', 'HIGH'], description: 'Nível de energia (calmo / moderado / agitado)' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['LOW', 'MEDIUM', 'HIGH'])
+  energyLevel?: string;
+
+  @ApiPropertyOptional({ maxLength: 500, description: 'Comorbidades ou necessidades especiais (texto livre)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  healthNotes?: string;
+
+  @ApiPropertyOptional({ description: 'Necessita cuidados especiais' })
+  @IsOptional()
+  @IsBoolean()
+  hasSpecialNeeds?: boolean;
+
+  @ApiPropertyOptional({ enum: ['YES', 'NO', 'UNKNOWN'], description: 'Se dá bem com outros cachorros' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['YES', 'NO', 'UNKNOWN'])
+  goodWithDogs?: string;
+
+  @ApiPropertyOptional({ enum: ['YES', 'NO', 'UNKNOWN'], description: 'Se dá bem com gatos' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['YES', 'NO', 'UNKNOWN'])
+  goodWithCats?: string;
+
+  @ApiPropertyOptional({ enum: ['YES', 'NO', 'UNKNOWN'], description: 'Se dá bem com crianças' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['YES', 'NO', 'UNKNOWN'])
+  goodWithChildren?: string;
+
+  @ApiPropertyOptional({ enum: ['CALM', 'PLAYFUL', 'SHY', 'SOCIABLE', 'INDEPENDENT'], description: 'Temperamento' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['CALM', 'PLAYFUL', 'SHY', 'SOCIABLE', 'INDEPENDENT'])
+  temperament?: string;
+
+  @ApiPropertyOptional({ description: 'É dócil (manso/calmo com pessoas)' })
+  @IsOptional()
+  @IsBoolean()
+  isDocile?: boolean;
+
+  @ApiPropertyOptional({ description: 'É adestrado' })
+  @IsOptional()
+  @IsBoolean()
+  isTrained?: boolean;
+
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Number)
