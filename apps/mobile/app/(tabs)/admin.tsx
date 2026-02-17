@@ -2000,7 +2000,7 @@ export default function AdminScreen() {
       <View ref={partnershipRequestsRef} onLayout={(e: LayoutChangeEvent) => { sectionY.current.partnershipRequests = e.nativeEvent.layout.y; }} collapsable={false}>
         <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.xl }]}>Solicitações de parceria ({partnershipRequestsList.length})</Text>
         <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
-          Enviadas pelo formulário “Solicitar parceria” (página inicial / seja parceiro). Aprovar cria um parceiro na lista; rejeitar registra o motivo.
+          Enviadas pelo formulário “Solicitar parceria” Use Pendentes para ver as que aguardam decisão. Aprovar cria o parceiro e envia e-mail para definir senha; rejeitar registra o motivo.
         </Text>
         <View style={[styles.rowWrap, { marginBottom: spacing.sm, flexWrap: 'wrap', gap: spacing.xs }]}>
           {(['PENDING', 'APPROVED', 'REJECTED', 'ALL'] as const).map((tab) => (
@@ -2101,7 +2101,7 @@ export default function AdminScreen() {
       <View ref={partnersRef} onLayout={(e: LayoutChangeEvent) => { sectionY.current.partners = e.nativeEvent.layout.y; }} collapsable={false}>
         <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.xl }]}>Parceiros ({partnersList.length})</Text>
         <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
-          ONGs, clínicas e lojas. Aprove ou rejeite (com motivo) para aparecer ou não na tela Parceiros. Ações em massa abaixo.
+          ONGs, clínicas e lojas. Parceiros ainda não aprovados exibem os botões <Text style={{ fontWeight: '600' }}>Aprovar</Text> e <Text style={{ fontWeight: '600' }}>Rejeitar</Text> no card. Ações em massa abaixo.
         </Text>
         <View style={[styles.rowWrap, { marginBottom: spacing.sm, flexWrap: 'wrap', gap: spacing.xs }]}>
           {(['ALL', 'ONG', 'CLINIC', 'STORE'] as const).map((t) => (

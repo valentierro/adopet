@@ -325,7 +325,7 @@ export default function ProfileScreen() {
           <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
         </TouchableOpacity>
       )}
-      {user?.partner?.isPaidPartner && (
+      {user?.partner && (user.partner.isPaidPartner || user.partner.type === 'ONG') && (
         <TouchableOpacity
           style={[
             styles.menuItem,
@@ -341,7 +341,7 @@ export default function ProfileScreen() {
           <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
         </TouchableOpacity>
       )}
-      {user?.partner && !user.partner.isPaidPartner && (
+      {user?.partner && !user.partner.isPaidPartner && user.partner.type !== 'ONG' && (
         <TouchableOpacity
           style={[styles.menuItem, { borderBottomColor: colors.surface }]}
           onPress={() => router.push('/partner-subscription')}

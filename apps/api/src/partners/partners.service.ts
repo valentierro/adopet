@@ -201,12 +201,13 @@ export class PartnersService {
     return { message: 'OK' };
   }
 
-  /** Atualiza o parceiro do usuário (dados do estabelecimento no portal). Requer assinatura ativa. */
+  /** Atualiza o parceiro do usuário (dados do estabelecimento no portal). ONG não precisa assinatura; comercial requer assinatura ativa. */
   async updateByUserId(userId: string, dto: UpdateMyPartnerDto): Promise<PartnerMeDto> {
     const existing = await this.prisma.partner.findUnique({
       where: { userId },
     });
-    this.ensurePaidPartner(existing);
+    if (!existing) throw new NotFoundException('Parceiro não encontrado');
+    if (existing.type !== 'ONG') this.ensurePaidPartner(existing);
     const data: {
       name?: string;
       city?: string | null;

@@ -388,7 +388,7 @@ export class MeService {
     isAdmin?: boolean,
   ): MeResponseDto {
     const u = user as typeof user & {
-      partner?: { id: string; name: string; slug: string; subscriptionStatus: string | null; planId: string | null; isPaidPartner: boolean } | null;
+      partner?: { id: string; name: string; slug: string; type: string; subscriptionStatus: string | null; planId: string | null; isPaidPartner: boolean } | null;
       partnerMemberships?: Array<{ partner: { id: string; name: string; slug: string } }>;
     };
     return {
@@ -413,6 +413,7 @@ export class MeService {
             id: u.partner.id,
             name: u.partner.name,
             slug: u.partner.slug,
+            type: u.partner.type ?? 'STORE',
             subscriptionStatus: u.partner.subscriptionStatus ?? undefined,
             planId: u.partner.planId ?? undefined,
             isPaidPartner: !!u.partner.isPaidPartner,

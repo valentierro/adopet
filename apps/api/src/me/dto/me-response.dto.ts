@@ -49,11 +49,12 @@ export class MeResponseDto {
   @ApiPropertyOptional({ description: 'Indica se o usuário é administrador (pode acessar painel admin)' })
   isAdmin?: boolean;
 
-  @ApiPropertyOptional({ description: 'Dados do parceiro vinculado (se for parceiro comercial cadastrado pelo app)' })
+  @ApiPropertyOptional({ description: 'Dados do parceiro vinculado (ONG ou comercial)' })
   partner?: {
     id: string;
     name: string;
     slug: string;
+    type: string; // ONG | CLINIC | STORE
     subscriptionStatus?: string;
     planId?: string;
     isPaidPartner: boolean;

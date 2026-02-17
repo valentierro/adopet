@@ -36,7 +36,7 @@ export default function PartnerPortalScreen() {
     );
   }
 
-  if (!partner.isPaidPartner) {
+  if (!partner.isPaidPartner && partner.type !== 'ONG') {
     return (
       <ScreenContainer>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
@@ -79,8 +79,10 @@ export default function PartnerPortalScreen() {
             <Text style={[styles.name, { color: colors.textPrimary }]}>{partner.name}</Text>
             <Text style={[styles.slug, { color: colors.textSecondary }]}>{partner.slug}</Text>
             <View style={[styles.badge, { backgroundColor: colors.primary + '20' }]}>
-              <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
-              <Text style={[styles.badgeText, { color: colors.primary }]}>Assinatura ativa</Text>
+              <Ionicons name={partner.type === 'ONG' ? 'heart' : 'checkmark-circle'} size={18} color={colors.primary} />
+              <Text style={[styles.badgeText, { color: colors.primary }]}>
+                {partner.type === 'ONG' ? 'ONG' : 'Assinatura ativa'}
+              </Text>
             </View>
           </View>
 
@@ -90,30 +92,6 @@ export default function PartnerPortalScreen() {
           >
             <Ionicons name="business-outline" size={22} color={colors.primary} />
             <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Dados do estabelecimento</Text>
-            <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-            onPress={() => router.push('/partner-coupons')}
-          >
-            <Ionicons name="pricetag-outline" size={22} color={colors.primary} />
-            <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Cupons de desconto</Text>
-            <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-            onPress={() => router.push('/partner-services')}
-          >
-            <Ionicons name="construct-outline" size={22} color={colors.primary} />
-            <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Serviços prestados</Text>
-            <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-            onPress={() => router.push('/partner-analytics')}
-          >
-            <Ionicons name="stats-chart-outline" size={22} color={colors.primary} />
-            <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Analytics</Text>
             <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
           </TouchableOpacity>
           {partner.type === 'ONG' ? (
@@ -126,14 +104,42 @@ export default function PartnerPortalScreen() {
               <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
             </TouchableOpacity>
           ) : null}
-          <TouchableOpacity
-            style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-            onPress={() => router.push('/partner-subscription')}
-          >
-            <Ionicons name="card-outline" size={22} color={colors.primary} />
-            <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Assinatura</Text>
-            <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-          </TouchableOpacity>
+          {partner.isPaidPartner ? (
+            <>
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                onPress={() => router.push('/partner-coupons')}
+              >
+                <Ionicons name="pricetag-outline" size={22} color={colors.primary} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Cupons de desconto</Text>
+                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                onPress={() => router.push('/partner-services')}
+              >
+                <Ionicons name="construct-outline" size={22} color={colors.primary} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Serviços prestados</Text>
+                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                onPress={() => router.push('/partner-analytics')}
+              >
+                <Ionicons name="stats-chart-outline" size={22} color={colors.primary} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Analytics</Text>
+                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                onPress={() => router.push('/partner-subscription')}
+              >
+                <Ionicons name="card-outline" size={22} color={colors.primary} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Assinatura</Text>
+                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+            </>
+          ) : null}
 
           <View style={[styles.thanksBox, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
             <Ionicons name="heart" size={22} color={colors.primary} style={styles.thanksIcon} />

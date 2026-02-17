@@ -30,6 +30,7 @@ export type User = {
     id: string;
     name: string;
     slug: string;
+    type?: string; // ONG | CLINIC | STORE
     subscriptionStatus?: string;
     planId?: string;
     isPaidPartner: boolean;
