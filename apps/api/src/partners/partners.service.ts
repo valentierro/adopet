@@ -3,6 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { EmailService } from '../email/email.service';
+import { FeedService } from '../feed/feed.service';
+import { TutorStatsService } from '../me/tutor-stats.service';
+import { VerificationService } from '../verification/verification.service';
 import { getSetPasswordEmailHtml, getSetPasswordEmailText } from '../email/templates/set-password.email';
 import type { PartnerPublicDto, PartnerMeDto } from './dto/partner-response.dto';
 import type { PartnerAdminDto } from './dto/partner-response.dto';
@@ -15,6 +18,7 @@ import type { PartnerCouponResponseDto } from './dto/partner-coupon-response.dto
 import type { CreatePartnerServiceDto } from './dto/create-partner-service.dto';
 import type { UpdatePartnerServiceDto } from './dto/update-partner-service.dto';
 import type { PartnerServiceResponseDto } from './dto/partner-service-response.dto';
+import { PARTNER_MEMBER_ROLES } from './dto/add-partner-member.dto';
 
 function slugify(name: string): string {
   return name
@@ -43,6 +47,7 @@ export type PartnerMemberDto = {
   userId: string;
   name: string;
   email: string;
+  role?: string | null;
   createdAt: string;
 };
 
@@ -53,6 +58,9 @@ export class PartnersService {
     @Inject(forwardRef(() => AuthService)) private readonly authService: AuthService,
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
+    private readonly feedService: FeedService,
+    private readonly tutorStatsService: TutorStatsService,
+    private readonly verificationService: VerificationService,
   ) {}
 
   /** Retorna o parceiro do usuário (portal do parceiro). Null se não for parceiro. Sempre permitido para renovar assinatura. */
@@ -374,6 +382,7 @@ export class PartnersService {
       userId: m.userId,
       name: m.user.name,
       email: m.user.email,
+      role: m.role,
       createdAt: m.createdAt.toISOString(),
     }));
   }
@@ -381,7 +390,7 @@ export class PartnersService {
   /** Adiciona membro à ONG. Se o e-mail já existir no app, apenas vincula; senão cria usuário e envia e-mail para definir senha. */
   async addMemberByUserId(
     userId: string,
-    dto: { email: string; name: string; phone?: string },
+    dto: { email: string; name: string; phone?: string; role?: string },
   ): Promise<PartnerMemberDto> {
     const partner = await this.prisma.partner.findUnique({
       where: { userId },
@@ -401,7 +410,11 @@ export class PartnersService {
       throw new BadRequestException('Este usuário já é membro da ONG.');
     }
     const member = await this.prisma.partnerMember.create({
-      data: { partnerId: partner.id, userId: newOrExistingUserId },
+      data: {
+        partnerId: partner.id,
+        userId: newOrExistingUserId,
+        role: dto.role && PARTNER_MEMBER_ROLES.includes(dto.role as (typeof PARTNER_MEMBER_ROLES)[number]) ? dto.role : null,
+      },
       include: { user: { select: { id: true, name: true, email: true } } },
     });
     if (setPasswordToken && this.emailService.isConfigured()) {
@@ -427,6 +440,7 @@ export class PartnersService {
       userId: member.userId,
       name: member.user.name,
       email: member.user.email,
+      role: member.role,
       createdAt: member.createdAt.toISOString(),
     };
   }
@@ -442,6 +456,92 @@ export class PartnersService {
       where: { partnerId: partner.id, userId: memberUserId },
     });
     return { message: 'Membro removido da ONG.' };
+  }
+
+  /** [Admin ONG] Perfil público + pets de um membro da ONG. */
+  async getMemberDetailsByUserId(adminUserId: string, memberUserId: string): Promise<{
+    profile: {
+      id: string;
+      name: string;
+      avatarUrl?: string;
+      petsCount: number;
+      verified?: boolean;
+      city?: string;
+      bio?: string;
+      housingType?: string;
+      hasYard?: boolean;
+      hasOtherPets?: boolean;
+      hasChildren?: boolean;
+      timeAtHome?: string;
+      tutorStats?: { points: number; level: string; title: string; verifiedCount: number; adoptedCount: number };
+      phone?: string;
+    };
+    pets: Awaited<ReturnType<FeedService['getFeed']>>['items'];
+  }> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId: adminUserId },
+      select: { id: true, type: true },
+    });
+    this.ensureOngAdmin(partner);
+    const membership = await this.prisma.partnerMember.findUnique({
+      where: { partnerId_userId: { partnerId: partner.id, userId: memberUserId } },
+    });
+    if (!membership) throw new NotFoundException('Membro não encontrado.');
+    const user = await this.prisma.user.findUnique({
+      where: { id: memberUserId },
+      select: {
+        id: true,
+        name: true,
+        avatarUrl: true,
+        city: true,
+        bio: true,
+        housingType: true,
+        hasYard: true,
+        hasOtherPets: true,
+        hasChildren: true,
+        timeAtHome: true,
+        phone: true,
+      },
+    });
+    if (!user) throw new NotFoundException('Usuário não encontrado.');
+    const [petsCount, ownerVerified, tutorStats, feedResult] = await Promise.all([
+      this.prisma.pet.count({ where: { ownerId: memberUserId } }),
+      this.verificationService.isUserVerified(memberUserId),
+      this.tutorStatsService.getStats(memberUserId),
+      this.feedService.getFeed({ ownerId: memberUserId, userId: adminUserId }),
+    ]);
+    const profile: {
+      id: string;
+      name: string;
+      avatarUrl?: string;
+      petsCount: number;
+      verified?: boolean;
+      city?: string;
+      bio?: string;
+      housingType?: string;
+      hasYard?: boolean;
+      hasOtherPets?: boolean;
+      hasChildren?: boolean;
+      timeAtHome?: string;
+      tutorStats?: { points: number; level: string; title: string; verifiedCount: number; adoptedCount: number };
+      phone?: string;
+    } = {
+      id: user.id,
+      name: user.name,
+      avatarUrl: user.avatarUrl ?? undefined,
+      petsCount,
+      tutorStats,
+    };
+    if (ownerVerified) profile.verified = true;
+    if (user.city != null) profile.city = user.city;
+    if (user.bio != null) profile.bio = user.bio;
+    if (user.housingType != null) profile.housingType = user.housingType;
+    if (user.hasYard != null) profile.hasYard = user.hasYard;
+    if (user.hasOtherPets != null) profile.hasOtherPets = user.hasOtherPets;
+    if (user.hasChildren != null) profile.hasChildren = user.hasChildren;
+    if (user.timeAtHome != null) profile.timeAtHome = user.timeAtHome;
+    if (user.phone != null) profile.phone = user.phone;
+    return { profile, pets: feedResult.items };
   }
 
   /** Lista todos os parceiros (admin) */

@@ -189,6 +189,15 @@ export class MeController {
     return this.partnersService.removeMemberByUserId(user.id, memberUserId);
   }
 
+  @Get('partner/members/:userId/details')
+  @ApiOperation({ summary: 'Perfil público e pets de um membro da ONG (apenas admin ONG)' })
+  async getMyPartnerMemberDetails(
+    @CurrentUser() user: { id: string },
+    @Param('userId') memberUserId: string,
+  ) {
+    return this.partnersService.getMemberDetailsByUserId(user.id, memberUserId);
+  }
+
   @Get('adoptions')
   @ApiOperation({ summary: 'Listar pets que o usuário adotou (como adotante)' })
   async getMyAdoptions(
