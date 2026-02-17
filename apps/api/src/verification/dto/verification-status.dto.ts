@@ -34,6 +34,8 @@ export class VerificationItemDto {
   userTutorLevel?: string;
   /** [Admin listPending] Título do nível (ex: Tutor Ouro) */
   userTutorTitle?: string;
+  /** [Admin listPending] Usuário é membro de alguma ONG (PartnerMember em parceiro type=ONG) */
+  userOngMember?: boolean;
 
   /** [Admin listPending PET_VERIFIED] Dados do pet para card */
   @ApiProperty({ required: false })

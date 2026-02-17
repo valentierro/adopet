@@ -182,21 +182,44 @@ export class VerificationService {
       return dto;
     });
     const userIds = [...new Set(list.map((v) => v.user?.id).filter((id): id is string => !!id))];
+    const ongMemberIds = new Set<string>();
+    if (userIds.length > 0) {
+      const members = await this.prisma.partnerMember.findMany({
+        where: { userId: { in: userIds } },
+        select: { userId: true, partner: { select: { type: true } } },
+      });
+      for (const m of members) {
+        if (m.partner?.type === 'ONG') ongMemberIds.add(m.userId);
+      }
+    }
     const badgeMap = new Map<
       string,
-      { userVerified: boolean; userTutorLevel: string; userTutorTitle: string }
+      { userVerified: boolean; userTutorLevel: string; userTutorTitle: string; userOngMember: boolean }
     >();
+    const fallbackTitle = 'Tutor Iniciante';
+    const fallbackLevel = 'BEGINNER';
     await Promise.all(
       userIds.map(async (uid) => {
-        const [userVerified, stats] = await Promise.all([
-          this.isUserVerified(uid),
-          this.tutorStats.getStats(uid),
-        ]);
-        badgeMap.set(uid, {
-          userVerified,
-          userTutorLevel: stats.level,
-          userTutorTitle: stats.title,
-        });
+        try {
+          const [userVerified, stats] = await Promise.all([
+            this.isUserVerified(uid),
+            this.tutorStats.getStats(uid),
+          ]);
+          badgeMap.set(uid, {
+            userVerified,
+            userTutorLevel: stats.level,
+            userTutorTitle: stats.title,
+            userOngMember: ongMemberIds.has(uid),
+          });
+        } catch (err) {
+          console.warn(`[VerificationService] listPending badges for user ${uid}:`, err);
+          badgeMap.set(uid, {
+            userVerified: false,
+            userTutorLevel: fallbackLevel,
+            userTutorTitle: fallbackTitle,
+            userOngMember: ongMemberIds.has(uid),
+          });
+        }
       }),
     );
     for (let i = 0; i < list.length; i++) {
@@ -206,6 +229,7 @@ export class VerificationService {
         dtos[i].userVerified = b.userVerified;
         dtos[i].userTutorLevel = b.userTutorLevel;
         dtos[i].userTutorTitle = b.userTutorTitle;
+        dtos[i].userOngMember = b.userOngMember;
       }
     }
     return dtos;
