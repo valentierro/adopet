@@ -203,6 +203,7 @@ export type PartnerMember = {
   userId: string;
   name: string;
   email: string;
+  role?: string | null;
   createdAt: string;
 };
 
@@ -210,16 +211,68 @@ export async function getMyPartnerMembers(): Promise<PartnerMember[]> {
   return api.get<PartnerMember[]>('/me/partner/members');
 }
 
+export type PartnerMemberRole =
+  | 'VOLUNTARIO'
+  | 'COORDENADOR'
+  | 'CUIDADOR'
+  | 'RECEPCIONISTA'
+  | 'VETERINARIO'
+  | 'ADMINISTRATIVO'
+  | 'OUTRO';
+
+export const PARTNER_MEMBER_ROLE_LABELS: Record<PartnerMemberRole, string> = {
+  VOLUNTARIO: 'Voluntário(a)',
+  COORDENADOR: 'Coordenador(a)',
+  CUIDADOR: 'Cuidador(a)',
+  RECEPCIONISTA: 'Recepcionista',
+  VETERINARIO: 'Veterinário(a)',
+  ADMINISTRATIVO: 'Administrativo',
+  OUTRO: 'Outro',
+};
+
 export type AddPartnerMemberBody = {
   email: string;
   name: string;
   phone?: string;
+  role?: PartnerMemberRole;
 };
 
 export async function addMyPartnerMember(body: AddPartnerMemberBody): Promise<PartnerMember> {
   return api.post<PartnerMember>('/me/partner/members', body);
 }
 
+export type UpdatePartnerMemberBody = {
+  role?: PartnerMemberRole | '';
+};
+
+export async function updateMyPartnerMember(memberUserId: string, body: UpdatePartnerMemberBody): Promise<PartnerMember> {
+  return api.put<PartnerMember>(`/me/partner/members/${memberUserId}`, body);
+}
+
 export async function removeMyPartnerMember(memberUserId: string): Promise<{ message: string }> {
   return api.delete<{ message: string }>(`/me/partner/members/${memberUserId}`);
+}
+
+export type PartnerMemberDetails = {
+  profile: {
+    id: string;
+    name: string;
+    avatarUrl?: string;
+    petsCount: number;
+    verified?: boolean;
+    city?: string;
+    bio?: string;
+    housingType?: string;
+    hasYard?: boolean;
+    hasOtherPets?: boolean;
+    hasChildren?: boolean;
+    timeAtHome?: string;
+    tutorStats?: import('@adopet/shared').TutorStats;
+    phone?: string;
+  };
+  pets: import('@adopet/shared').Pet[];
+};
+
+export async function getMyPartnerMemberDetails(memberUserId: string): Promise<PartnerMemberDetails> {
+  return api.get<PartnerMemberDetails>(`/me/partner/members/${memberUserId}/details`);
 }

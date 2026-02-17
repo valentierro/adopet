@@ -445,6 +445,43 @@ export class PartnersService {
     };
   }
 
+  /** Atualiza membro da ONG (ex.: função/role). */
+  async updateMemberByUserId(
+    adminUserId: string,
+    memberUserId: string,
+    dto: { role?: string | null },
+  ): Promise<PartnerMemberDto> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId: adminUserId },
+      select: { id: true, type: true },
+    });
+    this.ensureOngAdmin(partner);
+    const membership = await this.prisma.partnerMember.findUnique({
+      where: { partnerId_userId: { partnerId: partner.id, userId: memberUserId } },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+    if (!membership) throw new NotFoundException('Membro não encontrado.');
+    const roleValue =
+      dto.role === '' || dto.role === null || dto.role === undefined
+        ? null
+        : dto.role && PARTNER_MEMBER_ROLES.includes(dto.role as (typeof PARTNER_MEMBER_ROLES)[number])
+          ? dto.role
+          : membership.role;
+    const updated = await this.prisma.partnerMember.update({
+      where: { partnerId_userId: { partnerId: partner.id, userId: memberUserId } },
+      data: { role: roleValue },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    });
+    return {
+      id: updated.id,
+      userId: updated.userId,
+      name: updated.user.name,
+      email: updated.user.email,
+      role: updated.role,
+      createdAt: updated.createdAt.toISOString(),
+    };
+  }
+
   /** Remove membro da ONG (desvincula; não exclui a conta do usuário). */
   async removeMemberByUserId(adminUserId: string, memberUserId: string): Promise<{ message: string }> {
     const partner = await this.prisma.partner.findUnique({

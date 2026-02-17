@@ -15,6 +15,7 @@ import { UpdatePartnerCouponDto } from '../partners/dto/update-partner-coupon.dt
 import { CreatePartnerServiceDto } from '../partners/dto/create-partner-service.dto';
 import { UpdatePartnerServiceDto } from '../partners/dto/update-partner-service.dto';
 import { AddPartnerMemberDto } from '../partners/dto/add-partner-member.dto';
+import { UpdatePartnerMemberDto } from '../partners/dto/update-partner-member.dto';
 import { CreateCheckoutSessionDto } from './dto/checkout-session.dto';
 import { CreateBillingPortalSessionDto } from './dto/billing-portal.dto';
 import type { MeResponseDto } from './dto/me-response.dto';
@@ -178,6 +179,18 @@ export class MeController {
     @Body() dto: AddPartnerMemberDto,
   ): Promise<PartnerMemberDto> {
     return this.partnersService.addMemberByUserId(user.id, dto);
+  }
+
+  @Put('partner/members/:userId')
+  @ApiOperation({ summary: 'Atualizar membro da ONG (ex.: função) (apenas para parceiro type=ONG)' })
+  async updateMyPartnerMember(
+    @CurrentUser() user: { id: string },
+    @Param('userId') memberUserId: string,
+    @Body() dto: UpdatePartnerMemberDto,
+  ): Promise<PartnerMemberDto> {
+    return this.partnersService.updateMemberByUserId(user.id, memberUserId, {
+      role: dto.role === '' ? null : dto.role,
+    });
   }
 
   @Delete('partner/members/:userId')
