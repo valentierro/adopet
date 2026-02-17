@@ -1,6 +1,7 @@
 import { Controller, Post, Get, Body, Query, Res, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
 import { PartnerSignupDto } from './dto/partner-signup.dto';
@@ -17,7 +18,10 @@ import { CurrentUser } from './current-user.decorator';
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly config: ConfigService,
+  ) {}
 
   @Post('signup')
   @ApiOperation({ summary: 'Cadastrar novo usuário. Com REQUIRE_EMAIL_VERIFICATION=true, exige confirmação de e-mail antes do login.' })
@@ -114,7 +118,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Definir senha com token do e-mail (conta criada por aprovação de parceria ou convite membro ONG)' })
   async setPassword(@Body() dto: SetPasswordDto): Promise<{ message: string }> {
-    return this.authService.setPassword(dto.token, dto.newPassword);
+    return this.authService.setPassword(dto.token, dto.newPassword, dto.newPasswordConfirm);
   }
 
   @Get('set-password')
@@ -122,20 +126,59 @@ export class AuthController {
   async setPasswordPage(@Query('token') token: string | string[], @Res() res: Response): Promise<void> {
     const tokenStr = Array.isArray(token) ? (token[0] ?? '') : (typeof token === 'string' ? token : '');
     const tokenEscaped = tokenStr.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const apiUrl = this.config.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ?? '';
+    const formAction = apiUrl ? `${apiUrl}/v1/auth/set-password` : '/v1/auth/set-password';
+    const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? 'https://appadopet.com.br';
+    const logoUrl = (this.config.get<string>('LOGO_URL') || appUrl + '/logo.png').trim();
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Definir senha - Adopet</title></head>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Definir senha - Adopet</title>
+</head>
 <body style="margin:0;padding:0;background:#E5EDEA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;">
-  <div style="max-width:400px;width:100%;background:#fff;border:2px solid #0D9488;border-radius:16px;padding:32px 24px;margin:24px;">
-    <p style="font-size:22px;font-weight:700;color:#1C1917;margin:0 0 8px 0;">Adopet</p>
-    <p style="font-size:15px;color:#57534E;line-height:1.6;margin:0 0 20px 0;">Defina uma senha para acessar o app (mínimo 6 caracteres, com letra e número).</p>
-    <form method="POST" action="/v1/auth/set-password" style="text-align:left;">
+  <div style="max-width:440px;width:100%;background:#fff;border:2px solid #0D9488;border-radius:16px;padding:28px 24px;margin:24px;">
+    <div style="text-align:center;margin-bottom:24px;">
+      <img src="${logoUrl}" alt="Adopet" width="160" height="56" style="max-height:56px;width:auto;object-fit:contain;" onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />
+      <span style="font-size:28px;font-weight:700;color:#0D9488;display:none;">Adopet</span>
+    </div>
+    <p style="font-size:16px;font-weight:600;color:#1C1917;margin:0 0 12px 0;">Você é o administrador da ONG no Adopet</p>
+    <p style="font-size:14px;color:#57534E;line-height:1.65;margin:0 0 8px 0;">No portal do parceiro você pode cadastrar cupons, serviços e <strong>membros da equipe</strong>. Você é responsável pelos usuários vinculados à sua ONG — contamos com você para manter um ambiente controlado, seguro e respeitoso.</p>
+    <p style="font-size:14px;color:#57534E;line-height:1.6;margin:0 0 20px 0;">Defina uma senha abaixo (mínimo 6 caracteres, com letra e número). Use o mesmo e-mail que recebeu esta confirmação e esta senha para fazer login no app.</p>
+    <form method="POST" action="${formAction}" id="setPasswordForm" style="text-align:left;">
       <input type="hidden" name="token" value="${tokenEscaped}" />
       <label style="display:block;font-size:14px;color:#57534E;margin-bottom:4px;">Nova senha</label>
-      <input type="password" name="newPassword" required minlength="6" placeholder="Sua senha" style="width:100%;padding:12px;border:1px solid #ccc;border-radius:8px;font-size:16px;margin-bottom:16px;box-sizing:border-box;" />
-      <button type="submit" style="width:100%;padding:14px;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;border:0;border-radius:12px;font-size:16px;font-weight:600;">Definir senha</button>
+      <div style="position:relative;margin-bottom:12px;">
+        <input type="password" name="newPassword" id="newPassword" required minlength="6" placeholder="Mín. 6 caracteres, letra e número" style="width:100%;padding:12px 44px 12px 12px;border:1px solid #ccc;border-radius:8px;font-size:16px;box-sizing:border-box;" />
+        <button type="button" onclick="togglePw('newPassword','t1')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:#57534E;font-size:18px;" title="Mostrar senha" id="t1" aria-label="Mostrar senha">👁</button>
+      </div>
+      <label style="display:block;font-size:14px;color:#57534E;margin-bottom:4px;">Repetir a senha</label>
+      <div style="position:relative;margin-bottom:20px;">
+        <input type="password" name="newPasswordConfirm" id="newPasswordConfirm" required minlength="6" placeholder="Digite a mesma senha" style="width:100%;padding:12px 44px 12px 12px;border:1px solid #ccc;border-radius:8px;font-size:16px;box-sizing:border-box;" />
+        <button type="button" onclick="togglePw('newPasswordConfirm','t2')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:#57534E;font-size:18px;" title="Mostrar senha" id="t2" aria-label="Mostrar senha">👁</button>
+      </div>
+      <button type="submit" style="width:100%;padding:14px;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;border:0;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;">Definir senha</button>
     </form>
+    <div style="margin-top:20px;padding:12px;background:#F0FDFA;border-radius:8px;border:1px solid #99F6E4;">
+      <p style="font-size:13px;color:#0F766E;margin:0 0 6px 0;font-weight:600;">Como fazer login no app</p>
+      <p style="font-size:13px;color:#0F766E;line-height:1.5;margin:0;">Use o <strong>e-mail</strong> em que você recebeu a confirmação de parceria e a <strong>senha</strong> que você acabou de definir. Abra o app Adopet, toque em Entrar e informe esses dados.</p>
+    </div>
   </div>
+  <script>
+    function togglePw(id, btnId) {
+      var el = document.getElementById(id);
+      var btn = document.getElementById(btnId);
+      if (el.type === 'password') { el.type = 'text'; btn.textContent = '🙈'; btn.title = 'Ocultar senha'; btn.setAttribute('aria-label','Ocultar senha'); }
+      else { el.type = 'password'; btn.textContent = '👁'; btn.title = 'Mostrar senha'; btn.setAttribute('aria-label','Mostrar senha'); }
+    }
+    document.getElementById('setPasswordForm').addEventListener('submit', function(e) {
+      var p1 = document.getElementById('newPassword').value;
+      var p2 = document.getElementById('newPasswordConfirm').value;
+      if (!p2) { e.preventDefault(); alert('Repita a senha no segundo campo.'); return false; }
+      if (p1 !== p2) { e.preventDefault(); alert('As senhas não coincidem. Digite a mesma senha nos dois campos.'); return false; }
+    });
+  </script>
 </body>
 </html>`;
     (res as any).set('Content-Type', 'text/html').send(html);

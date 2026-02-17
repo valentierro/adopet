@@ -589,7 +589,9 @@ export default function AdminScreen() {
     mutationFn: (partnerId: string) => resendPartnerConfirmation(partnerId),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
-      setToastMessage(data?.message ?? 'E-mail reenviado.');
+      const msg = data?.message ?? 'E-mail de confirmação reenviado com sucesso.';
+      setToastMessage(msg);
+      Alert.alert('Sucesso', msg);
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível reenviar o e-mail.')),
   });
