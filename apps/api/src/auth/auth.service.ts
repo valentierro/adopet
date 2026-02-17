@@ -462,6 +462,34 @@ export class AuthService {
   }
 
   /**
+   * Retorna o contexto para renderizar a página GET set-password (admin ONG vs membro da equipe).
+   * Se o token for inválido, retorna null (página genérica). Se expirado, ainda decodifica para mostrar o texto correto.
+   */
+  async getSetPasswordPageContext(token: string): Promise<{ isPartnerAdmin: boolean; isPartnerMemberOnly: boolean } | null> {
+    const raw = typeof token === 'string' ? token.trim() : '';
+    if (!raw || raw.split('.').length !== 3) return null;
+    let payload: { sub?: string; type?: string } | null = null;
+    try {
+      payload = this.jwtService.verify(raw, {
+        clockTolerance: CONFIRM_RESET_CLOCK_TOLERANCE_SEC,
+      } as object) as { sub?: string; type?: string };
+    } catch (err: unknown) {
+      const name = err && typeof err === 'object' && 'name' in err ? (err as { name: string }).name : '';
+      if (name === 'TokenExpiredError') {
+        payload = this.jwtService.decode(raw) as { sub?: string; type?: string } | null;
+      }
+    }
+    if (!payload?.sub || payload.type !== 'set-password') return null;
+    const [partner, memberCount] = await Promise.all([
+      this.prisma.partner.findUnique({ where: { userId: payload.sub }, select: { id: true } }),
+      this.prisma.partnerMember.count({ where: { userId: payload.sub } }),
+    ]);
+    const isPartnerAdmin = !!partner;
+    const isPartnerMemberOnly = !isPartnerAdmin && memberCount > 0;
+    return { isPartnerAdmin, isPartnerMemberOnly };
+  }
+
+  /**
    * Define a senha usando o token enviado por e-mail (conta criada por aprovação de parceria ou convite como membro ONG).
    */
   async setPassword(token: string, newPassword: string, newPasswordConfirm?: string): Promise<{ message: string }> {

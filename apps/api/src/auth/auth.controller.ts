@@ -130,6 +130,19 @@ export class AuthController {
     const formAction = apiUrl ? `${apiUrl}/v1/auth/set-password` : '/v1/auth/set-password';
     const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? 'https://appadopet.com.br';
     const logoUrl = (this.config.get<string>('LOGO_URL') || appUrl + '/logo.png').trim();
+
+    const ctx = await this.authService.getSetPasswordPageContext(tokenStr);
+    const isMember = ctx?.isPartnerMemberOnly ?? false;
+    const pageTitle = isMember ? 'Você foi adicionado(a) à equipe da ONG' : (ctx?.isPartnerAdmin ? 'Você é o administrador da ONG no Adopet' : 'Definir senha');
+    const introParagraph = isMember
+      ? 'O administrador da ONG adicionou você como membro da equipe no Adopet. Defina uma senha abaixo para acessar o app e ajudar na gestão dos pets e adoções.'
+      : ctx?.isPartnerAdmin
+        ? 'No portal do parceiro você pode cadastrar cupons, serviços e <strong>membros da equipe</strong>. Você é responsável pelos usuários vinculados à sua ONG — contamos com você para manter um ambiente controlado, seguro e respeitoso.'
+        : 'Defina uma senha abaixo para acessar o app.';
+    const loginHint = isMember
+      ? 'Use o <strong>e-mail</strong> em que você recebeu o convite e a <strong>senha</strong> que você definir abaixo. Abra o app Adopet, toque em Entrar e informe esses dados.'
+      : 'Use o <strong>e-mail</strong> em que você recebeu a confirmação de parceria e a <strong>senha</strong> que você definir abaixo. Abra o app Adopet, toque em Entrar e informe esses dados.';
+
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -143,29 +156,40 @@ export class AuthController {
       <img src="${logoUrl}" alt="Adopet" width="160" height="56" style="max-height:56px;width:auto;object-fit:contain;" onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />
       <span style="font-size:28px;font-weight:700;color:#0D9488;display:none;">Adopet</span>
     </div>
-    <p style="font-size:16px;font-weight:600;color:#1C1917;margin:0 0 12px 0;">Você é o administrador da ONG no Adopet</p>
-    <p style="font-size:14px;color:#57534E;line-height:1.65;margin:0 0 8px 0;">No portal do parceiro você pode cadastrar cupons, serviços e <strong>membros da equipe</strong>. Você é responsável pelos usuários vinculados à sua ONG — contamos com você para manter um ambiente controlado, seguro e respeitoso.</p>
+    <p style="font-size:16px;font-weight:600;color:#1C1917;margin:0 0 12px 0;">${pageTitle}</p>
+    <p style="font-size:14px;color:#57534E;line-height:1.65;margin:0 0 8px 0;">${introParagraph}</p>
     <p style="font-size:14px;color:#57534E;line-height:1.6;margin:0 0 20px 0;">Defina uma senha abaixo (mínimo 6 caracteres, com letra e número). Use o mesmo e-mail que recebeu esta confirmação e esta senha para fazer login no app.</p>
-    <form method="POST" action="${formAction}" id="setPasswordForm" style="text-align:left;">
-      <input type="hidden" name="token" value="${tokenEscaped}" />
-      <label style="display:block;font-size:14px;color:#57534E;margin-bottom:4px;">Nova senha</label>
-      <div style="position:relative;margin-bottom:12px;">
-        <input type="password" name="newPassword" id="newPassword" required minlength="6" placeholder="Mín. 6 caracteres, letra e número" style="width:100%;padding:12px 44px 12px 12px;border:1px solid #ccc;border-radius:8px;font-size:16px;box-sizing:border-box;" />
-        <button type="button" onclick="togglePw('newPassword','t1')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:#57534E;font-size:18px;" title="Mostrar senha" id="t1" aria-label="Mostrar senha">👁</button>
+    <div id="formWrap">
+      <div id="errorBox" style="display:none;margin-bottom:16px;padding:12px;background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;color:#B91C1C;font-size:14px;"></div>
+      <form id="setPasswordForm" style="text-align:left;">
+        <input type="hidden" name="token" value="${tokenEscaped}" />
+        <label style="display:block;font-size:14px;color:#57534E;margin-bottom:4px;">Nova senha</label>
+        <div style="position:relative;margin-bottom:12px;">
+          <input type="password" name="newPassword" id="newPassword" required minlength="6" placeholder="Mín. 6 caracteres, letra e número" style="width:100%;padding:12px 44px 12px 12px;border:1px solid #ccc;border-radius:8px;font-size:16px;box-sizing:border-box;" />
+          <button type="button" onclick="togglePw('newPassword','t1')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:#57534E;font-size:18px;" title="Mostrar senha" id="t1" aria-label="Mostrar senha">👁</button>
+        </div>
+        <label style="display:block;font-size:14px;color:#57534E;margin-bottom:4px;">Repetir a senha</label>
+        <div style="position:relative;margin-bottom:20px;">
+          <input type="password" name="newPasswordConfirm" id="newPasswordConfirm" required minlength="6" placeholder="Digite a mesma senha" style="width:100%;padding:12px 44px 12px 12px;border:1px solid #ccc;border-radius:8px;font-size:16px;box-sizing:border-box;" />
+          <button type="button" onclick="togglePw('newPasswordConfirm','t2')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:#57534E;font-size:18px;" title="Mostrar senha" id="t2" aria-label="Mostrar senha">👁</button>
+        </div>
+        <button type="submit" id="submitBtn" style="width:100%;padding:14px;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;border:0;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;">Definir senha</button>
+      </form>
+      <div style="margin-top:20px;padding:12px;background:#F0FDFA;border-radius:8px;border:1px solid #99F6E4;">
+        <p style="font-size:13px;color:#0F766E;margin:0 0 6px 0;font-weight:600;">Como fazer login no app</p>
+        <p style="font-size:13px;color:#0F766E;line-height:1.5;margin:0;">${loginHint}</p>
       </div>
-      <label style="display:block;font-size:14px;color:#57534E;margin-bottom:4px;">Repetir a senha</label>
-      <div style="position:relative;margin-bottom:20px;">
-        <input type="password" name="newPasswordConfirm" id="newPasswordConfirm" required minlength="6" placeholder="Digite a mesma senha" style="width:100%;padding:12px 44px 12px 12px;border:1px solid #ccc;border-radius:8px;font-size:16px;box-sizing:border-box;" />
-        <button type="button" onclick="togglePw('newPasswordConfirm','t2')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:#57534E;font-size:18px;" title="Mostrar senha" id="t2" aria-label="Mostrar senha">👁</button>
+    </div>
+    <div id="successWrap" style="display:none;text-align:center;">
+      <div style="width:64px;height:64px;margin:0 auto 20px;background:#D1FAE5;border-radius:50%;display:flex;align-items:center;justify-content:center;">
+        <span style="font-size:36px;">✓</span>
       </div>
-      <button type="submit" style="width:100%;padding:14px;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;border:0;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;">Definir senha</button>
-    </form>
-    <div style="margin-top:20px;padding:12px;background:#F0FDFA;border-radius:8px;border:1px solid #99F6E4;">
-      <p style="font-size:13px;color:#0F766E;margin:0 0 6px 0;font-weight:600;">Como fazer login no app</p>
-      <p style="font-size:13px;color:#0F766E;line-height:1.5;margin:0;">Use o <strong>e-mail</strong> em que você recebeu a confirmação de parceria e a <strong>senha</strong> que você acabou de definir. Abra o app Adopet, toque em Entrar e informe esses dados.</p>
+      <p style="font-size:18px;font-weight:600;color:#0D9488;margin:0 0 12px 0;">Senha definida com sucesso!</p>
+      <p style="font-size:14px;color:#57534E;line-height:1.6;margin:0;">Faça login no app com o e-mail em que você recebeu a confirmação e a senha que acabou de definir.</p>
     </div>
   </div>
   <script>
+    var formAction = ${JSON.stringify(formAction)};
     function togglePw(id, btnId) {
       var el = document.getElementById(id);
       var btn = document.getElementById(btnId);
@@ -173,10 +197,38 @@ export class AuthController {
       else { el.type = 'password'; btn.textContent = '👁'; btn.title = 'Mostrar senha'; btn.setAttribute('aria-label','Mostrar senha'); }
     }
     document.getElementById('setPasswordForm').addEventListener('submit', function(e) {
+      e.preventDefault();
       var p1 = document.getElementById('newPassword').value;
       var p2 = document.getElementById('newPasswordConfirm').value;
-      if (!p2) { e.preventDefault(); alert('Repita a senha no segundo campo.'); return false; }
-      if (p1 !== p2) { e.preventDefault(); alert('As senhas não coincidem. Digite a mesma senha nos dois campos.'); return false; }
+      var errBox = document.getElementById('errorBox');
+      errBox.style.display = 'none';
+      errBox.textContent = '';
+      if (!p2) { errBox.textContent = 'Repita a senha no segundo campo.'; errBox.style.display = 'block'; return; }
+      if (p1 !== p2) { errBox.textContent = 'As senhas não coincidem. Digite a mesma senha nos dois campos.'; errBox.style.display = 'block'; return; }
+      var btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = 'Salvando...';
+      var form = document.getElementById('setPasswordForm');
+      var body = new URLSearchParams(new FormData(form));
+      fetch(formAction, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+        .then(function(o) {
+          if (o.ok) {
+            document.getElementById('formWrap').style.display = 'none';
+            document.getElementById('successWrap').style.display = 'block';
+          } else {
+            errBox.textContent = o.data && o.data.message ? o.data.message : 'Não foi possível definir a senha. Tente novamente.';
+            errBox.style.display = 'block';
+            btn.disabled = false;
+            btn.textContent = 'Definir senha';
+          }
+        })
+        .catch(function() {
+          errBox.textContent = 'Erro de conexão. Verifique sua internet e tente novamente.';
+          errBox.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = 'Definir senha';
+        });
     });
   </script>
 </body>
