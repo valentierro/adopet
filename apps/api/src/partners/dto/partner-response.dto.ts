@@ -47,6 +47,12 @@ export class PartnerAdminDto extends PartnerPublicDto {
   @ApiPropertyOptional()
   approvedAt?: string | null;
 
+  @ApiPropertyOptional({ description: 'Data do primeiro login do parceiro no app; parceria só "ativa" após isso' })
+  activatedAt?: string | null;
+
+  @ApiPropertyOptional({ description: 'true quando o parceiro tem conta (userId) e ainda não ativou (primeiro login); permite reenviar e-mail de definir senha' })
+  canResendConfirmation?: boolean;
+
   @ApiPropertyOptional({ description: 'Motivo da rejeição (quando não aprovado)' })
   rejectionReason?: string | null;
 

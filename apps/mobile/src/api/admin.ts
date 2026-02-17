@@ -8,6 +8,20 @@ export type VerificationPendingItem = {
   petId?: string;
   userName?: string;
   petName?: string;
+  /** [Admin listPending] */
+  userId?: string;
+  userAvatarUrl?: string;
+  userCity?: string;
+  userUsername?: string;
+  petSpecies?: string;
+  petAge?: number;
+  petSex?: string;
+  petVaccinated?: boolean;
+  petNeutered?: boolean;
+  petPhotoUrl?: string;
+  petOwnerName?: string;
+  evidenceUrls?: string[];
+  skipEvidenceReason?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -182,6 +196,11 @@ export type PartnerAdminItem = {
   email?: string | null;
   active: boolean;
   approvedAt?: string | null;
+  /** Data do primeiro login; parceria "ativa" só após isso */
+  activatedAt?: string | null;
+  /** true quando pode reenviar e-mail de definir senha (tem conta e ainda não acessou o app) */
+  canResendConfirmation?: boolean;
+  rejectionReason?: string | null;
   isPaidPartner?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -213,6 +232,8 @@ export type UpdatePartnerBody = {
   email?: string;
   active?: boolean;
   approve?: boolean;
+  reject?: boolean;
+  rejectionReason?: string;
   isPaidPartner?: boolean;
 };
 
@@ -229,6 +250,21 @@ export async function createAdminPartner(body: CreatePartnerBody): Promise<Partn
 /** [Admin] Atualizar ou aprovar parceiro */
 export async function updateAdminPartner(id: string, body: UpdatePartnerBody): Promise<PartnerAdminItem> {
   return api.patch<PartnerAdminItem>(`/admin/partners/${id}`, body);
+}
+
+/** [Admin] Aprovar vários parceiros de uma vez */
+export async function bulkApprovePartners(ids: string[]): Promise<{ updated: number }> {
+  return api.post<{ updated: number }>('/admin/partners/bulk-approve', { ids });
+}
+
+/** [Admin] Rejeitar vários parceiros de uma vez (motivo opcional) */
+export async function bulkRejectPartners(ids: string[], rejectionReason?: string): Promise<{ updated: number }> {
+  return api.post<{ updated: number }>('/admin/partners/bulk-reject', { ids, rejectionReason });
+}
+
+/** [Admin] Reenviar e-mail de definir senha para parceiro que ainda não acessou o app */
+export async function resendPartnerConfirmation(partnerId: string): Promise<{ message: string }> {
+  return api.post<{ message: string }>(`/admin/partners/${partnerId}/resend-confirmation`, {});
 }
 
 // --- Indicações de parceiros (usuários indicam ONGs/clínicas/lojas) ---
@@ -250,6 +286,45 @@ export type PartnerRecommendationItem = {
 /** [Admin] Listar indicações de parceiros */
 export async function getAdminPartnerRecommendations(): Promise<PartnerRecommendationItem[]> {
   return api.get<PartnerRecommendationItem[]>('/admin/partner-recommendations');
+}
+
+// --- Solicitações de parceria (formulário do app) ---
+
+export type PartnershipRequestItem = {
+  id: string;
+  tipo: string;
+  nome: string;
+  email: string;
+  instituicao: string;
+  telefone: string;
+  mensagem?: string | null;
+  cnpj?: string | null;
+  anoFundacao?: string | null;
+  cep?: string | null;
+  endereco?: string | null;
+  personType?: string | null;
+  documentoComercial?: string | null;
+  planoDesejado?: string | null;
+  status: string;
+  rejectionReason?: string | null;
+  processedAt?: string | null;
+  partnerId?: string | null;
+  createdAt: string;
+};
+
+/** [Admin] Listar solicitações de parceria enviadas pelo formulário do app */
+export async function getAdminPartnershipRequests(): Promise<PartnershipRequestItem[]> {
+  return api.get<PartnershipRequestItem[]>('/admin/partnership-requests');
+}
+
+/** [Admin] Aprovar solicitação (cria parceiro e vincula) */
+export async function approvePartnershipRequest(id: string): Promise<{ partnerId: string }> {
+  return api.post<{ partnerId: string }>(`/admin/partnership-requests/${id}/approve`, {});
+}
+
+/** [Admin] Rejeitar solicitação (motivo opcional) */
+export async function rejectPartnershipRequest(id: string, rejectionReason?: string): Promise<void> {
+  return api.post<void>(`/admin/partnership-requests/${id}/reject`, { rejectionReason });
 }
 
 // --- Feature flags ---

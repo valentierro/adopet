@@ -230,6 +230,11 @@ export class AuthService {
     if (!valid) {
       throw new UnauthorizedException('Email ou senha inválidos');
     }
+    // Marca parceria como ativa no primeiro login do parceiro (conta com userId no Partner)
+    await this.prisma.partner.updateMany({
+      where: { userId: user.id, activatedAt: null },
+      data: { activatedAt: new Date() },
+    });
     return this.issueTokens(user.id, user.email);
   }
 
@@ -440,9 +445,29 @@ export class AuthService {
   }
 
   /**
+   * Gera novo token de definir senha para um usuário existente (ex.: reenvio de e-mail pelo admin).
+   */
+  async generateSetPasswordToken(userId: string): Promise<string> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!user) {
+      throw new BadRequestException('Usuário não encontrado.');
+    }
+    return this.jwtService.sign(
+      { sub: user.id, type: 'set-password' },
+      { expiresIn: SET_PASSWORD_TOKEN_EXPIRES } as object,
+    );
+  }
+
+  /**
    * Define a senha usando o token enviado por e-mail (conta criada por aprovação de parceria ou convite como membro ONG).
    */
-  async setPassword(token: string, newPassword: string): Promise<{ message: string }> {
+  async setPassword(token: string, newPassword: string, newPasswordConfirm?: string): Promise<{ message: string }> {
+    if (newPasswordConfirm != null && newPasswordConfirm !== '' && newPassword !== newPasswordConfirm) {
+      throw new BadRequestException('As senhas não coincidem. Digite a mesma senha nos dois campos.');
+    }
     const raw = typeof token === 'string' ? token.trim() : '';
     if (!raw) {
       throw new BadRequestException('Token inválido. Use o link completo que veio no e-mail.');

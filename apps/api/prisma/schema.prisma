@@ -140,6 +140,7 @@ model Partner {
   galleryUrls          String?   // JSON array de URLs de fotos do estabelecimento
   active               Boolean   @default(true)
   approvedAt           DateTime?
+  activatedAt          DateTime? // primeiro login do parceiro no app (parceria só "ativa" após isso)
   rejectionReason      String?   // motivo da rejeição (admin)
   isPaidPartner        Boolean   @default(false)
   subscriptionStatus   String?   // active | canceled | past_due | trialing (Stripe)

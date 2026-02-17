@@ -447,6 +447,27 @@ export class PartnersService {
   async findAllAdmin(): Promise<PartnerAdminDto[]> {
     const list = await this.prisma.partner.findMany({
       orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        type: true,
+        name: true,
+        slug: true,
+        city: true,
+        description: true,
+        website: true,
+        logoUrl: true,
+        phone: true,
+        email: true,
+        address: true,
+        active: true,
+        approvedAt: true,
+        activatedAt: true,
+        rejectionReason: true,
+        isPaidPartner: true,
+        createdAt: true,
+        updatedAt: true,
+        userId: true,
+      },
     });
     return list.map((p) => this.toAdminDto(p));
   }
@@ -580,6 +601,44 @@ export class PartnersService {
     return { updated: result.count };
   }
 
+  /** [Admin] Reenvia e-mail de definir senha para parceiro que ainda não ativou (primeiro login). Apenas quando tem userId e activatedAt é null. */
+  async resendSetPasswordEmail(partnerId: string): Promise<{ message: string }> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { id: partnerId },
+      include: { user: { select: { id: true, email: true, name: true } } },
+    });
+    if (!partner) throw new NotFoundException('Parceiro não encontrado');
+    if (!partner.userId || !partner.user) {
+      throw new BadRequestException(
+        'Este parceiro não possui conta de acesso. Reenvio só para parceiros que receberam e-mail de definir senha (ex.: ONG aprovada por solicitação).',
+      );
+    }
+    if (partner.activatedAt) {
+      throw new BadRequestException('Parceiro já ativo (já acessou o app). Não é possível reenviar o e-mail.');
+    }
+    const setPasswordToken = await this.authService.generateSetPasswordToken(partner.user.id);
+    if (!this.emailService.isConfigured()) {
+      throw new BadRequestException('Envio de e-mail não configurado. Configure as variáveis de e-mail na API.');
+    }
+    const apiUrl = this.config.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ?? '';
+    const setPasswordLink = apiUrl ? `${apiUrl}/v1/auth/set-password?token=${encodeURIComponent(setPasswordToken)}` : '';
+    const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? 'https://appadopet.com.br';
+    const logoUrl = (this.config.get<string>('LOGO_URL') || appUrl + '/logo.png').trim();
+    const emailData = {
+      setPasswordLink,
+      title: 'Novo link para definir sua senha',
+      bodyHtml: `<p>Foi solicitado um novo link para definir a senha da sua conta de parceiro <strong>${partner.name}</strong>. Use o botão abaixo para definir ou redefinir sua senha e acessar o app.</p>`,
+      bodyText: `Novo link para definir a senha da sua conta de parceiro ${partner.name}. Acesse o link para definir ou redefinir sua senha e acessar o app.`,
+    };
+    await this.emailService.sendMail({
+      to: partner.user.email,
+      subject: 'Novo link para definir sua senha - Adopet',
+      text: getSetPasswordEmailText(emailData),
+      html: getSetPasswordEmailHtml(emailData, logoUrl),
+    });
+    return { message: 'E-mail de confirmação reenviado com sucesso.' };
+  }
+
   private toPublicDto(p: {
     id: string;
     type: string;
@@ -623,15 +682,19 @@ export class PartnersService {
     email: string | null;
     active: boolean;
     approvedAt: Date | null;
+    activatedAt: Date | null;
     rejectionReason: string | null;
     isPaidPartner: boolean;
     createdAt: Date;
     updatedAt: Date;
+    userId?: string | null;
   }): PartnerAdminDto {
     return {
       ...this.toPublicDto(p),
       active: p.active,
       approvedAt: p.approvedAt?.toISOString() ?? undefined,
+      activatedAt: p.activatedAt?.toISOString() ?? undefined,
+      canResendConfirmation: !!p.userId && !p.activatedAt,
       rejectionReason: p.rejectionReason ?? undefined,
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString(),

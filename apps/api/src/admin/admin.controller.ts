@@ -162,6 +162,12 @@ export class AdminController {
     return this.partnersService.update(id, dto);
   }
 
+  @Post('partners/:id/resend-confirmation')
+  @ApiOperation({ summary: '[Admin] Reenviar e-mail de definir senha para parceiro que ainda não acessou o app' })
+  async resendPartnerConfirmation(@Param('id') id: string): Promise<{ message: string }> {
+    return this.partnersService.resendSetPasswordEmail(id);
+  }
+
   @Get('feature-flags')
   @ApiOperation({ summary: '[Admin] Listar feature flags (habilitar/desabilitar funcionalidades)' })
   async getFeatureFlags(): Promise<{ key: string; enabled: boolean; description: string | null }[]> {

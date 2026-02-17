@@ -44,8 +44,14 @@ import {
   revokeVerification,
   getAdminPartners,
   getAdminPartnerRecommendations,
+  getAdminPartnershipRequests,
   createAdminPartner,
   updateAdminPartner,
+  bulkApprovePartners,
+  bulkRejectPartners,
+  resendPartnerConfirmation,
+  approvePartnershipRequest,
+  rejectPartnershipRequest,
   getFeatureFlags,
   updateFeatureFlag,
   type VerificationPendingItem,
@@ -57,6 +63,7 @@ import {
   type BugReportItem,
   type PartnerAdminItem,
   type PartnerRecommendationItem,
+  type PartnershipRequestItem,
   type CreatePartnerBody,
   type UpdatePartnerBody,
   type FeatureFlagItem,
@@ -176,6 +183,10 @@ export default function AdminScreen() {
     queryKey: ['admin', 'partner-recommendations'],
     queryFn: getAdminPartnerRecommendations,
   });
+  const { data: partnershipRequestsList = [], refetch: refetchPartnershipRequests, isRefetching: refetchingPartnershipRequests } = useQuery({
+    queryKey: ['admin', 'partnership-requests'],
+    queryFn: getAdminPartnershipRequests,
+  });
 
   const { data: featureFlagsList = [], refetch: refetchFeatureFlags, isRefetching: refetchingFeatureFlags } = useQuery({
     queryKey: ['admin', 'feature-flags'],
@@ -283,12 +294,28 @@ export default function AdminScreen() {
     isPaidPartner: false,
   });
   const [partnerLogoUploading, setPartnerLogoUploading] = useState<'create' | string | null>(null);
+  const [partnerTypeFilter, setPartnerTypeFilter] = useState<'ALL' | 'ONG' | 'CLINIC' | 'STORE'>('ONG');
+  const [selectedPartnerIds, setSelectedPartnerIds] = useState<string[]>([]);
+  const [rejectPartnerModal, setRejectPartnerModal] = useState<{ partner: PartnerAdminItem } | null>(null);
+  const [rejectPartnerReason, setRejectPartnerReason] = useState('');
+  const [bulkRejectReason, setBulkRejectReason] = useState('');
+  const [showBulkRejectModal, setShowBulkRejectModal] = useState(false);
+  const [rejectPartnershipRequestModal, setRejectPartnershipRequestModal] = useState<PartnershipRequestItem | null>(null);
+  const [rejectPartnershipRequestReason, setRejectPartnershipRequestReason] = useState('');
+  const [partnershipRequestStatusFilter, setPartnershipRequestStatusFilter] = useState<'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'>('PENDING');
+  const [partnerRecommendationTypeFilter, setPartnerRecommendationTypeFilter] = useState<'ALL' | 'ONG' | 'CLINIC' | 'STORE'>('ALL');
+  const [bugReportTypeFilter, setBugReportTypeFilter] = useState<'ALL' | 'BUG' | 'SUGGESTION'>('ALL');
+  const [reportStatusFilter, setReportStatusFilter] = useState<'ALL' | 'OPEN' | 'RESOLVED'>('OPEN');
+  const [verificationPendingTypeFilter, setVerificationPendingTypeFilter] = useState<'ALL' | 'USER_VERIFIED' | 'PET_VERIFIED'>('ALL');
+  const [verificationApprovedTypeFilter, setVerificationApprovedTypeFilter] = useState<'ALL' | 'USER_VERIFIED' | 'PET_VERIFIED'>('ALL');
+  const [pendingPetSpeciesFilter, setPendingPetSpeciesFilter] = useState<'ALL' | 'dog' | 'cat'>('ALL');
   const scrollRef = useRef<ScrollView>(null);
   const scrollContentRef = useRef<View>(null);
   const sectionY = useRef<Record<string, number>>({});
   const pendingByTutorRef = useRef<View>(null);
   const bugReportsRef = useRef<View>(null);
   const partnerRecommendationsRef = useRef<View>(null);
+  const partnershipRequestsRef = useRef<View>(null);
   const partnersRef = useRef<View>(null);
   const adoptionsRef = useRef<View>(null);
   const pendingPetsRef = useRef<View>(null);
@@ -486,6 +513,67 @@ export default function AdminScreen() {
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível aprovar.')),
   });
 
+  const rejectPartnerMutation = useMutation({
+    mutationFn: ({ id, rejectionReason }: { id: string; rejectionReason?: string }) =>
+      updateAdminPartner(id, { reject: true, rejectionReason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
+      queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
+      setToastMessage('Parceiro rejeitado.');
+      setRejectPartnerModal(null);
+      setRejectPartnerReason('');
+    },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível rejeitar.')),
+  });
+
+  const bulkApprovePartnersMutation = useMutation({
+    mutationFn: (ids: string[]) => bulkApprovePartners(ids),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
+      queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
+      setToastMessage(`${data.updated} parceiro(s) aprovado(s).`);
+      setSelectedPartnerIds([]);
+    },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível aprovar em massa.')),
+  });
+
+  const bulkRejectPartnersMutation = useMutation({
+    mutationFn: ({ ids, rejectionReason }: { ids: string[]; rejectionReason?: string }) =>
+      bulkRejectPartners(ids, rejectionReason),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
+      queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
+      setToastMessage(`${data.updated} parceiro(s) rejeitado(s).`);
+      setSelectedPartnerIds([]);
+      setShowBulkRejectModal(false);
+      setBulkRejectReason('');
+    },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível rejeitar em massa.')),
+  });
+
+  const approvePartnershipRequestMutation = useMutation({
+    mutationFn: (id: string) => approvePartnershipRequest(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partnership-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
+      queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
+      setToastMessage('Solicitação aprovada. Parceiro criado na lista.');
+    },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível aprovar.')),
+  });
+
+  const rejectPartnershipRequestMutation = useMutation({
+    mutationFn: ({ id, rejectionReason }: { id: string; rejectionReason?: string }) =>
+      rejectPartnershipRequest(id, rejectionReason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partnership-requests'] });
+      setToastMessage('Solicitação rejeitada.');
+      setRejectPartnershipRequestModal(null);
+      setRejectPartnershipRequestReason('');
+    },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível rejeitar.')),
+  });
+
   const updatePartnerMutation = useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdatePartnerBody }) => updateAdminPartner(id, body),
     onSuccess: () => {
@@ -495,6 +583,15 @@ export default function AdminScreen() {
       setEditingPartner(null);
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível salvar.')),
+  });
+
+  const resendPartnerMutation = useMutation({
+    mutationFn: (partnerId: string) => resendPartnerConfirmation(partnerId),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
+      setToastMessage(data?.message ?? 'E-mail reenviado.');
+    },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível reenviar o e-mail.')),
   });
 
   const updateFeatureFlagMutation = useMutation({
@@ -519,11 +616,12 @@ export default function AdminScreen() {
     refetchFeatureFlags();
     refetchPartnerRecommendations();
     refetchPartners();
+    refetchPartnershipRequests();
     setSelectedPetIds(new Set());
     setSelectedVerificationIds(new Set());
     setSelectedReportIds(new Set());
     setSelectedPendingAdoptionPetIds(new Set());
-  }, [refetchPets, refetchVerifications, refetchApproved, refetchReports, refetchStats, refetchAdoptions, refetchPetsAvailable, refetchPendingByTutor, refetchBugReports, refetchFeatureFlags, refetchPartnerRecommendations, refetchPartners]);
+  }, [refetchPets, refetchVerifications, refetchApproved, refetchReports, refetchStats, refetchAdoptions, refetchPetsAvailable, refetchPendingByTutor, refetchBugReports, refetchFeatureFlags, refetchPartnerRecommendations, refetchPartners, refetchPartnershipRequests]);
 
   useFocusEffect(
     useCallback(() => {
@@ -868,6 +966,14 @@ export default function AdminScreen() {
             colors={colors}
             onPress={() => scrollToSection('pendingByTutor')}
             icon={<Ionicons name="time-outline" size={22} color={colors.primary} />}
+          />
+          <SummaryCard
+            title="Solicitações de parceria"
+            count={partnershipRequestsList.filter((r: PartnershipRequestItem) => r.status === 'PENDING').length}
+            sub="formulário do app"
+            colors={colors}
+            onPress={() => scrollToSection('partnershipRequests')}
+            icon={<Ionicons name="mail-unread-outline" size={22} color={colors.primary} />}
           />
           <SummaryCard
             title="Parceiros"
@@ -1479,6 +1585,26 @@ export default function AdminScreen() {
         <View ref={pendingPetsRef} onLayout={(e: LayoutChangeEvent) => { sectionY.current.pendingPets = e.nativeEvent.layout.y; }} collapsable={false}>
       <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Anúncios pendentes ({pendingPets.length})</Text>
       <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>Novos pets só entram no feed após aprovação.</Text>
+      <View style={[styles.rowWrap, { marginBottom: spacing.sm, flexWrap: 'wrap', gap: spacing.xs }]}>
+        {(['ALL', 'dog', 'cat'] as const).map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[
+              styles.chip,
+              {
+                backgroundColor: pendingPetSpeciesFilter === tab ? colors.primary + '30' : colors.surface,
+                borderWidth: 1,
+                borderColor: pendingPetSpeciesFilter === tab ? colors.primary : colors.background,
+              },
+            ]}
+            onPress={() => setPendingPetSpeciesFilter(tab)}
+          >
+            <Text style={[styles.chipText, { color: pendingPetSpeciesFilter === tab ? colors.primary : colors.textSecondary }]}>
+              {tab === 'ALL' ? 'Todos' : tab === 'dog' ? 'Cachorro' : 'Gato'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
       {pendingPets.length > 0 && selectedPetIds.size > 0 && (
         <View style={styles.batchBar}>
           <Text style={[styles.batchLabel, { color: colors.textSecondary }]}>{selectedPetIds.size} selecionado(s)</Text>
@@ -1498,12 +1624,18 @@ export default function AdminScreen() {
         <View style={styles.sectionLoading}>
           <LoadingLogo size={100} />
         </View>
-      ) : pendingPets.length === 0 ? (
-        <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhum anúncio pendente.</Text>
-        </View>
-      ) : (
-        pendingPets.map((pet) => (
+      ) : (() => {
+        const filteredPendingPets = pendingPetSpeciesFilter === 'ALL' ? pendingPets : pendingPets.filter((pet) => pet.species === pendingPetSpeciesFilter);
+        if (filteredPendingPets.length === 0) {
+          return (
+            <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                {pendingPets.length === 0 ? 'Nenhum anúncio pendente.' : pendingPetSpeciesFilter === 'dog' ? 'Nenhum cachorro pendente.' : 'Nenhum gato pendente.'}
+              </Text>
+            </View>
+          );
+        }
+        return filteredPendingPets.map((pet) => (
           <View key={pet.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
             <View style={styles.petRowWrap}>
               {pendingPets.length > 0 && (
@@ -1558,13 +1690,33 @@ export default function AdminScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        ))
-      )}
+        ));
+      })()}
         </View>
 
       {/* Verificações pendentes */}
         <View ref={verificationsRef} onLayout={(e: LayoutChangeEvent) => { sectionY.current.verifications = e.nativeEvent.layout.y; }} collapsable={false}>
       <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.xl }]}>Verificações pendentes ({pending.length})</Text>
+      <View style={[styles.rowWrap, { marginBottom: spacing.sm, flexWrap: 'wrap', gap: spacing.xs }]}>
+        {(['ALL', 'USER_VERIFIED', 'PET_VERIFIED'] as const).map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[
+              styles.chip,
+              {
+                backgroundColor: verificationPendingTypeFilter === tab ? colors.primary + '30' : colors.surface,
+                borderWidth: 1,
+                borderColor: verificationPendingTypeFilter === tab ? colors.primary : colors.background,
+              },
+            ]}
+            onPress={() => setVerificationPendingTypeFilter(tab)}
+          >
+            <Text style={[styles.chipText, { color: verificationPendingTypeFilter === tab ? colors.primary : colors.textSecondary }]}>
+              {tab === 'ALL' ? 'Todas' : tab === 'USER_VERIFIED' ? 'Usuário' : 'Pet'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
       {pending.length > 0 && selectedVerificationIds.size > 0 && (
         <View style={styles.batchBar}>
           <Text style={[styles.batchLabel, { color: colors.textSecondary }]}>{selectedVerificationIds.size} selecionada(s)</Text>
@@ -1584,12 +1736,18 @@ export default function AdminScreen() {
         <View style={styles.sectionLoading}>
           <LoadingLogo size={100} />
         </View>
-      ) : pending.length === 0 ? (
-        <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhuma solicitação pendente.</Text>
-        </View>
-      ) : (
-        pending.map((item) => (
+      ) : (() => {
+        const filteredPending = verificationPendingTypeFilter === 'ALL' ? pending : pending.filter((item) => item.type === verificationPendingTypeFilter);
+        if (filteredPending.length === 0) {
+          return (
+            <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                {pending.length === 0 ? 'Nenhuma solicitação pendente.' : verificationPendingTypeFilter === 'USER_VERIFIED' ? 'Nenhuma verificação de usuário pendente.' : 'Nenhuma verificação de pet pendente.'}
+              </Text>
+            </View>
+          );
+        }
+        return filteredPending.map((item) => (
           <View key={item.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
             <View style={styles.cardRowWrap}>
               <TouchableOpacity
@@ -1598,18 +1756,68 @@ export default function AdminScreen() {
               >
                 {selectedVerificationIds.has(item.id) && <Ionicons name="checkmark" size={14} color="#fff" />}
               </TouchableOpacity>
-              <View style={styles.cardRow}>
-                <Text style={[styles.cardType, { color: colors.textPrimary }]}>{VERIFICATION_TYPE_LABEL[item.type] ?? item.type}</Text>
-                {item.petId ? (
-                  <TouchableOpacity onPress={() => router.push(`/pet/${item.petId!}`)} style={styles.linkBtn}>
-                    <Ionicons name="image-outline" size={12} color={colors.primary} />
-                    <Text style={[styles.linkText, { color: colors.primary, fontSize: 12 }]}>Ver pet</Text>
-                  </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <View style={styles.cardRow}>
+                  <Text style={[styles.cardType, { color: colors.textPrimary }]}>{VERIFICATION_TYPE_LABEL[item.type] ?? item.type}</Text>
+                  <Text style={[styles.cardDate, { color: colors.textSecondary, marginLeft: 8 }]}>{new Date(item.createdAt).toLocaleDateString('pt-BR')}</Text>
+                </View>
+                {item.type === 'USER_VERIFIED' ? (
+                  <View style={[styles.cardRow, { alignItems: 'center', marginTop: 6 }]}>
+                    {item.userAvatarUrl ? (
+                      <ExpoImage source={{ uri: item.userAvatarUrl }} style={{ width: 40, height: 40, borderRadius: 20, marginRight: 10 }} />
+                    ) : (
+                      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary + '30', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                        <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 16 }}>{(item.userName ?? '?').charAt(0).toUpperCase()}</Text>
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.cardDetail, { color: colors.textPrimary, fontWeight: '600' }]} numberOfLines={1}>{item.userName ?? '—'}</Text>
+                      {item.userCity ? <Text style={[styles.cardDetail, { color: colors.textSecondary, fontSize: 12 }]} numberOfLines={1}>{item.userCity}</Text> : null}
+                      {item.userUsername ? <Text style={[styles.cardDetail, { color: colors.textSecondary, fontSize: 12 }]} numberOfLines={1}>@{item.userUsername}</Text> : null}
+                    </View>
+                  </View>
+                ) : (
+                  <View style={[styles.cardRow, { alignItems: 'center', marginTop: 6 }]}>
+                    {item.petPhotoUrl ? (
+                      <ExpoImage source={{ uri: item.petPhotoUrl }} style={{ width: 48, height: 48, borderRadius: 8, marginRight: 10 }} />
+                    ) : (
+                      <View style={{ width: 48, height: 48, borderRadius: 8, backgroundColor: colors.primary + '20', alignItems: 'center', justifyContent: 'center', marginRight: 10 }}>
+                        <Text style={{ fontSize: 24 }}>🐾</Text>
+                      </View>
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.cardDetail, { color: colors.textPrimary, fontWeight: '600' }]} numberOfLines={1}>{item.petName ?? '—'}</Text>
+                      {item.petSpecies ? <Text style={[styles.cardDetail, { color: colors.textSecondary, fontSize: 12 }]}>{item.petSpecies === 'dog' ? 'Cachorro' : 'Gato'}{item.petAge != null ? ` • ${item.petAge} ano(s)` : ''}</Text> : null}
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 2 }}>
+                        {item.petVaccinated === true && <Text style={[styles.cardDetail, { color: colors.textSecondary, fontSize: 11 }]}>Vacinado</Text>}
+                        {item.petVaccinated === false && <Text style={[styles.cardDetail, { color: colors.textSecondary, fontSize: 11 }]}>Não vacinado</Text>}
+                        {item.petNeutered === true && <Text style={[styles.cardDetail, { color: colors.textSecondary, fontSize: 11 }]}>Castrado</Text>}
+                        {item.petNeutered === false && <Text style={[styles.cardDetail, { color: colors.textSecondary, fontSize: 11 }]}>Não castrado</Text>}
+                      </View>
+                      {item.petOwnerName ? <Text style={[styles.cardDetail, { color: colors.textSecondary, fontSize: 12, marginTop: 2 }]}>Tutor: {item.petOwnerName}</Text> : null}
+                    </View>
+                    {item.petId ? (
+                      <TouchableOpacity onPress={() => router.push(`/pet/${item.petId!}`)} style={styles.linkBtn}>
+                        <Ionicons name="open-outline" size={14} color={colors.primary} />
+                        <Text style={[styles.linkText, { color: colors.primary, fontSize: 12 }]}>Ver pet</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                )}
+                {(item.evidenceUrls?.length ?? 0) > 0 ? (
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
+                    {item.evidenceUrls!.slice(0, 3).map((url, i) => (
+                      <TouchableOpacity key={i} onPress={() => {}}>
+                        <ExpoImage source={{ uri: url }} style={{ width: 44, height: 44, borderRadius: 6 }} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : item.skipEvidenceReason ? (
+                  <Text style={[styles.cardDetail, { color: colors.textSecondary, fontSize: 11, fontStyle: 'italic', marginTop: 6 }]} numberOfLines={2}>Sem fotos: {item.skipEvidenceReason}</Text>
                 ) : null}
               </View>
             </View>
-            <Text style={[styles.cardDate, { color: colors.textSecondary }]}>{new Date(item.createdAt).toLocaleDateString('pt-BR')}</Text>
-            <View style={styles.cardActions}>
+            <View style={[styles.cardActions, { marginTop: 10 }]}>
               <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.primary }]} onPress={() => handleResolveVerification(item, 'APPROVED')} disabled={resolveVerificationMutation.isPending}>
                 {resolveVerificationMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="checkmark-circle" size={18} color="#fff" />}
                 <Text style={styles.actionBtnText}>{resolveVerificationMutation.isPending ? 'Aprovando...' : 'Aprovar'}</Text>
@@ -1620,19 +1828,45 @@ export default function AdminScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        ))
-      )}
+        ));
+      })()}
         </View>
 
       {/* Verificações aprovadas (revogar) */}
       <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.xl }]}>Verificações aprovadas ({approvedVerifications.length})</Text>
       <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>Revogar remove o selo de verificado.</Text>
-      {approvedVerifications.length === 0 ? (
-        <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhuma verificação aprovada.</Text>
-        </View>
-      ) : (
-        approvedVerifications.map((item) => (
+      <View style={[styles.rowWrap, { marginBottom: spacing.sm, flexWrap: 'wrap', gap: spacing.xs }]}>
+        {(['ALL', 'USER_VERIFIED', 'PET_VERIFIED'] as const).map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[
+              styles.chip,
+              {
+                backgroundColor: verificationApprovedTypeFilter === tab ? colors.primary + '30' : colors.surface,
+                borderWidth: 1,
+                borderColor: verificationApprovedTypeFilter === tab ? colors.primary : colors.background,
+              },
+            ]}
+            onPress={() => setVerificationApprovedTypeFilter(tab)}
+          >
+            <Text style={[styles.chipText, { color: verificationApprovedTypeFilter === tab ? colors.primary : colors.textSecondary }]}>
+              {tab === 'ALL' ? 'Todas' : tab === 'USER_VERIFIED' ? 'Usuário' : 'Pet'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {(() => {
+        const filteredApproved = verificationApprovedTypeFilter === 'ALL' ? approvedVerifications : approvedVerifications.filter((item) => item.type === verificationApprovedTypeFilter);
+        if (filteredApproved.length === 0) {
+          return (
+            <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                {approvedVerifications.length === 0 ? 'Nenhuma verificação aprovada.' : verificationApprovedTypeFilter === 'USER_VERIFIED' ? 'Nenhuma verificação de usuário aprovada.' : 'Nenhuma verificação de pet aprovada.'}
+              </Text>
+            </View>
+          );
+        }
+        return filteredApproved.map((item) => (
           <View key={item.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
             <Text style={[styles.cardType, { color: colors.textPrimary }]}>{VERIFICATION_TYPE_LABEL[item.type] ?? item.type}</Text>
             {item.type === 'USER_VERIFIED' && item.userName ? (
@@ -1656,13 +1890,33 @@ export default function AdminScreen() {
               <Text style={[styles.actionBtnTextRevoke, { color: colors.error || '#DC2626' }]}>{revokeMutation.isPending ? 'Revogando...' : 'Revogar'}</Text>
             </TouchableOpacity>
           </View>
-        ))
-      )}
+        ));
+      })()}
 
       {/* Denúncias */}
       <View ref={reportsRef} onLayout={(e: LayoutChangeEvent) => { sectionY.current.reports = e.nativeEvent.layout.y; }} collapsable={false}>
       <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.xl }]}>Denúncias ({reports.length})</Text>
       <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>{unresolvedReports.length} não resolvidas.</Text>
+      <View style={[styles.rowWrap, { marginBottom: spacing.sm, flexWrap: 'wrap', gap: spacing.xs }]}>
+        {(['OPEN', 'RESOLVED', 'ALL'] as const).map((tab) => (
+          <TouchableOpacity
+            key={tab}
+            style={[
+              styles.chip,
+              {
+                backgroundColor: reportStatusFilter === tab ? colors.primary + '30' : colors.surface,
+                borderWidth: 1,
+                borderColor: reportStatusFilter === tab ? colors.primary : colors.background,
+              },
+            ]}
+            onPress={() => setReportStatusFilter(tab)}
+          >
+            <Text style={[styles.chipText, { color: reportStatusFilter === tab ? colors.primary : colors.textSecondary }]}>
+              {tab === 'OPEN' ? 'Abertas' : tab === 'RESOLVED' ? 'Resolvidas' : 'Todas'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
       {unresolvedReports.length > 0 && selectedReportIds.size > 0 && (
         <View style={styles.batchBar}>
           <Text style={[styles.batchLabel, { color: colors.textSecondary }]}>{selectedReportIds.size} selecionada(s)</Text>
@@ -1676,12 +1930,18 @@ export default function AdminScreen() {
         <View style={styles.sectionLoading}>
           <LoadingLogo size={100} />
         </View>
-      ) : reports.length === 0 ? (
-        <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhuma denúncia.</Text>
-        </View>
-      ) : (
-        reports.map((r) => (
+      ) : (() => {
+        const filteredReports = reportStatusFilter === 'ALL' ? reports : reportStatusFilter === 'OPEN' ? reports.filter((r) => !r.resolvedAt) : reports.filter((r) => !!r.resolvedAt);
+        if (filteredReports.length === 0) {
+          return (
+            <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                {reports.length === 0 ? 'Nenhuma denúncia.' : reportStatusFilter === 'OPEN' ? 'Nenhuma denúncia aberta.' : reportStatusFilter === 'RESOLVED' ? 'Nenhuma denúncia resolvida.' : 'Nenhuma denúncia.'}
+              </Text>
+            </View>
+          );
+        }
+        return filteredReports.map((r) => (
           <View key={r.id} style={[styles.reportCard, { backgroundColor: colors.surface, borderColor: colors.background }]}>
             <View style={styles.reportRowWrap}>
               {!r.resolvedAt && (
@@ -1730,94 +1990,270 @@ export default function AdminScreen() {
               </View>
             </View>
           </View>
-        ))
-      )}
+        ));
+      })()}
         </View>
+
+      {/* Solicitações de parceria (formulário do app) */}
+      <View ref={partnershipRequestsRef} onLayout={(e: LayoutChangeEvent) => { sectionY.current.partnershipRequests = e.nativeEvent.layout.y; }} collapsable={false}>
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.xl }]}>Solicitações de parceria ({partnershipRequestsList.length})</Text>
+        <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
+          Enviadas pelo formulário “Solicitar parceria” (página inicial / seja parceiro). Aprovar cria um parceiro na lista; rejeitar registra o motivo.
+        </Text>
+        <View style={[styles.rowWrap, { marginBottom: spacing.sm, flexWrap: 'wrap', gap: spacing.xs }]}>
+          {(['PENDING', 'APPROVED', 'REJECTED', 'ALL'] as const).map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              style={[
+                styles.chip,
+                {
+                  backgroundColor: partnershipRequestStatusFilter === tab ? colors.primary + '30' : colors.surface,
+                  borderWidth: 1,
+                  borderColor: partnershipRequestStatusFilter === tab ? colors.primary : colors.background,
+                },
+              ]}
+              onPress={() => setPartnershipRequestStatusFilter(tab)}
+            >
+              <Text style={[styles.chipText, { color: partnershipRequestStatusFilter === tab ? colors.primary : colors.textSecondary }]}>
+                {tab === 'PENDING' ? 'Pendentes' : tab === 'APPROVED' ? 'Aprovadas' : tab === 'REJECTED' ? 'Rejeitadas' : 'Todas'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {(() => {
+          const filteredPR = partnershipRequestStatusFilter === 'ALL'
+            ? partnershipRequestsList
+            : partnershipRequestsList.filter((r: PartnershipRequestItem) => r.status === partnershipRequestStatusFilter);
+          if (filteredPR.length === 0) {
+            return (
+              <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                  {partnershipRequestsList.length === 0 ? 'Nenhuma solicitação no momento.' : `Nenhuma solicitação ${partnershipRequestStatusFilter === 'PENDING' ? 'pendente' : partnershipRequestStatusFilter === 'APPROVED' ? 'aprovada' : partnershipRequestStatusFilter === 'REJECTED' ? 'rejeitada' : 'nesse filtro'}.`}
+                </Text>
+              </View>
+            );
+          }
+          return filteredPR.map((r: PartnershipRequestItem) => (
+            <View key={r.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
+              <Text style={[styles.adoptionPetName, { color: colors.textPrimary }]}>{r.instituicao}</Text>
+              <View style={[styles.rowWrap, { marginTop: spacing.xs }]}>
+                <View style={[styles.chip, { backgroundColor: (r.tipo === 'ong' ? colors.primary : colors.accent || '#f59e0b') + '25' }]}>
+                  <Text style={[styles.chipText, { color: r.tipo === 'ong' ? colors.primary : colors.accent || '#f59e0b' }]}>
+                    {r.tipo === 'ong' ? 'ONG' : 'Comercial'}
+                  </Text>
+                </View>
+                {r.status === 'PENDING' && (
+                  <View style={[styles.chip, { backgroundColor: (colors.accent || '#f59e0b') + '25' }]}>
+                    <Text style={[styles.chipText, { color: colors.accent || '#f59e0b' }]}>Pendente</Text>
+                  </View>
+                )}
+                {r.status === 'APPROVED' && (
+                  <View style={[styles.chip, { backgroundColor: colors.primary + '25' }]}>
+                    <Text style={[styles.chipText, { color: colors.primary }]}>Aprovado</Text>
+                  </View>
+                )}
+                {r.status === 'REJECTED' && (
+                  <View style={[styles.chip, { backgroundColor: (colors.error || '#dc2626') + '25' }]}>
+                    <Text style={[styles.chipText, { color: colors.error || '#dc2626' }]}>Rejeitado</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
+                {r.nome} • {r.email} • {r.telefone}
+              </Text>
+              {r.mensagem ? (
+                <Text style={[styles.bugReportComment, { color: colors.textSecondary }]} numberOfLines={2}>“{r.mensagem}”</Text>
+              ) : null}
+              <Text style={[styles.cardDate, { color: colors.textSecondary }]}>
+                {new Date(r.createdAt).toLocaleString('pt-BR')}
+              </Text>
+              {r.rejectionReason && r.status === 'REJECTED' && (
+                <Text style={[styles.cardMeta, { color: colors.error || '#dc2626', marginTop: spacing.xs }]}>Motivo: {r.rejectionReason}</Text>
+              )}
+              {r.status === 'PENDING' && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm }}>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: colors.primary, alignSelf: 'flex-start' }]}
+                    onPress={() => approvePartnershipRequestMutation.mutate(r.id)}
+                    disabled={approvePartnershipRequestMutation.isPending}
+                  >
+                    {approvePartnershipRequestMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="checkmark-circle" size={18} color="#fff" />}
+                    <Text style={styles.actionBtnText}>Aprovar (cria parceiro)</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: colors.error || '#dc2626', alignSelf: 'flex-start' }]}
+                    onPress={() => { setRejectPartnershipRequestModal(r); setRejectPartnershipRequestReason(''); }}
+                    disabled={rejectPartnershipRequestMutation.isPending}
+                  >
+                    <Ionicons name="close-circle" size={18} color="#fff" />
+                    <Text style={styles.actionBtnText}>Rejeitar</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          ));
+        })()}
+      </View>
 
       {/* Parceiros (ONG, clínicas, lojas) */}
       <View ref={partnersRef} onLayout={(e: LayoutChangeEvent) => { sectionY.current.partners = e.nativeEvent.layout.y; }} collapsable={false}>
         <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.xl }]}>Parceiros ({partnersList.length})</Text>
         <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
-          ONGs, clínicas e lojas. Aprove para aparecer na tela Parceiros e na seleção ao criar/editar pet.
+          ONGs, clínicas e lojas. Aprove ou rejeite (com motivo) para aparecer ou não na tela Parceiros. Ações em massa abaixo.
         </Text>
+        <View style={[styles.rowWrap, { marginBottom: spacing.sm, flexWrap: 'wrap', gap: spacing.xs }]}>
+          {(['ALL', 'ONG', 'CLINIC', 'STORE'] as const).map((t) => (
+            <TouchableOpacity
+              key={t}
+              style={[
+                styles.chip,
+                {
+                  backgroundColor: partnerTypeFilter === t ? colors.primary + '30' : colors.surface,
+                  borderWidth: 1,
+                  borderColor: partnerTypeFilter === t ? colors.primary : colors.background,
+                },
+              ]}
+              onPress={() => { setPartnerTypeFilter(t); setSelectedPartnerIds([]); }}
+            >
+              <Text style={[styles.chipText, { color: partnerTypeFilter === t ? colors.primary : colors.textSecondary }]}>
+                {t === 'ALL' ? 'Todos' : t === 'ONG' ? 'ONG' : t === 'CLINIC' ? 'Clínica' : 'Loja'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
         <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: colors.primary, marginBottom: spacing.md }]}
+          style={[styles.actionBtn, { backgroundColor: colors.primary, marginBottom: spacing.sm }]}
           onPress={() => {
-                    setCreatePartnerForm({ type: 'ONG', name: '', city: '', description: '', website: '', email: '', phone: '', logoUrl: '', active: true, approve: false, isPaidPartner: false });
+            setCreatePartnerForm({ type: 'ONG', name: '', city: '', description: '', website: '', email: '', phone: '', logoUrl: '', active: true, approve: false, isPaidPartner: false });
             setShowCreatePartnerModal(true);
           }}
         >
           <Ionicons name="add" size={18} color="#fff" />
           <Text style={styles.actionBtnText}>Novo parceiro</Text>
         </TouchableOpacity>
-        {partnersList.length === 0 ? (
-          <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhum parceiro cadastrado.</Text>
+        {selectedPartnerIds.length > 0 && (
+          <View style={[styles.rowWrap, { marginBottom: spacing.md, gap: spacing.sm, flexWrap: 'wrap' }]}>
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: colors.primary }]}
+              onPress={() => bulkApprovePartnersMutation.mutate(selectedPartnerIds)}
+              disabled={bulkApprovePartnersMutation.isPending}
+            >
+              {bulkApprovePartnersMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="checkmark-done" size={18} color="#fff" />}
+              <Text style={styles.actionBtnText}>Aprovar selecionados ({selectedPartnerIds.length})</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: (colors.error || '#dc2626') }]}
+              onPress={() => setShowBulkRejectModal(true)}
+              disabled={bulkRejectPartnersMutation.isPending}
+            >
+              <Ionicons name="close-circle" size={18} color="#fff" />
+              <Text style={styles.actionBtnText}>Rejeitar selecionados ({selectedPartnerIds.length})</Text>
+            </TouchableOpacity>
           </View>
-        ) : (
-          partnersList.map((p: PartnerAdminItem) => (
-            <View key={p.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
-              <View style={styles.cardRowWrap}>
-                {p.logoUrl ? (
-                  <ExpoImage source={{ uri: p.logoUrl }} style={styles.partnerCardLogo} contentFit="contain" />
-                ) : null}
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={[styles.adoptionPetName, { color: colors.textPrimary }]}>{p.name}</Text>
-                  <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
-                    {p.type} {p.city ? `• ${p.city}` : ''}
-                  </Text>
-                  {p.description ? (
-                    <Text style={[styles.cardMeta, { color: colors.textSecondary }]} numberOfLines={2}>{p.description}</Text>
-                  ) : null}
-                  <Text style={[styles.cardDate, { color: colors.textSecondary }]}>
-                    {new Date(p.createdAt).toLocaleString('pt-BR')}
-                  </Text>
-                  {p.isPaidPartner ? (
-                    <View style={[styles.resolvedBadge, { backgroundColor: (colors.accent || '#f59e0b') + '25', alignSelf: 'flex-start', marginTop: spacing.xs, marginRight: spacing.xs }]}>
-                      <Ionicons name="star" size={14} color={colors.accent || '#f59e0b'} />
-                      <Text style={[styles.resolvedText, { color: colors.accent || '#f59e0b' }]}>Pago</Text>
-                    </View>
-                  ) : null}
-                  {p.approvedAt ? (
-                    <View style={[styles.resolvedBadge, { backgroundColor: colors.primary + '20', alignSelf: 'flex-start', marginTop: spacing.xs }]}>
-                      <Ionicons name="checkmark-done" size={14} color={colors.primary} />
-                      <Text style={[styles.resolvedText, { color: colors.primary }]}>Aprovado</Text>
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      style={[styles.actionBtn, { backgroundColor: colors.primary, marginTop: spacing.sm, alignSelf: 'flex-start' }]}
-                      onPress={() => approvePartnerMutation.mutate(p.id)}
-                      disabled={approvePartnerMutation.isPending}
-                    >
-                      {approvePartnerMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="checkmark-circle" size={18} color="#fff" />}
-                      <Text style={styles.actionBtnText}>Aprovar</Text>
-                    </TouchableOpacity>
-                  )}
+        )}
+        {(() => {
+          const filtered = partnerTypeFilter === 'ALL' ? partnersList : partnersList.filter((p: PartnerAdminItem) => p.type === partnerTypeFilter);
+          if (filtered.length === 0) {
+            return (
+              <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                  {partnersList.length === 0 ? 'Nenhum parceiro cadastrado.' : `Nenhum parceiro do tipo ${partnerTypeFilter === 'ONG' ? 'ONG' : partnerTypeFilter === 'CLINIC' ? 'Clínica' : partnerTypeFilter === 'STORE' ? 'Loja' : 'este'}.`}
+                </Text>
+              </View>
+            );
+          }
+          return filtered.map((p: PartnerAdminItem) => {
+            const isSelected = selectedPartnerIds.includes(p.id);
+            return (
+              <View key={p.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
+                <View style={styles.cardRowWrap}>
                   <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: colors.background, marginTop: spacing.sm, alignSelf: 'flex-start' }]}
-                    onPress={() => {
-                      setEditingPartner(p);
-                      setEditPartnerForm({
-                        name: p.name,
-                        city: p.city ?? '',
-                        description: p.description ?? '',
-                        website: p.website ?? '',
-                        email: p.email ?? '',
-                        phone: p.phone ?? '',
-                        logoUrl: p.logoUrl ?? '',
-                        active: p.active,
-                        isPaidPartner: !!p.isPaidPartner,
-                      });
-                    }}
+                    onPress={() => setSelectedPartnerIds((prev) => (isSelected ? prev.filter((id) => id !== p.id) : [...prev, p.id]))}
+                    style={{ paddingRight: spacing.sm, paddingVertical: 4 }}
                   >
-                    <Ionicons name="pencil" size={18} color={colors.textPrimary} />
-                    <Text style={[styles.actionBtnText, { color: colors.textPrimary }]}>Editar</Text>
+                    <View style={[styles.checkbox, isSelected && { backgroundColor: colors.primary }]}>
+                      {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
+                    </View>
                   </TouchableOpacity>
+                  {p.logoUrl ? (
+                    <ExpoImage source={{ uri: p.logoUrl }} style={styles.partnerCardLogo} contentFit="contain" />
+                  ) : null}
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={[styles.adoptionPetName, { color: colors.textPrimary }]}>{p.name}</Text>
+                    <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
+                      {p.type} {p.city ? `• ${p.city}` : ''}
+                    </Text>
+                    {p.description ? (
+                      <Text style={[styles.cardMeta, { color: colors.textSecondary }]} numberOfLines={2}>{p.description}</Text>
+                    ) : null}
+                    <Text style={[styles.cardDate, { color: colors.textSecondary }]}>
+                      {new Date(p.createdAt).toLocaleString('pt-BR')}
+                    </Text>
+                    {p.rejectionReason ? (
+                      <View style={[styles.resolvedBadge, { backgroundColor: (colors.error || '#dc2626') + '20', alignSelf: 'flex-start', marginTop: spacing.xs }]}>
+                        <Ionicons name="close-circle" size={14} color={colors.error || '#dc2626'} />
+                        <Text style={[styles.resolvedText, { color: colors.error || '#dc2626' }]} numberOfLines={2}>Rejeitado: {p.rejectionReason}</Text>
+                      </View>
+                    ) : null}
+                    {p.isPaidPartner ? (
+                      <View style={[styles.resolvedBadge, { backgroundColor: (colors.accent || '#f59e0b') + '25', alignSelf: 'flex-start', marginTop: spacing.xs, marginRight: spacing.xs }]}>
+                        <Ionicons name="star" size={14} color={colors.accent || '#f59e0b'} />
+                        <Text style={[styles.resolvedText, { color: colors.accent || '#f59e0b' }]}>Pago</Text>
+                      </View>
+                    ) : null}
+                    {p.approvedAt ? (
+                      <View style={[styles.resolvedBadge, { backgroundColor: p.activatedAt ? colors.primary + '20' : (colors.accent || '#f59e0b') + '25', alignSelf: 'flex-start', marginTop: spacing.xs }]}>
+                        <Ionicons name={p.activatedAt ? 'checkmark-done' : 'time'} size={14} color={p.activatedAt ? colors.primary : (colors.accent || '#f59e0b')} />
+                        <Text style={[styles.resolvedText, { color: p.activatedAt ? colors.primary : (colors.accent || '#f59e0b') }]}>
+                          {p.activatedAt ? 'Ativo' : 'Aguardando primeiro acesso'}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm }}>
+                        <TouchableOpacity
+                          style={[styles.actionBtn, { backgroundColor: colors.primary, alignSelf: 'flex-start' }]}
+                          onPress={() => approvePartnerMutation.mutate(p.id)}
+                          disabled={approvePartnerMutation.isPending}
+                        >
+                          {approvePartnerMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="checkmark-circle" size={18} color="#fff" />}
+                          <Text style={styles.actionBtnText}>Aprovar</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.actionBtn, { backgroundColor: colors.error || '#dc2626', alignSelf: 'flex-start' }]}
+                          onPress={() => { setRejectPartnerModal({ partner: p }); setRejectPartnerReason(''); }}
+                          disabled={rejectPartnerMutation.isPending}
+                        >
+                          <Ionicons name="close-circle" size={18} color="#fff" />
+                          <Text style={styles.actionBtnText}>Rejeitar</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      style={[styles.actionBtn, { backgroundColor: colors.background, marginTop: spacing.sm, alignSelf: 'flex-start' }]}
+                      onPress={() => {
+                        setEditingPartner(p);
+                        setEditPartnerForm({
+                          name: p.name,
+                          city: p.city ?? '',
+                          description: p.description ?? '',
+                          website: p.website ?? '',
+                          email: p.email ?? '',
+                          phone: p.phone ?? '',
+                          logoUrl: p.logoUrl ?? '',
+                          active: p.active,
+                          isPaidPartner: !!p.isPaidPartner,
+                        });
+                      }}
+                    >
+                      <Ionicons name="pencil" size={18} color={colors.textPrimary} />
+                      <Text style={[styles.actionBtnText, { color: colors.textPrimary }]}>Editar</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
-            </View>
-          ))
-        )}
+            );
+          });
+        })()}
       </View>
 
       {/* Indicações de parceiros */}
@@ -1826,12 +2262,40 @@ export default function AdminScreen() {
         <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
           Indicações enviadas pelos usuários (ONG, clínica ou loja). Quem indicou aparece abaixo de cada card.
         </Text>
-        {partnerRecommendations.length === 0 ? (
-          <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhuma indicação ainda.</Text>
-          </View>
-        ) : (
-          partnerRecommendations.map((r: PartnerRecommendationItem) => (
+        <View style={[styles.rowWrap, { marginBottom: spacing.sm, flexWrap: 'wrap', gap: spacing.xs }]}>
+          {(['ALL', 'ONG', 'CLINIC', 'STORE'] as const).map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              style={[
+                styles.chip,
+                {
+                  backgroundColor: partnerRecommendationTypeFilter === tab ? colors.primary + '30' : colors.surface,
+                  borderWidth: 1,
+                  borderColor: partnerRecommendationTypeFilter === tab ? colors.primary : colors.background,
+                },
+              ]}
+              onPress={() => setPartnerRecommendationTypeFilter(tab)}
+            >
+              <Text style={[styles.chipText, { color: partnerRecommendationTypeFilter === tab ? colors.primary : colors.textSecondary }]}>
+                {tab === 'ALL' ? 'Todos' : tab === 'ONG' ? 'ONG' : tab === 'CLINIC' ? 'Clínica' : 'Loja'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {(() => {
+          const filteredRec = partnerRecommendationTypeFilter === 'ALL'
+            ? partnerRecommendations
+            : partnerRecommendations.filter((r: PartnerRecommendationItem) => r.suggestedType === partnerRecommendationTypeFilter);
+          if (filteredRec.length === 0) {
+            return (
+              <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                  {partnerRecommendations.length === 0 ? 'Nenhuma indicação ainda.' : `Nenhuma indicação do tipo ${partnerRecommendationTypeFilter === 'ONG' ? 'ONG' : partnerRecommendationTypeFilter === 'CLINIC' ? 'Clínica' : 'Loja'}.`}
+                </Text>
+              </View>
+            );
+          }
+          return filteredRec.map((r: PartnerRecommendationItem) => (
             <View key={r.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
               <Text style={[styles.sectionTitle, { color: colors.textPrimary, fontSize: 16, marginTop: 0 }]}>{r.suggestedName}</Text>
               <View style={styles.rowWrap}>
@@ -1859,8 +2323,8 @@ export default function AdminScreen() {
                 {new Date(r.createdAt).toLocaleString('pt-BR')}
               </Text>
             </View>
-          ))
-        )}
+          ));
+        })()}
       </View>
 
       {/* Reports de bugs (beta) */}
@@ -1869,12 +2333,38 @@ export default function AdminScreen() {
         <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
           Bugs (tela de falha) e sugestões enviados pelos usuários. Apenas leitura.
         </Text>
-        {bugReports.length === 0 ? (
-          <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhum report de bug ainda.</Text>
-          </View>
-        ) : (
-          bugReports.map((r: BugReportItem) => (
+        <View style={[styles.rowWrap, { marginBottom: spacing.sm, flexWrap: 'wrap', gap: spacing.xs }]}>
+          {(['ALL', 'BUG', 'SUGGESTION'] as const).map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              style={[
+                styles.chip,
+                {
+                  backgroundColor: bugReportTypeFilter === tab ? colors.primary + '30' : colors.surface,
+                  borderWidth: 1,
+                  borderColor: bugReportTypeFilter === tab ? colors.primary : colors.background,
+                },
+              ]}
+              onPress={() => setBugReportTypeFilter(tab)}
+            >
+              <Text style={[styles.chipText, { color: bugReportTypeFilter === tab ? colors.primary : colors.textSecondary }]}>
+                {tab === 'ALL' ? 'Todos' : tab === 'BUG' ? 'Bug' : 'Sugestão'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {(() => {
+          const filtered = bugReportTypeFilter === 'ALL' ? bugReports : bugReports.filter((r: BugReportItem) => (r.type ?? 'BUG') === bugReportTypeFilter);
+          if (filtered.length === 0) {
+            return (
+              <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                  {bugReports.length === 0 ? 'Nenhum report de bug ainda.' : `Nenhum ${bugReportTypeFilter === 'BUG' ? 'bug' : 'sugestão'}.`}
+                </Text>
+              </View>
+            );
+          }
+          return filtered.map((r: BugReportItem) => (
             <View key={r.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.background }]}>
               {r.type === 'SUGGESTION' ? (
                 <View style={[styles.bugReportTypeBadge, { backgroundColor: colors.primary + '25' }]}>
@@ -1906,8 +2396,8 @@ export default function AdminScreen() {
                 </Text>
               ) : null}
             </View>
-          ))
-        )}
+          ));
+        })()}
       </View>
 
       {/* Feature flags */}
@@ -2132,6 +2622,23 @@ export default function AdminScreen() {
               <>
                 <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Tipo</Text>
                 <Text style={[styles.modalLabel, { color: colors.textPrimary, marginBottom: spacing.sm }]}>{editingPartner.type}</Text>
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Status da parceria</Text>
+                <View style={[styles.resolvedBadge, { alignSelf: 'flex-start', marginBottom: spacing.sm, backgroundColor: editingPartner.activatedAt ? colors.primary + '20' : (editingPartner.approvedAt ? (colors.accent || '#f59e0b') + '25' : colors.textSecondary + '20') }]}>
+                  <Ionicons name={editingPartner.activatedAt ? 'checkmark-done' : (editingPartner.approvedAt ? 'time' : 'close-circle')} size={14} color={editingPartner.activatedAt ? colors.primary : (editingPartner.approvedAt ? (colors.accent || '#f59e0b') : colors.textSecondary)} />
+                  <Text style={[styles.resolvedText, { color: editingPartner.activatedAt ? colors.primary : (editingPartner.approvedAt ? (colors.accent || '#f59e0b') : colors.textSecondary) }]}>
+                    {editingPartner.activatedAt ? 'Ativo (já acessou o app)' : editingPartner.approvedAt ? 'Aguardando primeiro acesso' : 'Não aprovado'}
+                  </Text>
+                </View>
+                {editingPartner.canResendConfirmation ? (
+                  <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: colors.primary + 'dd', marginBottom: spacing.sm }]}
+                    onPress={() => resendPartnerMutation.mutate(editingPartner.id)}
+                    disabled={resendPartnerMutation.isPending}
+                  >
+                    {resendPartnerMutation.isPending ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="mail" size={18} color="#fff" />}
+                    <Text style={styles.actionBtnText}>{resendPartnerMutation.isPending ? 'Enviando...' : 'Reenviar e-mail de confirmação'}</Text>
+                  </TouchableOpacity>
+                ) : null}
                 <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Nome *</Text>
                 <TextInput
                   style={[styles.searchInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
@@ -2274,6 +2781,122 @@ export default function AdminScreen() {
                 disabled={updatePartnerMutation.isPending || !editPartnerForm.name.trim()}
               >
                 <Text style={styles.modalBtnTextPrimary}>{updatePartnerMutation.isPending ? 'Salvando...' : 'Salvar'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal: Rejeitar um parceiro (motivo opcional) */}
+      <Modal visible={!!rejectPartnerModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, padding: spacing.lg }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+              Rejeitar parceria{rejectPartnerModal ? ` – ${rejectPartnerModal.partner.name}` : ''}
+            </Text>
+            <Text style={[styles.modalLabel, { color: colors.textSecondary, marginTop: spacing.sm }]}>Motivo da rejeição (opcional)</Text>
+            <TextInput
+              style={[styles.searchInput, styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40', marginTop: spacing.xs }]}
+              placeholder="Ex.: documentação incompleta"
+              placeholderTextColor={colors.textSecondary}
+              value={rejectPartnerReason}
+              onChangeText={setRejectPartnerReason}
+              multiline
+              numberOfLines={3}
+            />
+            <View style={[styles.modalActions, { marginTop: spacing.lg }]}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.background }]}
+                onPress={() => { setRejectPartnerModal(null); setRejectPartnerReason(''); }}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.error || '#dc2626' }]}
+                onPress={() => {
+                  if (rejectPartnerModal) {
+                    rejectPartnerMutation.mutate({ id: rejectPartnerModal.partner.id, rejectionReason: rejectPartnerReason.trim() || undefined });
+                  }
+                }}
+                disabled={rejectPartnerMutation.isPending}
+              >
+                <Text style={styles.modalBtnTextPrimary}>{rejectPartnerMutation.isPending ? 'Rejeitando...' : 'Rejeitar'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal: Rejeitar solicitação de parceria (motivo opcional) */}
+      <Modal visible={!!rejectPartnershipRequestModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, padding: spacing.lg }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+              Rejeitar solicitação{rejectPartnershipRequestModal ? ` – ${rejectPartnershipRequestModal.instituicao}` : ''}
+            </Text>
+            <Text style={[styles.modalLabel, { color: colors.textSecondary, marginTop: spacing.sm }]}>Motivo da rejeição (opcional)</Text>
+            <TextInput
+              style={[styles.searchInput, styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40', marginTop: spacing.xs }]}
+              placeholder="Ex.: documentação incompleta"
+              placeholderTextColor={colors.textSecondary}
+              value={rejectPartnershipRequestReason}
+              onChangeText={setRejectPartnershipRequestReason}
+              multiline
+              numberOfLines={3}
+            />
+            <View style={[styles.modalActions, { marginTop: spacing.lg }]}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.background }]}
+                onPress={() => { setRejectPartnershipRequestModal(null); setRejectPartnershipRequestReason(''); }}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.error || '#dc2626' }]}
+                onPress={() => {
+                  if (rejectPartnershipRequestModal) {
+                    rejectPartnershipRequestMutation.mutate({ id: rejectPartnershipRequestModal.id, rejectionReason: rejectPartnershipRequestReason.trim() || undefined });
+                  }
+                }}
+                disabled={rejectPartnershipRequestMutation.isPending}
+              >
+                <Text style={styles.modalBtnTextPrimary}>{rejectPartnershipRequestMutation.isPending ? 'Rejeitando...' : 'Rejeitar'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal: Rejeitar em massa (motivo opcional) */}
+      <Modal visible={showBulkRejectModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, padding: spacing.lg }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+              Rejeitar {selectedPartnerIds.length} parceiro(s) selecionado(s)
+            </Text>
+            <Text style={[styles.modalLabel, { color: colors.textSecondary, marginTop: spacing.sm }]}>Motivo da rejeição (opcional, mesmo motivo para todos)</Text>
+            <TextInput
+              style={[styles.searchInput, styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40', marginTop: spacing.xs }]}
+              placeholder="Ex.: documentação incompleta"
+              placeholderTextColor={colors.textSecondary}
+              value={bulkRejectReason}
+              onChangeText={setBulkRejectReason}
+              multiline
+              numberOfLines={3}
+            />
+            <View style={[styles.modalActions, { marginTop: spacing.lg }]}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.background }]}
+                onPress={() => { setShowBulkRejectModal(false); setBulkRejectReason(''); }}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.error || '#dc2626' }]}
+                onPress={() => bulkRejectPartnersMutation.mutate({ ids: selectedPartnerIds, rejectionReason: bulkRejectReason.trim() || undefined })}
+                disabled={bulkRejectPartnersMutation.isPending}
+              >
+                <Text style={styles.modalBtnTextPrimary}>{bulkRejectPartnersMutation.isPending ? 'Rejeitando...' : 'Rejeitar'}</Text>
               </TouchableOpacity>
             </View>
           </View>
