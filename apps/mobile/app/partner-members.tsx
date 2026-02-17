@@ -23,6 +23,7 @@ import {
   addMyPartnerMember,
   updateMyPartnerMember,
   removeMyPartnerMember,
+  resendPartnerMemberInvite,
   type PartnerMember,
   type PartnerMemberRole,
   PARTNER_MEMBER_ROLE_LABELS,
@@ -60,6 +61,11 @@ export default function PartnerMembersScreen() {
       setName('');
       setPhone('');
       setRole('');
+      Alert.alert(
+        'Membro adicionado',
+        'Caso seja um novo cadastro, o membro receberá um e-mail para definir a senha de acesso ao app.',
+        [{ text: 'OK' }],
+      );
     },
   });
 
@@ -77,6 +83,14 @@ export default function PartnerMembersScreen() {
     mutationFn: (memberUserId: string) => removeMyPartnerMember(memberUserId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'members'] });
+    },
+  });
+
+  const resendInviteMutation = useMutation({
+    mutationFn: (memberUserId: string) => resendPartnerMemberInvite(memberUserId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'members'] });
+      Alert.alert('E-mail reenviado', 'O convite foi enviado novamente para o membro.');
     },
   });
 
@@ -273,7 +287,14 @@ export default function PartnerMembersScreen() {
               renderItem={({ item }) => (
                 <View style={[styles.memberRow, { backgroundColor: colors.primary + '08', borderColor: colors.primary + '30' }]}>
                   <View style={styles.memberInfo}>
-                    <Text style={[styles.memberName, { color: colors.textPrimary }]}>{item.name}</Text>
+                    <View style={styles.memberNameRow}>
+                      <Text style={[styles.memberName, { color: colors.textPrimary }]}>{item.name}</Text>
+                      {item.isActive === false && (
+                        <View style={[styles.inactiveBadge, { backgroundColor: colors.primary + '25' }]}>
+                          <Text style={[styles.inactiveBadgeText, { color: colors.primary }]}>Aguardando acesso</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text style={[styles.memberEmail, { color: colors.textSecondary }]}>{item.email}</Text>
                     {item.role && (
                       <Text style={[styles.memberRole, { color: colors.textSecondary }]}>
@@ -281,6 +302,32 @@ export default function PartnerMembersScreen() {
                       </Text>
                     )}
                     <View style={styles.memberActions}>
+                      {item.isActive === false && (
+                        <TouchableOpacity
+                          style={[styles.memberActionBtn, { borderColor: colors.primary }]}
+                          onPress={() => {
+                            Alert.alert(
+                              'Reenviar e-mail',
+                              `Enviar novamente o convite por e-mail para ${item.name}?`,
+                              [
+                                { text: 'Cancelar', style: 'cancel' },
+                                {
+                                  text: 'Reenviar',
+                                  onPress: () =>
+                                    resendInviteMutation.mutate(item.userId, {
+                                      onError: (err: unknown) =>
+                                        Alert.alert('Erro', getFriendlyErrorMessage(err, 'Não foi possível reenviar o e-mail.')),
+                                    }),
+                                },
+                              ],
+                            );
+                          }}
+                          disabled={resendInviteMutation.isPending}
+                        >
+                          <Ionicons name="mail-outline" size={16} color={colors.primary} />
+                          <Text style={[styles.memberActionText, { color: colors.primary }]}>Reenviar e-mail</Text>
+                        </TouchableOpacity>
+                      )}
                       <TouchableOpacity
                         style={[styles.memberActionBtn, { borderColor: colors.primary }]}
                         onPress={() => router.push({ pathname: '/partner-member-profile', params: { userId: item.userId, ownerName: item.name } })}
@@ -469,7 +516,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   memberInfo: { flex: 1 },
-  memberName: { fontSize: 16, fontWeight: '600', marginBottom: 2 },
+  memberNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: 2 },
+  memberName: { fontSize: 16, fontWeight: '600' },
+  inactiveBadge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: 6 },
+  inactiveBadgeText: { fontSize: 11, fontWeight: '600' },
   memberEmail: { fontSize: 14 },
   memberRole: { fontSize: 12, marginTop: 2, fontStyle: 'italic' },
   memberActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },

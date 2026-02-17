@@ -53,6 +53,8 @@ export type PartnerMemberDto = {
   email: string;
   role?: string | null;
   createdAt: string;
+  /** true se o usuário já definiu senha (primeiro acesso feito) */
+  isActive: boolean;
 };
 
 @Injectable()
@@ -374,11 +376,15 @@ export class PartnersService {
     }
   }
 
-  /** Lista membros da ONG (portal do parceiro). Apenas para parceiro type=ONG. */
+  /** Lista membros da ONG (portal do parceiro). Apenas para parceiro type=ONG. isActive = usuário já definiu senha (primeiro acesso). */
   async listMembersByUserId(userId: string): Promise<PartnerMemberDto[]> {
     const partner = await this.prisma.partner.findUnique({
       where: { userId },
-      include: { members: { include: { user: { select: { id: true, name: true, email: true } } } } },
+      include: {
+        members: {
+          include: { user: { select: { id: true, name: true, email: true, passwordHash: true } } },
+        },
+      },
     });
     this.ensureOngAdmin(partner);
     return partner.members.map((m) => ({
@@ -388,10 +394,11 @@ export class PartnersService {
       email: m.user.email,
       role: m.role,
       createdAt: m.createdAt.toISOString(),
+      isActive: !!m.user.passwordHash,
     }));
   }
 
-  /** Adiciona membro à ONG. Se o e-mail já existir no app, apenas vincula; senão cria usuário e envia e-mail para definir senha. */
+  /** Adiciona membro à ONG. Se o e-mail já existir, vincula; se o usuário nunca definiu senha (ex.: foi removido e re-adicionado), reenvia e-mail com novo link. Senão cria usuário e envia e-mail. */
   async addMemberByUserId(
     userId: string,
     dto: { email: string; name: string; phone?: string; role?: string },
@@ -421,9 +428,21 @@ export class PartnersService {
       },
       include: { user: { select: { id: true, name: true, email: true } } },
     });
-    if (setPasswordToken && this.emailService.isConfigured()) {
+
+    // Enviar e-mail: token novo (usuário criado agora) ou reenvio se usuário já existia mas nunca definiu senha (ex.: foi removido e re-adicionado)
+    let tokenToSend = setPasswordToken;
+    if (!tokenToSend) {
+      const userWithPassword = await this.prisma.user.findUnique({
+        where: { id: newOrExistingUserId },
+        select: { passwordHash: true },
+      });
+      if (userWithPassword?.passwordHash === null) {
+        tokenToSend = await this.authService.generateSetPasswordToken(newOrExistingUserId);
+      }
+    }
+    if (tokenToSend && this.emailService.isConfigured()) {
       const apiUrl = this.config.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ?? '';
-      const setPasswordLink = apiUrl ? `${apiUrl}/v1/auth/set-password?token=${encodeURIComponent(setPasswordToken)}` : '';
+      const setPasswordLink = apiUrl ? `${apiUrl}/v1/auth/set-password?token=${encodeURIComponent(tokenToSend)}` : '';
       const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? 'https://appadopet.com.br';
       const logoUrl = (this.config.get<string>('LOGO_URL') || appUrl + '/logo.png').trim();
       const memberInviteData = {
@@ -445,7 +464,45 @@ export class PartnersService {
       email: member.user.email,
       role: member.role,
       createdAt: member.createdAt.toISOString(),
+      isActive: false,
     };
+  }
+
+  /** Reenvia e-mail de convite para membro que ainda não ativou (não definiu senha). Apenas para admin ONG. */
+  async resendMemberInviteByUserId(adminUserId: string, memberUserId: string): Promise<{ message: string }> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId: adminUserId },
+      select: { id: true, type: true, name: true },
+    });
+    this.ensureOngAdmin(partner);
+    const membership = await this.prisma.partnerMember.findUnique({
+      where: { partnerId_userId: { partnerId: partner.id, userId: memberUserId } },
+      include: { user: { select: { id: true, email: true, name: true, passwordHash: true } } },
+    });
+    if (!membership) throw new NotFoundException('Membro não encontrado.');
+    if (membership.user.passwordHash !== null) {
+      throw new BadRequestException('Este membro já ativou a conta (definiu senha). Não é possível reenviar o e-mail.');
+    }
+    const setPasswordToken = await this.authService.generateSetPasswordToken(membership.user.id);
+    if (!this.emailService.isConfigured()) {
+      throw new BadRequestException('Envio de e-mail não configurado.');
+    }
+    const apiUrl = this.config.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ?? '';
+    const setPasswordLink = apiUrl ? `${apiUrl}/v1/auth/set-password?token=${encodeURIComponent(setPasswordToken)}` : '';
+    const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? 'https://appadopet.com.br';
+    const logoUrl = (this.config.get<string>('LOGO_URL') || appUrl + '/logo.png').trim();
+    const memberInviteData = {
+      setPasswordLink,
+      ongName: partner.name,
+      recipientName: membership.user.name?.trim() || '',
+    };
+    await this.emailService.sendMail({
+      to: membership.user.email,
+      subject: 'Você foi adicionado(a) à equipe da ONG - Adopet',
+      text: getPartnerMemberInviteEmailText(memberInviteData),
+      html: getPartnerMemberInviteEmailHtml(memberInviteData, logoUrl),
+    });
+    return { message: 'E-mail de convite reenviado com sucesso.' };
   }
 
   /** Atualiza membro da ONG (ex.: função/role). */
@@ -461,7 +518,7 @@ export class PartnersService {
     this.ensureOngAdmin(partner);
     const membership = await this.prisma.partnerMember.findUnique({
       where: { partnerId_userId: { partnerId: partner.id, userId: memberUserId } },
-      include: { user: { select: { id: true, name: true, email: true } } },
+      include: { user: { select: { id: true, name: true, email: true, passwordHash: true } } },
     });
     if (!membership) throw new NotFoundException('Membro não encontrado.');
     const roleValue =
@@ -473,7 +530,7 @@ export class PartnersService {
     const updated = await this.prisma.partnerMember.update({
       where: { partnerId_userId: { partnerId: partner.id, userId: memberUserId } },
       data: { role: roleValue },
-      include: { user: { select: { id: true, name: true, email: true } } },
+      include: { user: { select: { id: true, name: true, email: true, passwordHash: true } } },
     });
     return {
       id: updated.id,
@@ -482,6 +539,7 @@ export class PartnersService {
       email: updated.user.email,
       role: updated.role,
       createdAt: updated.createdAt.toISOString(),
+      isActive: !!updated.user.passwordHash,
     };
   }
 

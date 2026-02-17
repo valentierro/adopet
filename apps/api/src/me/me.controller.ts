@@ -202,6 +202,15 @@ export class MeController {
     return this.partnersService.removeMemberByUserId(user.id, memberUserId);
   }
 
+  @Post('partner/members/:userId/resend-invite')
+  @ApiOperation({ summary: 'Reenviar e-mail de convite para membro que ainda não ativou (apenas para parceiro type=ONG)' })
+  async resendMyPartnerMemberInvite(
+    @CurrentUser() user: { id: string },
+    @Param('userId') memberUserId: string,
+  ): Promise<{ message: string }> {
+    return this.partnersService.resendMemberInviteByUserId(user.id, memberUserId);
+  }
+
   @Get('partner/members/:userId/details')
   @ApiOperation({ summary: 'Perfil público e pets de um membro da ONG (apenas admin ONG)' })
   async getMyPartnerMemberDetails(

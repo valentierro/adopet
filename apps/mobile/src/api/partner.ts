@@ -205,6 +205,8 @@ export type PartnerMember = {
   email: string;
   role?: string | null;
   createdAt: string;
+  /** true se o usuário já definiu senha (primeiro acesso feito) */
+  isActive: boolean;
 };
 
 export async function getMyPartnerMembers(): Promise<PartnerMember[]> {
@@ -251,6 +253,10 @@ export async function updateMyPartnerMember(memberUserId: string, body: UpdatePa
 
 export async function removeMyPartnerMember(memberUserId: string): Promise<{ message: string }> {
   return api.delete<{ message: string }>(`/me/partner/members/${memberUserId}`);
+}
+
+export async function resendPartnerMemberInvite(memberUserId: string): Promise<{ message: string }> {
+  return api.post<{ message: string }>(`/me/partner/members/${memberUserId}/resend-invite`);
 }
 
 export type PartnerMemberDetails = {
