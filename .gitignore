@@ -42,5 +42,10 @@ apps/api/src/generated/
 apps/api/api/prisma-generated/
 apps/api/src/prisma-generated/
 
+# API serverless entry (evitar conflito index.ts vs index.js no deploy Vercel)
+apps/api/api/index.js
+apps/api/api/index.js.map
+apps/api/api/index.d.ts
+
 # Misc
 *.local
