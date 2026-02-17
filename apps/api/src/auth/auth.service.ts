@@ -470,7 +470,13 @@ export class AuthService {
     }
     const raw = typeof token === 'string' ? token.trim() : '';
     if (!raw) {
-      throw new BadRequestException('Token inválido. Use o link completo que veio no e-mail.');
+      throw new BadRequestException('Token não foi enviado. Use o link que veio no e-mail e preencha a senha na própria página que abrir.');
+    }
+    // Token JWT tem 3 partes (header.payload.signature); se veio truncado (ex.: link cortado no e-mail), falha na verificação
+    if (raw.split('.').length !== 3) {
+      throw new BadRequestException(
+        'O link parece estar incompleto (cortado pelo e-mail). Copie o link completo do e-mail ou peça ao admin para reenviar o e-mail de confirmação.',
+      );
     }
     let payload: { sub?: string; type?: string };
     try {
@@ -482,7 +488,9 @@ export class AuthService {
       if (isExpired) {
         throw new BadRequestException('Este link já expirou. O link é válido por 48 horas. Solicite um novo link ao administrador.');
       }
-      throw new BadRequestException('Link inválido. Verifique se abriu o link completo do e-mail.');
+      throw new BadRequestException(
+        'Link inválido ou incompleto. Abra o link completo do e-mail (evite clicar se o link quebrar em duas linhas). Se continuar falhando, peça ao admin reenviar o e-mail de confirmação.',
+      );
     }
     if (payload.type !== 'set-password' || !payload.sub) {
       throw new BadRequestException('Link inválido.');
