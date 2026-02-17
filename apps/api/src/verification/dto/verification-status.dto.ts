@@ -28,6 +28,13 @@ export class VerificationItemDto {
   @ApiProperty({ required: false, description: '[Admin] @username do usuário' })
   userUsername?: string;
 
+  /** [Admin listPending] Perfil do usuário já aprovado (selo Verificado) */
+  userVerified?: boolean;
+  /** [Admin listPending] Nível do tutor (ex: BEGINNER, GOLD) */
+  userTutorLevel?: string;
+  /** [Admin listPending] Título do nível (ex: Tutor Ouro) */
+  userTutorTitle?: string;
+
   /** [Admin listPending PET_VERIFIED] Dados do pet para card */
   @ApiProperty({ required: false })
   petSpecies?: string;

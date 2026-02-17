@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { VerificationService } from '../verification/verification.service';
 import {
@@ -24,6 +24,7 @@ export type TutorStatsDto = {
 export class TutorStatsService {
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => VerificationService))
     private readonly verificationService: VerificationService,
   ) {}
 

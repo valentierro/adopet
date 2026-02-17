@@ -1,6 +1,7 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from '../notifications/push.service';
+import { TutorStatsService } from '../me/tutor-stats.service';
 import type { VerificationStatusDto, VerificationItemDto } from './dto/verification-status.dto';
 
 @Injectable()
@@ -8,6 +9,8 @@ export class VerificationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly push: PushService,
+    @Inject(forwardRef(() => TutorStatsService))
+    private readonly tutorStats: TutorStatsService,
   ) {}
 
   async request(
@@ -157,7 +160,7 @@ export class VerificationService {
         });
       }
     }
-    return list.map((v) => {
+    const dtos = list.map((v) => {
       const dto = this.toItemDto(v);
       dto.userId = v.user?.id;
       dto.userName = v.user?.name;
@@ -178,6 +181,34 @@ export class VerificationService {
       }
       return dto;
     });
+    const userIds = [...new Set(list.map((v) => v.user?.id).filter((id): id is string => !!id))];
+    const badgeMap = new Map<
+      string,
+      { userVerified: boolean; userTutorLevel: string; userTutorTitle: string }
+    >();
+    await Promise.all(
+      userIds.map(async (uid) => {
+        const [userVerified, stats] = await Promise.all([
+          this.isUserVerified(uid),
+          this.tutorStats.getStats(uid),
+        ]);
+        badgeMap.set(uid, {
+          userVerified,
+          userTutorLevel: stats.level,
+          userTutorTitle: stats.title,
+        });
+      }),
+    );
+    for (let i = 0; i < list.length; i++) {
+      const uid = list[i].user?.id;
+      if (uid && badgeMap.has(uid)) {
+        const b = badgeMap.get(uid)!;
+        dtos[i].userVerified = b.userVerified;
+        dtos[i].userTutorLevel = b.userTutorLevel;
+        dtos[i].userTutorTitle = b.userTutorTitle;
+      }
+    }
+    return dtos;
   }
 
   /** Aprovar ou rejeitar solicitação (admin). Envia push ao usuário com o resultado. */
