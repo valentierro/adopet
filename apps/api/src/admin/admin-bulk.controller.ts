@@ -6,7 +6,13 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
 import { AdminBulkService, type BulkResult } from './admin-bulk.service';
 
-async function getFileBuffer(file: Express.Multer.File): Promise<Buffer> {
+/** Multer file (buffer when memoryStorage, path when diskStorage) */
+interface MulterFile {
+  buffer?: Buffer;
+  path?: string;
+}
+
+async function getFileBuffer(file: MulterFile): Promise<Buffer> {
   if (file.buffer) return file.buffer;
   if (file.path) return readFile(file.path);
   throw new BadRequestException('Arquivo inválido.');
@@ -24,7 +30,7 @@ export class AdminBulkController {
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
   @UseInterceptors(FileInterceptor('file'))
-  async uploadPartners(@UploadedFile() file: Express.Multer.File): Promise<BulkResult> {
+  async uploadPartners(@UploadedFile() file: MulterFile): Promise<BulkResult> {
     if (!file) throw new BadRequestException('Envie um arquivo CSV.');
     const buffer = await getFileBuffer(file);
     return this.adminBulkService.bulkCreatePartners(buffer);
@@ -35,7 +41,7 @@ export class AdminBulkController {
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
   @UseInterceptors(FileInterceptor('file'))
-  async uploadPartnerMembers(@UploadedFile() file: Express.Multer.File): Promise<BulkResult> {
+  async uploadPartnerMembers(@UploadedFile() file: MulterFile): Promise<BulkResult> {
     if (!file) throw new BadRequestException('Envie um arquivo CSV.');
     const buffer = await getFileBuffer(file);
     return this.adminBulkService.bulkCreatePartnerMembers(buffer);
@@ -46,7 +52,7 @@ export class AdminBulkController {
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
   @UseInterceptors(FileInterceptor('file'))
-  async uploadPets(@UploadedFile() file: Express.Multer.File): Promise<BulkResult> {
+  async uploadPets(@UploadedFile() file: MulterFile): Promise<BulkResult> {
     if (!file) throw new BadRequestException('Envie um arquivo CSV.');
     const buffer = await getFileBuffer(file);
     return this.adminBulkService.bulkCreatePets(buffer);
