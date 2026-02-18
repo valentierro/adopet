@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { AdminController } from './admin.controller';
+import { AdminBulkController } from './admin-bulk.controller';
 import { AdminService } from './admin.service';
+import { AdminBulkService } from './admin-bulk.service';
 import { AdoptionAutoApproveScheduler } from './adoption-auto-approve.scheduler';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
@@ -11,8 +13,8 @@ import { PartnershipRequestsModule } from '../partnership-requests/partnership-r
 
 @Module({
   imports: [PrismaModule, AuthModule, BugReportsModule, PartnerRecommendationsModule, PartnersModule, PartnershipRequestsModule],
-  controllers: [AdminController],
-  providers: [AdminService, AdoptionAutoApproveScheduler],
+  controllers: [AdminController, AdminBulkController],
+  providers: [AdminService, AdminBulkService, AdoptionAutoApproveScheduler],
   exports: [AdminService],
 })
 export class AdminModule {}
