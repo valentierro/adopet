@@ -438,6 +438,42 @@ export class PetsService {
     return this.mapToDto(updated, undefined, undefined, verified);
   }
 
+  /** Perfil público de um usuário por id (ex.: interessado na lista "Quem priorizar"). Mesmo formato do perfil por petId. */
+  async findOwnerProfileByUserId(userId: string): Promise<NonNullable<PetResponseDto['owner']> | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId, deactivatedAt: null },
+      select: {
+        id: true,
+        name: true,
+        avatarUrl: true,
+        city: true,
+        bio: true,
+        housingType: true,
+        hasYard: true,
+        hasOtherPets: true,
+        hasChildren: true,
+        timeAtHome: true,
+        petsAllowedAtHome: true,
+        dogExperience: true,
+        catExperience: true,
+        householdAgreesToAdoption: true,
+        whyAdopt: true,
+      },
+    });
+    if (!user) return null;
+    const [petsCount, ownerVerified] = await Promise.all([
+      this.prisma.pet.count({ where: { ownerId: userId } }),
+      this.verificationService.isUserVerified(user.id),
+    ]);
+    const ownerDto = this.mapOwnerToPublicDto(user, petsCount, ownerVerified);
+    try {
+      ownerDto.tutorStats = await this.tutorStatsService.getStats(user.id);
+    } catch {
+      // ignora falha de stats
+    }
+    return ownerDto;
+  }
+
   /** Perfil público do tutor do pet (sem dados de contato). */
   async findOwnerProfileByPetId(petId: string): Promise<NonNullable<PetResponseDto['owner']> | null> {
     const pet = await this.prisma.pet.findUnique({

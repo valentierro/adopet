@@ -63,6 +63,14 @@ export class PetsController {
     return this.petsService.findPendingPublication();
   }
 
+  @Get('owner-profile-by-user/:userId')
+  @ApiOperation({ summary: 'Perfil público de um usuário por id (ex.: interessado em quem priorizar)' })
+  async getOwnerProfileByUserId(@Param('userId') userId: string) {
+    const profile = await this.petsService.findOwnerProfileByUserId(userId);
+    if (!profile) throw new NotFoundException('Usuário não encontrado');
+    return profile;
+  }
+
   @Patch(':id/publication')
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
