@@ -6,6 +6,7 @@ import { TutorStatsService } from '../me/tutor-stats.service';
 import { PushService } from '../notifications/push.service';
 import { AdminService } from '../admin/admin.service';
 import { SimilarPetsEngineService } from '../similar-pets-engine/similar-pets-engine.service';
+import { MatchEngineService } from '../match-engine/match-engine.service';
 import { reverseGeocode } from '../common/geocoding';
 import type { PetResponseDto, SimilarPetItemDto } from './dto/pet-response.dto';
 import type { CreatePetDto } from './dto/create-pet.dto';
@@ -21,6 +22,7 @@ export class PetsService {
     private readonly push: PushService,
     private readonly adminService: AdminService,
     private readonly similarPetsEngine: SimilarPetsEngineService,
+    private readonly matchEngine: MatchEngineService,
   ) {}
 
   private mapToDto(
@@ -353,6 +355,23 @@ export class PetsService {
         partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
       },
     });
+    const ownerId = updated.ownerId;
+    const petName = updated.name || 'Seu anúncio';
+    if (status === 'APPROVED') {
+      this.push
+        .sendToUser(ownerId, 'Anúncio aprovado', `${petName} foi aprovado e já está visível no feed.`, {
+          screen: 'pet',
+          petId: updated.id,
+        })
+        .catch((e) => console.warn('[PetsService] push publication approved failed', e));
+    } else {
+      const body = rejectionReason?.trim()
+        ? `O anúncio de ${petName} não foi aprovado: ${rejectionReason.trim()}. Você pode editar e reenviar para análise.`
+        : `O anúncio de ${petName} não foi aprovado. Você pode editar e reenviar para análise.`;
+      this.push
+        .sendToUser(ownerId, 'Anúncio não aprovado', body, { screen: 'pet', petId: updated.id })
+        .catch((e) => console.warn('[PetsService] push publication rejected failed', e));
+    }
     const verified = await this.verificationService.isPetVerified(updated.id);
     return this.mapToDto(updated, undefined, undefined, verified);
   }
@@ -972,15 +991,27 @@ export class PetsService {
     return ids.filter((id) => byId.has(id)).map((id) => byId.get(id)!);
   }
 
-  /** Pets similares ao pet informado (engine por porte, idade, energia, temperamento, sexo, raça). */
-  async getSimilarPetsWithScores(petId: string, limit = 12): Promise<SimilarPetItemDto[]> {
+  /** Pets similares ao pet informado (engine por porte, idade, energia, temperamento, sexo, raça). Se userId for informado, inclui matchScore com o perfil do usuário. */
+  async getSimilarPetsWithScores(petId: string, limit = 12, userId?: string): Promise<SimilarPetItemDto[]> {
     const scores = await this.similarPetsEngine.getSimilarScores(petId, limit);
     if (scores.length === 0) return [];
     const ids = scores.map((s) => s.petId);
     const pets = await this.findManyByIds(ids);
     const byId = new Map(pets.map((p) => [p.id, p]));
+    let matchScores: Record<string, number | null> = {};
+    if (userId && ids.length > 0) {
+      matchScores = await this.matchEngine.getMatchScoresForAdopter(ids, userId);
+    }
     return scores
-      .map((s) => ({ pet: byId.get(s.petId), similarityScore: s.similarityScore }))
-      .filter((x): x is SimilarPetItemDto => x.pet != null);
+      .map((s) => {
+        const pet = byId.get(s.petId);
+        if (!pet) return null;
+        const dto: SimilarPetItemDto = { pet, similarityScore: s.similarityScore };
+        if (userId) {
+          dto.matchScore = matchScores[s.petId] ?? null;
+        }
+        return dto;
+      })
+      .filter((x): x is SimilarPetItemDto => x != null);
   }
 }

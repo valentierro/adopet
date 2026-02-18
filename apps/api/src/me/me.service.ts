@@ -61,6 +61,24 @@ export class MeService {
     return adminIds.includes(userId);
   }
 
+  /** Campos do perfil usados no match score; devem estar preenchidos quando o usuário edita o perfil para adoção. */
+  private static readonly MATCH_PROFILE_KEYS: (keyof UpdateMeDto)[] = [
+    'housingType',
+    'hasYard',
+    'hasOtherPets',
+    'hasChildren',
+    'timeAtHome',
+    'petsAllowedAtHome',
+    'dogExperience',
+    'catExperience',
+    'householdAgreesToAdoption',
+    'activityLevel',
+    'preferredPetAge',
+    'commitsToVetCare',
+    'walkFrequency',
+    'monthlyBudgetForPet',
+  ];
+
   async updateMe(userId: string, dto: UpdateMeDto): Promise<MeResponseDto> {
     if (dto.username !== undefined) {
       const normalized = dto.username.trim().toLowerCase().replace(/^@/, '');
@@ -71,6 +89,7 @@ export class MeService {
       if (existing) throw new BadRequestException('Este nome de usuário já está em uso.');
       dto.username = normalized;
     }
+    const matchFieldsSent = MeService.MATCH_PROFILE_KEYS.some((k) => dto[k] !== undefined);
     const [user, verified] = await Promise.all([
       this.prisma.user.update({
         where: { id: userId },
@@ -101,6 +120,25 @@ export class MeService {
       }),
       this.verificationService.isUserVerified(userId),
     ]);
+    if (matchFieldsSent) {
+      const missing: string[] = [];
+      const u = user as Record<string, unknown>;
+      for (const k of MeService.MATCH_PROFILE_KEYS) {
+        const v = u[k];
+        if (k === 'hasYard' || k === 'hasOtherPets' || k === 'hasChildren') {
+          if (v === undefined || v === null) missing.push(k);
+        } else {
+          if (v === undefined || v === null || (typeof v === 'string' && v.trim() === '')) missing.push(k);
+        }
+      }
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          'Para o match score funcionar corretamente, preencha todos os campos do perfil para adoção: ' +
+            missing.join(', ') +
+            '.',
+        );
+      }
+    }
     const isAdmin = this.isAdminUserId(userId);
     return this.toMeDto(user, verified, isAdmin);
   }
@@ -264,6 +302,7 @@ export class MeService {
   }
 
   async updatePreferences(userId: string, dto: UpdatePreferencesDto): Promise<PreferencesResponseDto> {
+    const matchPrefsSent = dto.species !== undefined || dto.sizePref !== undefined || dto.sexPref !== undefined;
     const prefs = await this.prisma.userPreferences.upsert({
       where: { userId },
       create: {
@@ -292,6 +331,20 @@ export class MeService {
         ...(dto.notifyListingReminders !== undefined && { notifyListingReminders: dto.notifyListingReminders }),
       },
     });
+    if (matchPrefsSent) {
+      const hasSpecies = prefs.species != null && prefs.species !== '';
+      const hasSizePref = prefs.sizePref != null && prefs.sizePref !== '';
+      const hasSexPref = prefs.sexPref != null && prefs.sexPref !== '';
+      if (!hasSpecies || !hasSizePref || !hasSexPref) {
+        const missing: string[] = [];
+        if (!hasSpecies) missing.push('espécie preferida (cachorro/gato/ambos)');
+        if (!hasSizePref) missing.push('porte preferido');
+        if (!hasSexPref) missing.push('sexo preferido do pet');
+        throw new BadRequestException(
+          'Para o match score funcionar corretamente, preencha as preferências: ' + missing.join(', ') + '.',
+        );
+      }
+    }
     return {
       species: prefs.species,
       radiusKm: prefs.radiusKm,

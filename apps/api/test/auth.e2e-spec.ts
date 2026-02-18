@@ -68,7 +68,7 @@ describe('Auth (e2e)', () => {
     }
   });
 
-  it('POST /v1/auth/signup com email duplicado retorna 409', async () => {
+  it('POST /v1/auth/signup com email duplicado retorna 409 e não cria segundo usuário', async () => {
     const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
     const res = await agent.post('/v1/auth/signup').send({
       email: E2E_TEST_EMAIL,
@@ -78,6 +78,133 @@ describe('Auth (e2e)', () => {
       username: 'duplicadoe2e',
     });
     expect(res.status).toBe(409);
+    const body = (res as unknown as { body: { message?: string } }).body;
+    expect(body.message).toBeDefined();
+    expect(String(body.message).toLowerCase()).toMatch(/email|já|cadastrado/);
+  });
+
+  it('POST /v1/auth/signup com username duplicado retorna 409', async () => {
+    const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
+    const email1 = `${unique()}@adopet-e2e.test`;
+    const username = 'userdup' + unique().slice(-8).replace(/[^a-z0-9._]/g, '');
+    await agent.post('/v1/auth/signup').send({
+      email: email1,
+      password: 'Senha123',
+      name: 'Primeiro User',
+      phone: uniquePhone(),
+      username,
+    }).expect(201);
+    const email2 = `${unique()}@adopet-e2e.test`;
+    const res = await agent.post('/v1/auth/signup').send({
+      email: email2,
+      password: 'OutraSenha456',
+      name: 'Segundo User',
+      phone: uniquePhone(),
+      username,
+    });
+    expect(res.status).toBe(409);
+    const body = (res as unknown as { body: { message?: string } }).body;
+    expect(body.message).toBeDefined();
+    expect(String(body.message).toLowerCase()).toMatch(/usuário|username|uso/);
+  });
+
+  it('POST /v1/auth/signup com telefone duplicado retorna 409', async () => {
+    const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
+    const phone = uniquePhone();
+    const email1 = `${unique()}@adopet-e2e.test`;
+    const username1 = 'teldup1' + unique().slice(-6).replace(/[^a-z0-9._]/g, '');
+    await agent.post('/v1/auth/signup').send({
+      email: email1,
+      password: 'Senha123',
+      name: 'Primeiro',
+      phone,
+      username: username1,
+    }).expect(201);
+    const email2 = `${unique()}@adopet-e2e.test`;
+    const username2 = 'teldup2' + unique().slice(-6).replace(/[^a-z0-9._]/g, '');
+    const res = await agent.post('/v1/auth/signup').send({
+      email: email2,
+      password: 'OutraSenha456',
+      name: 'Segundo',
+      phone,
+      username: username2,
+    });
+    expect(res.status).toBe(409);
+    const body = (res as unknown as { body: { message?: string } }).body;
+    expect(body.message).toBeDefined();
+    expect(String(body.message).toLowerCase()).toMatch(/telefone|já|cadastrado/);
+  });
+
+  it('POST /v1/auth/signup com nome de usuário inválido (1 caractere) retorna 400', async () => {
+    const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
+    const res = await agent.post('/v1/auth/signup').send({
+      email: `${unique()}@adopet-e2e.test`,
+      password: 'Senha123',
+      name: 'Teste',
+      phone: uniquePhone(),
+      username: 'a',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /v1/auth/signup com nome de usuário inválido (caracteres não permitidos) retorna 400', async () => {
+    const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
+    const res = await agent.post('/v1/auth/signup').send({
+      email: `${unique()}@adopet-e2e.test`,
+      password: 'Senha123',
+      name: 'Teste',
+      phone: uniquePhone(),
+      username: 'user-com-hifen',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /v1/auth/signup com senha sem número retorna 400', async () => {
+    const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
+    const res = await agent.post('/v1/auth/signup').send({
+      email: `${unique()}@adopet-e2e.test`,
+      password: 'SoLetras',
+      name: 'Teste',
+      phone: uniquePhone(),
+      username: 'user' + unique().slice(-6).replace(/[^a-z0-9._]/g, ''),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /v1/auth/signup com senha curta (menos de 6 caracteres) retorna 400', async () => {
+    const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
+    const res = await agent.post('/v1/auth/signup').send({
+      email: `${unique()}@adopet-e2e.test`,
+      password: 'Ab1',
+      name: 'Teste',
+      phone: uniquePhone(),
+      username: 'user' + unique().slice(-6).replace(/[^a-z0-9._]/g, ''),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /v1/auth/signup com telefone inválido (poucos dígitos) retorna 400', async () => {
+    const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
+    const res = await agent.post('/v1/auth/signup').send({
+      email: `${unique()}@adopet-e2e.test`,
+      password: 'Senha123',
+      name: 'Teste',
+      phone: '123',
+      username: 'user' + unique().slice(-6).replace(/[^a-z0-9._]/g, ''),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /v1/auth/signup com email em formato inválido retorna 400', async () => {
+    const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
+    const res = await agent.post('/v1/auth/signup').send({
+      email: 'nao-e-email',
+      password: 'Senha123',
+      name: 'Teste',
+      phone: uniquePhone(),
+      username: 'user' + unique().slice(-6).replace(/[^a-z0-9._]/g, ''),
+    });
+    expect(res.status).toBe(400);
   });
 
   it('POST /v1/auth/refresh com refreshToken válido retorna 200 e novos tokens', async () => {

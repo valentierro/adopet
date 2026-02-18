@@ -1,4 +1,4 @@
-import type { AdopterProfile, PetTutorPreferences, MatchResult } from './match-engine.types';
+import type { AdopterProfile, PetTutorPreferences, MatchResult, MatchCriterion } from './match-engine.types';
 
 const LABELS = {
   housing: { CASA: 'Casa', APARTAMENTO: 'Apartamento', INDIFERENTE: 'Indiferente' },
@@ -27,8 +27,11 @@ export function computeMatchScore(
 ): MatchResult {
   const highlights: string[] = [];
   const concerns: string[] = [];
+  const criteria: MatchCriterion[] = [];
   let totalWeight = 0;
   let earnedWeight = 0;
+
+  const LABEL = { housing: 'Moradia', yard: 'Quintal', otherPets: 'Outros pets', children: 'Crianças', timeAtHome: 'Tempo em casa', petsAllowed: 'Pets no local', dogExp: 'Experiência com cachorro', catExp: 'Experiência com gato', householdAgrees: 'Concordância em casa', species: 'Espécie', sex: 'Sexo do pet', size: 'Porte', activity: 'Nível de atividade', age: 'Idade do pet', vetCare: 'Cuidados veterinários', walkFreq: 'Passeios', budget: 'Orçamento' } as const;
 
   // Moradia
   if (petPreferences.preferredTutorHousingType != null && petPreferences.preferredTutorHousingType !== '') {
@@ -37,14 +40,21 @@ export function computeMatchScore(
     const preferred = petPreferences.preferredTutorHousingType;
     if (preferred === 'INDIFERENTE') {
       earnedWeight += 1;
-      highlights.push('Moradia: indiferente (compatível com casa ou apartamento)');
+      const msg = 'Moradia: indiferente (compatível com casa ou apartamento)';
+      highlights.push(msg);
+      criteria.push({ label: LABEL.housing, status: 'match', message: msg });
     } else if (adopterVal == null || adopterVal === '') {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.housing, status: 'neutral', message: 'Você não informou no perfil. O pet prefere tutor em ' + (LABELS.housing[preferred as keyof typeof LABELS.housing] ?? preferred) + '.' });
     } else if (adopterVal === preferred) {
       earnedWeight += 1;
-      highlights.push(`Moradia compatível (${LABELS.housing[preferred as keyof typeof LABELS.housing] ?? preferred})`);
+      const msg = `Moradia compatível (${LABELS.housing[preferred as keyof typeof LABELS.housing] ?? preferred})`;
+      highlights.push(msg);
+      criteria.push({ label: LABEL.housing, status: 'match', message: msg });
     } else {
-      concerns.push(`Pet prefere tutor em ${LABELS.housing[preferred as keyof typeof LABELS.housing] ?? preferred}; você informou ${LABELS.housing[adopterVal as keyof typeof LABELS.housing] ?? adopterVal}.`);
+      const msg = `Pet prefere tutor em ${LABELS.housing[preferred as keyof typeof LABELS.housing] ?? preferred}; você informou ${LABELS.housing[adopterVal as keyof typeof LABELS.housing] ?? adopterVal}.`;
+      concerns.push(msg);
+      criteria.push({ label: LABEL.housing, status: 'mismatch', message: msg });
     }
   }
 
@@ -55,11 +65,16 @@ export function computeMatchScore(
     const preferred = petPreferences.preferredTutorHasYard;
     if (adopterVal === undefined || adopterVal === null) {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.yard, status: 'neutral', message: 'Você não informou no perfil. O pet prefere tutor ' + (preferred ? 'com quintal.' : 'sem quintal.') });
     } else if (adopterVal === preferred) {
       earnedWeight += 1;
-      highlights.push(preferred ? 'Quintal compatível' : 'Sem quintal, conforme preferência do pet.');
+      const msg = preferred ? 'Quintal compatível' : 'Sem quintal, conforme preferência do pet.';
+      highlights.push(msg);
+      criteria.push({ label: LABEL.yard, status: 'match', message: msg });
     } else {
-      concerns.push(preferred ? 'Pet prefere tutor com quintal.' : 'Pet prefere tutor sem quintal.');
+      const msg = preferred ? 'Pet prefere tutor com quintal.' : 'Pet prefere tutor sem quintal.';
+      concerns.push(msg);
+      criteria.push({ label: LABEL.yard, status: 'mismatch', message: msg });
     }
   }
 
@@ -70,11 +85,16 @@ export function computeMatchScore(
     const preferred = petPreferences.preferredTutorHasOtherPets;
     if (adopterVal === undefined || adopterVal === null) {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.otherPets, status: 'neutral', message: 'Você não informou no perfil. O pet ' + (preferred ? 'se adapta a lares com outros pets.' : 'prefere ser o único pet.') });
     } else if (adopterVal === preferred) {
       earnedWeight += 1;
-      highlights.push(preferred ? 'Outros pets no local, compatível.' : 'Sem outros pets, compatível.');
+      const msg = preferred ? 'Outros pets no local, compatível.' : 'Sem outros pets, compatível.';
+      highlights.push(msg);
+      criteria.push({ label: LABEL.otherPets, status: 'match', message: msg });
     } else {
-      concerns.push(preferred ? 'Pet se adapta melhor a lares com outros pets.' : 'Pet prefere ser o único pet.');
+      const msg = preferred ? 'Pet se adapta melhor a lares com outros pets.' : 'Pet prefere ser o único pet.';
+      concerns.push(msg);
+      criteria.push({ label: LABEL.otherPets, status: 'mismatch', message: msg });
     }
   }
 
@@ -85,11 +105,16 @@ export function computeMatchScore(
     const preferred = petPreferences.preferredTutorHasChildren;
     if (adopterVal === undefined || adopterVal === null) {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.children, status: 'neutral', message: 'Você não informou no perfil. O pet ' + (preferred ? 'se dá bem com crianças.' : 'prefere lar sem crianças.') });
     } else if (adopterVal === preferred) {
       earnedWeight += 1;
-      highlights.push(preferred ? 'Crianças em casa, compatível.' : 'Sem crianças, compatível.');
+      const msg = preferred ? 'Crianças em casa, compatível.' : 'Sem crianças, compatível.';
+      highlights.push(msg);
+      criteria.push({ label: LABEL.children, status: 'match', message: msg });
     } else {
-      concerns.push(preferred ? 'Pet se dá bem com crianças; seu perfil indica sem crianças.' : 'Pet prefere lar sem crianças.');
+      const msg = preferred ? 'Pet se dá bem com crianças; seu perfil indica sem crianças.' : 'Pet prefere lar sem crianças.';
+      concerns.push(msg);
+      criteria.push({ label: LABEL.children, status: 'mismatch', message: msg });
     }
   }
 
@@ -100,11 +125,16 @@ export function computeMatchScore(
     const preferred = petPreferences.preferredTutorTimeAtHome;
     if (adopterVal == null || adopterVal === '') {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.timeAtHome, status: 'neutral', message: 'Você não informou no perfil. O pet prefere tutor que fica ' + (LABELS.timeAtHome[preferred as keyof typeof LABELS.timeAtHome] ?? preferred) + '.' });
     } else if (adopterVal === preferred) {
       earnedWeight += 1;
-      highlights.push(`Tempo em casa compatível (${LABELS.timeAtHome[preferred as keyof typeof LABELS.timeAtHome] ?? preferred})`);
+      const msg = `Tempo em casa compatível (${LABELS.timeAtHome[preferred as keyof typeof LABELS.timeAtHome] ?? preferred})`;
+      highlights.push(msg);
+      criteria.push({ label: LABEL.timeAtHome, status: 'match', message: msg });
     } else {
-      concerns.push(`Pet prefere tutor que fica ${LABELS.timeAtHome[preferred as keyof typeof LABELS.timeAtHome] ?? preferred}.`);
+      const msg = `Pet prefere tutor que fica ${LABELS.timeAtHome[preferred as keyof typeof LABELS.timeAtHome] ?? preferred}.`;
+      concerns.push(msg);
+      criteria.push({ label: LABEL.timeAtHome, status: 'mismatch', message: msg });
     }
   }
 
@@ -115,15 +145,23 @@ export function computeMatchScore(
     const preferred = petPreferences.preferredTutorPetsAllowedAtHome;
     if (adopterVal == null || adopterVal === '') {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.petsAllowed, status: 'neutral', message: 'Você não informou no perfil se pets são permitidos no local.' });
     } else if (adopterVal === preferred) {
       earnedWeight += 1;
-      highlights.push(`Pets permitidos no local: ${LABELS.petsAllowed[preferred as keyof typeof LABELS.petsAllowed] ?? preferred}`);
+      const msg = `Pets permitidos no local: ${LABELS.petsAllowed[preferred as keyof typeof LABELS.petsAllowed] ?? preferred}`;
+      highlights.push(msg);
+      criteria.push({ label: LABEL.petsAllowed, status: 'match', message: msg });
     } else if (preferred === 'YES' && (adopterVal === 'NO' || adopterVal === 'UNSURE')) {
-      concerns.push('Pet precisa de local onde pets são permitidos.');
+      const msg = 'Pet precisa de local onde pets são permitidos.';
+      concerns.push(msg);
+      criteria.push({ label: LABEL.petsAllowed, status: 'mismatch', message: msg });
     } else if (preferred === 'NO' && adopterVal === 'YES') {
-      concerns.push('Pet prefere tutor em local onde pets não são permitidos (ex.: restrição do condomínio).');
+      const msg = 'Pet prefere tutor em local onde pets não são permitidos (ex.: restrição do condomínio).';
+      concerns.push(msg);
+      criteria.push({ label: LABEL.petsAllowed, status: 'mismatch', message: msg });
     } else {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.petsAllowed, status: 'neutral', message: 'Preferência do pet e seu perfil não batem totalmente; considerado neutro.' });
     }
   }
 
@@ -134,18 +172,25 @@ export function computeMatchScore(
     const preferred = petPreferences.preferredTutorDogExperience;
     if (adopterVal == null || adopterVal === '') {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.dogExp, status: 'neutral', message: 'Você não informou no perfil. O pet prefere tutor com experiência: ' + (LABELS.experience[preferred as keyof typeof LABELS.experience] ?? preferred) + '.' });
     } else if (adopterVal === preferred) {
       earnedWeight += 1;
-      highlights.push(`Experiência com cachorro: ${LABELS.experience[preferred as keyof typeof LABELS.experience] ?? preferred}`);
+      const msg = `Experiência com cachorro: ${LABELS.experience[preferred as keyof typeof LABELS.experience] ?? preferred}`;
+      highlights.push(msg);
+      criteria.push({ label: LABEL.dogExp, status: 'match', message: msg });
     } else {
       const order: Record<string, number> = { NEVER: 0, HAD_BEFORE: 1, HAVE_NOW: 2 };
       const a = order[adopterVal] ?? -1;
       const p = order[preferred] ?? -1;
       if (a >= p) {
         earnedWeight += 1;
-        highlights.push(`Experiência com cachorro: ${LABELS.experience[preferred as keyof typeof LABELS.experience] ?? preferred}`);
+        const msg = `Experiência com cachorro: ${LABELS.experience[preferred as keyof typeof LABELS.experience] ?? preferred}`;
+        highlights.push(msg);
+        criteria.push({ label: LABEL.dogExp, status: 'match', message: msg });
       } else {
-        concerns.push(`Pet prefere tutor com experiência com cachorro (${LABELS.experience[preferred as keyof typeof LABELS.experience] ?? preferred}).`);
+        const msg = `Pet prefere tutor com experiência com cachorro (${LABELS.experience[preferred as keyof typeof LABELS.experience] ?? preferred}).`;
+        concerns.push(msg);
+        criteria.push({ label: LABEL.dogExp, status: 'mismatch', message: msg });
       }
     }
   }
@@ -157,18 +202,25 @@ export function computeMatchScore(
     const preferred = petPreferences.preferredTutorCatExperience;
     if (adopterVal == null || adopterVal === '') {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.catExp, status: 'neutral', message: 'Você não informou no perfil. O pet prefere tutor com experiência: ' + (LABELS.experience[preferred as keyof typeof LABELS.experience] ?? preferred) + '.' });
     } else if (adopterVal === preferred) {
       earnedWeight += 1;
-      highlights.push(`Experiência com gato: ${LABELS.experience[preferred as keyof typeof LABELS.experience] ?? preferred}`);
+      const msg = `Experiência com gato: ${LABELS.experience[preferred as keyof typeof LABELS.experience] ?? preferred}`;
+      highlights.push(msg);
+      criteria.push({ label: LABEL.catExp, status: 'match', message: msg });
     } else {
       const order: Record<string, number> = { NEVER: 0, HAD_BEFORE: 1, HAVE_NOW: 2 };
       const a = order[adopterVal] ?? -1;
       const p = order[preferred] ?? -1;
       if (a >= p) {
         earnedWeight += 1;
-        highlights.push(`Experiência com gato: ${LABELS.experience[preferred as keyof typeof LABELS.experience] ?? preferred}`);
+        const msg = `Experiência com gato: ${LABELS.experience[preferred as keyof typeof LABELS.experience] ?? preferred}`;
+        highlights.push(msg);
+        criteria.push({ label: LABEL.catExp, status: 'match', message: msg });
       } else {
-        concerns.push(`Pet prefere tutor com experiência com gato (${LABELS.experience[preferred as keyof typeof LABELS.experience] ?? preferred}).`);
+        const msg = `Pet prefere tutor com experiência com gato (${LABELS.experience[preferred as keyof typeof LABELS.experience] ?? preferred}).`;
+        concerns.push(msg);
+        criteria.push({ label: LABEL.catExp, status: 'mismatch', message: msg });
       }
     }
   }
@@ -180,13 +232,19 @@ export function computeMatchScore(
     const preferred = petPreferences.preferredTutorHouseholdAgrees;
     if (adopterVal == null || adopterVal === '') {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.householdAgrees, status: 'neutral', message: 'Você não informou no perfil. O pet prefere que todos em casa concordem com a adoção.' });
     } else if (adopterVal === preferred) {
       earnedWeight += 1;
-      highlights.push(`Concordância em casa: ${LABELS.householdAgrees[preferred as keyof typeof LABELS.householdAgrees] ?? preferred}`);
+      const msg = `Concordância em casa: ${LABELS.householdAgrees[preferred as keyof typeof LABELS.householdAgrees] ?? preferred}`;
+      highlights.push(msg);
+      criteria.push({ label: LABEL.householdAgrees, status: 'match', message: msg });
     } else if (preferred === 'YES' && adopterVal === 'DISCUSSING') {
-      concerns.push('Pet prefere que todos em casa já concordem com a adoção.');
+      const msg = 'Pet prefere que todos em casa já concordem com a adoção.';
+      concerns.push(msg);
+      criteria.push({ label: LABEL.householdAgrees, status: 'mismatch', message: msg });
     } else {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.householdAgrees, status: 'neutral', message: 'Preferência do pet e seu perfil não batem totalmente; considerado neutro.' });
     }
   }
 
@@ -197,9 +255,13 @@ export function computeMatchScore(
     const petSpecies = petPreferences.species.toUpperCase();
     if (petSpecies === speciesPref) {
       earnedWeight += 1;
-      highlights.push(`Espécie compatível com sua preferência (${LABELS.species[speciesPref as keyof typeof LABELS.species] ?? speciesPref}).`);
+      const msg = `Espécie compatível com sua preferência (${LABELS.species[speciesPref as keyof typeof LABELS.species] ?? speciesPref}).`;
+      highlights.push(msg);
+      criteria.push({ label: LABEL.species, status: 'match', message: msg });
     } else {
-      concerns.push(`Você prefere ${LABELS.species[speciesPref as keyof typeof LABELS.species] ?? speciesPref}; este pet é ${LABELS.species[petSpecies as keyof typeof LABELS.species] ?? petSpecies}.`);
+      const msg = `Você prefere ${LABELS.species[speciesPref as keyof typeof LABELS.species] ?? speciesPref}; este pet é ${LABELS.species[petSpecies as keyof typeof LABELS.species] ?? petSpecies}.`;
+      concerns.push(msg);
+      criteria.push({ label: LABEL.species, status: 'mismatch', message: msg });
     }
   }
 
@@ -210,9 +272,13 @@ export function computeMatchScore(
     const petSex = petPreferences.sex.toLowerCase();
     if (petSex === sexPref) {
       earnedWeight += 1;
-      highlights.push(`Sexo do pet compatível com sua preferência (${LABELS.sex[sexPref as keyof typeof LABELS.sex] ?? sexPref}).`);
+      const msg = `Sexo do pet compatível com sua preferência (${LABELS.sex[sexPref as keyof typeof LABELS.sex] ?? sexPref}).`;
+      highlights.push(msg);
+      criteria.push({ label: LABEL.sex, status: 'match', message: msg });
     } else {
-      concerns.push(`Você prefere pet ${LABELS.sex[sexPref as keyof typeof LABELS.sex] ?? sexPref}; este pet é ${LABELS.sex[petSex as keyof typeof LABELS.sex] ?? petSex}.`);
+      const msg = `Você prefere pet ${LABELS.sex[sexPref as keyof typeof LABELS.sex] ?? sexPref}; este pet é ${LABELS.sex[petSex as keyof typeof LABELS.sex] ?? petSex}.`;
+      concerns.push(msg);
+      criteria.push({ label: LABEL.sex, status: 'mismatch', message: msg });
     }
   }
 
@@ -224,9 +290,13 @@ export function computeMatchScore(
       const petSize = petPreferences.size.toLowerCase();
       if (petSize === adopterSizePref) {
         earnedWeight += 1;
-        highlights.push(`Porte compatível com sua preferência (${petSize}).`);
+        const msg = `Porte compatível com sua preferência (${petSize}).`;
+        highlights.push(msg);
+        criteria.push({ label: LABEL.size, status: 'match', message: msg });
       } else {
-        concerns.push(`Você prefere pet ${adopterSizePref}; este pet é ${petSize}.`);
+        const msg = `Você prefere pet ${adopterSizePref}; este pet é ${petSize}.`;
+        concerns.push(msg);
+        criteria.push({ label: LABEL.size, status: 'mismatch', message: msg });
       }
     }
   }
@@ -242,13 +312,18 @@ export function computeMatchScore(
       const p = order[petEnergy as keyof typeof order] ?? -1;
       if (a >= p) {
         earnedWeight += 1;
-        highlights.push(`Seu nível de atividade combina com o pet (${LABELS.activity[petEnergy as keyof typeof LABELS.activity] ?? petEnergy}).`);
+        const msg = `Seu nível de atividade combina com o pet (${LABELS.activity[petEnergy as keyof typeof LABELS.activity] ?? petEnergy}).`;
+        highlights.push(msg);
+        criteria.push({ label: LABEL.activity, status: 'match', message: msg });
       } else {
-        concerns.push(`Pet é mais ativo (${LABELS.activity[petEnergy as keyof typeof LABELS.activity] ?? petEnergy}) do que seu perfil indica.`);
+        const msg = `Pet é mais ativo (${LABELS.activity[petEnergy as keyof typeof LABELS.activity] ?? petEnergy}) do que seu perfil indica.`;
+        concerns.push(msg);
+        criteria.push({ label: LABEL.activity, status: 'mismatch', message: msg });
       }
     } else {
       totalWeight += 1;
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.activity, status: 'neutral', message: 'Você não informou nível de atividade no perfil. O pet tem energia ' + (LABELS.activity[petEnergy as keyof typeof LABELS.activity] ?? petEnergy) + '.' });
     }
   }
 
@@ -261,9 +336,13 @@ export function computeMatchScore(
       const preferred = adopter.preferredPetAge;
       if (petAgeGroup === preferred) {
         earnedWeight += 1;
-        highlights.push(`Idade do pet compatível com sua preferência (${LABELS.preferredAge[preferred as keyof typeof LABELS.preferredAge] ?? preferred}).`);
+        const msg = `Idade do pet compatível com sua preferência (${LABELS.preferredAge[preferred as keyof typeof LABELS.preferredAge] ?? preferred}).`;
+        highlights.push(msg);
+        criteria.push({ label: LABEL.age, status: 'match', message: msg });
       } else {
-        concerns.push(`Você prefere pet ${LABELS.preferredAge[preferred as keyof typeof LABELS.preferredAge] ?? preferred}; este tem ${petAge} ano(s).`);
+        const msg = `Você prefere pet ${LABELS.preferredAge[preferred as keyof typeof LABELS.preferredAge] ?? preferred}; este tem ${petAge} ano(s).`;
+        concerns.push(msg);
+        criteria.push({ label: LABEL.age, status: 'mismatch', message: msg });
       }
     }
   }
@@ -275,11 +354,16 @@ export function computeMatchScore(
     const adopterCommits = adopter.commitsToVetCare;
     if (adopterCommits === 'YES') {
       earnedWeight += 1;
-      highlights.push('Você se compromete com cuidados veterinários; o pet tem necessidades que exigem acompanhamento.');
+      const msg = 'Você se compromete com cuidados veterinários; o pet tem necessidades que exigem acompanhamento.';
+      highlights.push(msg);
+      criteria.push({ label: LABEL.vetCare, status: 'match', message: msg });
     } else if (adopterCommits === 'NO') {
-      concerns.push('Este pet precisa de acompanhamento veterinário; seu perfil indica que não pode se comprometer com isso.');
+      const msg = 'Este pet precisa de acompanhamento veterinário; seu perfil indica que não pode se comprometer com isso.';
+      concerns.push(msg);
+      criteria.push({ label: LABEL.vetCare, status: 'mismatch', message: msg });
     } else {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.vetCare, status: 'neutral', message: 'Você não informou no perfil. Este pet tem necessidades que exigem acompanhamento veterinário.' });
     }
   }
 
@@ -293,13 +377,19 @@ export function computeMatchScore(
     const p = order[preferred as keyof typeof order] ?? -1;
     if (adopterWalk == null || adopterWalk === '') {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.walkFreq, status: 'neutral', message: 'Você não informou no perfil. O pet prefere tutor que passeie ' + (LABELS.walkFreq[preferred as keyof typeof LABELS.walkFreq] ?? preferred) + '.' });
     } else if (adopterWalk === 'NOT_APPLICABLE' && preferred !== 'NOT_APPLICABLE') {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.walkFreq, status: 'neutral', message: 'Passeios não se aplicam ao seu perfil; o pet prefere tutor que passeie ' + (LABELS.walkFreq[preferred as keyof typeof LABELS.walkFreq] ?? preferred) + '.' });
     } else if (a >= p && a >= 0) {
       earnedWeight += 1;
-      highlights.push(`Frequência de passeios compatível (${LABELS.walkFreq[preferred as keyof typeof LABELS.walkFreq] ?? preferred}).`);
+      const msg = `Frequência de passeios compatível (${LABELS.walkFreq[preferred as keyof typeof LABELS.walkFreq] ?? preferred}).`;
+      highlights.push(msg);
+      criteria.push({ label: LABEL.walkFreq, status: 'match', message: msg });
     } else {
-      concerns.push(`Pet prefere tutor que passeie com mais frequência (${LABELS.walkFreq[preferred as keyof typeof LABELS.walkFreq] ?? preferred}).`);
+      const msg = `Pet prefere tutor que passeie com mais frequência (${LABELS.walkFreq[preferred as keyof typeof LABELS.walkFreq] ?? preferred}).`;
+      concerns.push(msg);
+      criteria.push({ label: LABEL.walkFreq, status: 'mismatch', message: msg });
     }
   }
 
@@ -309,16 +399,21 @@ export function computeMatchScore(
     const adopterBudget = adopter.monthlyBudgetForPet;
     if (adopterBudget === 'HIGH' || adopterBudget === 'MEDIUM') {
       earnedWeight += 1;
-      highlights.push('Seu orçamento permite arcar com os cuidados contínuos deste pet.');
+      const msg = 'Seu orçamento permite arcar com os cuidados contínuos deste pet.';
+      highlights.push(msg);
+      criteria.push({ label: LABEL.budget, status: 'match', message: msg });
     } else if (adopterBudget === 'LOW') {
-      concerns.push('Este pet tem gastos contínuos (ex.: medicação, ração especial); seu orçamento informado é baixo.');
+      const msg = 'Este pet tem gastos contínuos (ex.: medicação, ração especial); seu orçamento informado é baixo.';
+      concerns.push(msg);
+      criteria.push({ label: LABEL.budget, status: 'mismatch', message: msg });
     } else {
       earnedWeight += 0.5;
+      criteria.push({ label: LABEL.budget, status: 'neutral', message: 'Você não informou orçamento no perfil. Este pet tem gastos contínuos.' });
     }
   }
 
   if (totalWeight === 0) {
-    return { score: null, highlights: [], concerns: [], criteriaCount: 0 };
+    return { score: null, highlights: [], concerns: [], criteriaCount: 0, criteria: [] };
   }
 
   const score = Math.round((earnedWeight / totalWeight) * 100);
@@ -327,5 +422,6 @@ export function computeMatchScore(
     highlights,
     concerns,
     criteriaCount: totalWeight,
+    criteria,
   };
 }

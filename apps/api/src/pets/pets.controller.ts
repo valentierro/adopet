@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt.guard';
 import { AdminGuard } from '../auth/admin.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { PetOwnerGuard } from './pet-owner.guard';
@@ -116,13 +117,15 @@ export class PetsController {
   }
 
   @Get(':id/similar')
-  @ApiOperation({ summary: 'Pets similares (engine: porte, idade, energia, temperamento, sexo, raça)' })
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Pets similares (engine: porte, idade, energia, temperamento, sexo, raça). Se autenticado, inclui matchScore com seu perfil.' })
   async getSimilar(
     @Param('id') id: string,
     @Query('limit') limit?: string,
+    @CurrentUser() user?: { id: string },
   ): Promise<SimilarPetItemDto[]> {
     const limitNum = limit != null ? Math.min(24, Math.max(1, parseInt(limit, 10) || 12)) : 12;
-    return this.petsService.getSimilarPetsWithScores(id, limitNum);
+    return this.petsService.getSimilarPetsWithScores(id, limitNum, user?.id);
   }
 
   @Post(':id/confirm-adoption')

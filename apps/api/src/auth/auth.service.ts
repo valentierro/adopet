@@ -68,48 +68,61 @@ export class AuthService {
     if (usernameNormalized.length < 2) {
       throw new BadRequestException('Informe um nome de usuário com pelo menos 2 caracteres (letras minúsculas, números, ponto ou underscore).');
     }
-    const existingByUsername = await this.prisma.user.findUnique({
-      where: { username: usernameNormalized },
-    });
-    if (existingByUsername) {
-      throw new ConflictException('Este nome de usuário já está em uso. Escolha outro.');
-    }
-    const [existingByEmail, existingByPhone] = await Promise.all([
-      this.prisma.user.findUnique({ where: { email: emailLower } }),
-      phoneNormalized.length >= 10
-        ? this.prisma.user.findFirst({ where: { phone: phoneNormalized } })
-        : Promise.resolve(null),
-    ]);
-    if (existingByEmail) {
-      throw new ConflictException('Email já cadastrado');
-    }
-    if (existingByPhone) {
-      throw new ConflictException('Telefone já cadastrado');
-    }
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+    const phoneToStore = phoneNormalized.length >= 10 ? phoneNormalized : dto.phone;
     let user: { id: string; email: string; emailVerificationToken?: string | null };
-    if (requireVerification) {
-      const emailVerificationToken = crypto.randomBytes(32).toString('hex');
-      user = await this.prisma.user.create({
-        data: {
-          email: emailLower,
-          passwordHash,
-          name: dto.name.trim(),
-          phone: phoneNormalized.length >= 10 ? phoneNormalized : dto.phone,
-          username: usernameNormalized,
-          emailVerificationToken,
-        },
+    try {
+      user = await this.prisma.$transaction(async (tx) => {
+        const [existingByUsername, existingByEmail, existingByPhone] = await Promise.all([
+          tx.user.findUnique({ where: { username: usernameNormalized }, select: { id: true } }),
+          tx.user.findUnique({ where: { email: emailLower }, select: { id: true } }),
+          phoneNormalized.length >= 10
+            ? tx.user.findFirst({ where: { phone: phoneNormalized }, select: { id: true } })
+            : Promise.resolve(null),
+        ]);
+        if (existingByUsername) {
+          throw new ConflictException('Este nome de usuário já está em uso. Escolha outro.');
+        }
+        if (existingByEmail) {
+          throw new ConflictException('Email já cadastrado');
+        }
+        if (existingByPhone) {
+          throw new ConflictException('Telefone já cadastrado');
+        }
+        if (requireVerification) {
+          const emailVerificationToken = crypto.randomBytes(32).toString('hex');
+          return tx.user.create({
+            data: {
+              email: emailLower,
+              passwordHash,
+              name: dto.name.trim(),
+              phone: phoneToStore,
+              username: usernameNormalized,
+              emailVerificationToken,
+            },
+          });
+        }
+        return tx.user.create({
+          data: {
+            email: emailLower,
+            passwordHash,
+            name: dto.name.trim(),
+            phone: phoneToStore,
+            username: usernameNormalized,
+          },
+        });
       });
-    } else {
-      user = await this.prisma.user.create({
-        data: {
-          email: emailLower,
-          passwordHash,
-          name: dto.name.trim(),
-          phone: phoneNormalized.length >= 10 ? phoneNormalized : dto.phone,
-          username: usernameNormalized,
-        },
-      });
+    } catch (e: unknown) {
+      if (e instanceof ConflictException) throw e;
+      const prismaCode = (e as { code?: string })?.code;
+      const prismaTarget = (e as { meta?: { target?: string[] } })?.meta?.target as string[] | undefined;
+      if (prismaCode === 'P2002' && Array.isArray(prismaTarget)) {
+        if (prismaTarget.includes('email')) throw new ConflictException('Email já cadastrado');
+        if (prismaTarget.includes('username')) throw new ConflictException('Este nome de usuário já está em uso. Escolha outro.');
+        if (prismaTarget.includes('phone')) throw new ConflictException('Telefone já cadastrado');
+        throw new ConflictException('Dados já cadastrados. Use outro e-mail, nome de usuário ou telefone.');
+      }
+      throw e;
     }
     if (requireVerification) {
       const emailVerificationToken = (user as { emailVerificationToken?: string }).emailVerificationToken;

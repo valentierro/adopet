@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ReportsService } from '../moderation/reports.service';
 import { BlocksService } from '../moderation/blocks.service';
 import { VerificationService } from '../verification/verification.service';
+import { MatchEngineService } from '../match-engine/match-engine.service';
 import { computeMatchScore } from '../match-engine/compute-match-score';
 import type { AdopterProfile } from '../match-engine/match-engine.types';
 import type { FeedQueryDto } from './dto/feed-query.dto';
@@ -15,18 +16,19 @@ const DEFAULT_PAGE_SIZE = 20;
 const CANDIDATE_POOL_SIZE = 500;
 const CURSOR_SEP = '|';
 
-/** Pesos do score de relevância (soma = 1). */
-const WEIGHT_DISTANCE = 0.35;
-const WEIGHT_RECENCY = 0.25;
-const WEIGHT_ENGAGEMENT = 0.15;
-const WEIGHT_COMPATIBILITY = 0.15;
-const WEIGHT_SIMILAR = 0.1;
+/** Pesos do score de relevância (soma = 1). Match score tem peso relevante para priorizar pets que combinam com o perfil. */
+const WEIGHT_DISTANCE = 0.28;
+const WEIGHT_RECENCY = 0.20;
+const WEIGHT_ENGAGEMENT = 0.12;
+const WEIGHT_COMPATIBILITY = 0.05;
+const WEIGHT_SIMILAR = 0.10;
+const WEIGHT_MATCH = 0.25;
 
 /** Decay para recência: exp(-DECAY_RECENCY * days). Quanto maior, mais penaliza pet antigo. */
 const DECAY_RECENCY = 0.08;
 
-/** Boost de score para pets de parceiro pago (destaque no feed). */
-const BOOST_PAID_PARTNER = 0.08;
+/** Boost de score para pets de parceiro pago (destaque no feed). Valor alto para priorizar à frente de pets sem parceria. */
+const BOOST_PAID_PARTNER = 0.22;
 
 @Injectable()
 export class FeedService {
@@ -35,6 +37,7 @@ export class FeedService {
     private readonly reportsService: ReportsService,
     private readonly blocksService: BlocksService,
     private readonly verificationService: VerificationService,
+    private readonly matchEngine: MatchEngineService,
   ) {}
 
   private mapToDto(
@@ -167,7 +170,8 @@ export class FeedService {
   }
 
   /**
-   * Calcula score de relevância (0..1): distância, recência, engajamento, compatibilidade (espécie + tamanho), favoritos similares.
+   * Calcula score de relevância (0..1): distância, recência, engajamento, compatibilidade (espécie + tamanho), favoritos similares, match score (0..1).
+   * matchScoreNorm: quando o usuário está logado, score de match normalizado (0–100 → 0–1); senão undefined (não conta).
    */
   private relevanceScore(
     distanceKm: number,
@@ -176,17 +180,20 @@ export class FeedService {
     speciesMatch: number,
     sizeMatch: number,
     similarToFavorites: number,
+    matchScoreNorm?: number,
   ): number {
     const distScore = 1 / (1 + distanceKm);
     const recencyScore = Math.exp(-DECAY_RECENCY * daysSinceCreated);
     const engagementScore = Math.min(1, Math.log(1 + favoriteCount) / 5);
     const compatibility = (speciesMatch + sizeMatch) / 2;
+    const matchComponent = matchScoreNorm != null ? matchScoreNorm : 0;
     return (
       WEIGHT_DISTANCE * distScore +
       WEIGHT_RECENCY * recencyScore +
       WEIGHT_ENGAGEMENT * engagementScore +
       WEIGHT_COMPATIBILITY * compatibility +
-      WEIGHT_SIMILAR * similarToFavorites
+      WEIGHT_SIMILAR * similarToFavorites +
+      WEIGHT_MATCH * matchComponent
     );
   }
 
@@ -323,6 +330,16 @@ export class FeedService {
         : [];
     const isPaidPartnerByOwnerId = Object.fromEntries(ownerPartnersForScore.map((p) => [p.userId, p.isPaidPartner]));
 
+    const profileForMatch =
+      adopterProfile && prefs
+        ? ({
+            ...adopterProfile,
+            sizePref: prefs.sizePref ?? undefined,
+            speciesPref: prefs.species ?? undefined,
+            sexPref: prefs.sexPref ?? undefined,
+          } as AdopterProfile)
+        : null;
+
     const nowMs = Date.now();
     const radiusKm = Number(queryRadiusKm ?? prefs?.radiusKm ?? 50) || 50;
     const hasUserLocation = lat != null && lng != null;
@@ -343,6 +360,10 @@ export class FeedService {
         !sizePref || sizePref === 'both' || pet.size === sizePref ? 1 : 0;
       const similarToFavorites =
         favoriteSpeciesSet.has(pet.species) || favoriteSizeSet.has(pet.size) ? 1 : 0;
+      const matchScoreNorm =
+        profileForMatch != null
+          ? (computeMatchScore(profileForMatch, pet).score ?? 0) / 100
+          : undefined;
       let score = this.relevanceScore(
         distanceKm,
         daysSinceCreated,
@@ -350,13 +371,16 @@ export class FeedService {
         speciesMatch,
         sizeMatch,
         similarToFavorites,
+        matchScoreNorm,
       );
       const isPaidPartner =
         (pet as { partner?: { isPaidPartner?: boolean } }).partner?.isPaidPartner || isPaidPartnerByOwnerId[pet.ownerId];
+      const hasPartner =
+        (pet as { partner?: unknown }).partner != null || pet.ownerId in isPaidPartnerByOwnerId;
       if (isPaidPartner) {
         score = Math.min(1, score + BOOST_PAID_PARTNER);
       }
-      return { pet, score, distanceKm };
+      return { pet, score, distanceKm, matchScoreNorm: matchScoreNorm ?? 0, isPaidPartner, hasPartner };
     });
 
     /** Filtra por raio quando lat/lng foram enviados (respeita preferência do usuário). */
@@ -365,7 +389,23 @@ export class FeedService {
       withinRadius = scored.filter((s) => s.distanceKm <= radiusKm);
     }
 
+    /** Filtro por parceria: partners_only | no_partners | all (default). */
+    const partnerFilter = query.partnerFilter ?? 'all';
+    if (partnerFilter === 'partners_only') {
+      withinRadius = withinRadius.filter((s) => s.hasPartner);
+    } else if (partnerFilter === 'no_partners') {
+      withinRadius = withinRadius.filter((s) => !s.hasPartner);
+    }
+
+    /** Ordena em 3 níveis: (1) parceiros pagos, (2) parceiros não pagos, (3) sem parceria; dentro de cada nível, maior match score primeiro. */
     withinRadius.sort((a, b) => {
+      const tier = (s: { isPaidPartner: boolean; hasPartner: boolean }) =>
+        s.isPaidPartner ? 0 : s.hasPartner ? 1 : 2;
+      const ta = tier(a);
+      const tb = tier(b);
+      if (ta !== tb) return ta - tb;
+      const diff = b.matchScoreNorm - a.matchScoreNorm;
+      if (diff !== 0) return diff;
       if (b.score !== a.score) return b.score - a.score;
       return b.pet.id.localeCompare(a.pet.id);
     });
@@ -514,7 +554,7 @@ export class FeedService {
     };
   }
 
-  /** Pets com lat/lng para exibir no mapa (mesmos filtros do feed). */
+  /** Pets com lat/lng para exibir no mapa (mesmos filtros do feed). Inclui matchScore quando userId informado. */
   async getMapPins(
     lat: number,
     lng: number,
@@ -536,6 +576,7 @@ export class FeedService {
       distanceKm: number;
       verified: boolean;
       partner?: { isPaidPartner: boolean };
+      matchScore?: number;
     }[];
   }> {
     const [reportedPetIds, blockedByMe, blockedMe] = await Promise.all([
@@ -597,10 +638,15 @@ export class FeedService {
           })
         : [];
     const partnerByOwnerId = Object.fromEntries(ownerPartners.map((op) => [op.userId, { isPaidPartner: op.isPaidPartner }]));
+    const matchScores =
+      userId && petIds.length > 0
+        ? await this.matchEngine.getMatchScoresForAdopter(petIds, userId)
+        : ({} as Record<string, number | null>);
     const items = withinRadius.map(({ p, distanceKm }) => {
       const partnerFromPet = (p as { partner?: { isPaidPartner: boolean } | null }).partner;
       const partnerFromOwner = partnerByOwnerId[p.ownerId];
       const partner = partnerFromPet ?? partnerFromOwner;
+      const score = matchScores[p.id];
       return {
         id: p.id,
         name: p.name,
@@ -615,6 +661,7 @@ export class FeedService {
         distanceKm,
         verified: verifiedIds.has(p.id),
         ...(partner != null && { partner: { isPaidPartner: partner.isPaidPartner } }),
+        ...(score != null && { matchScore: score }),
       };
     });
     return { items };

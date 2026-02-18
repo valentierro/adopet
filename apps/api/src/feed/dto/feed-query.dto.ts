@@ -94,4 +94,12 @@ export class FeedQueryDto {
   @IsOptional()
   @IsString()
   ownerId?: string;
+
+  @ApiPropertyOptional({
+    enum: ['all', 'partners_only', 'no_partners'],
+    description: 'Filtrar por parceria: all = todos, partners_only = só parceiros (pagos ou não), no_partners = só sem parceria',
+  })
+  @IsOptional()
+  @IsString()
+  partnerFilter?: 'all' | 'partners_only' | 'no_partners';
 }

@@ -54,6 +54,17 @@ export interface PetTutorPreferences {
   healthNotes?: string | null;
 }
 
+export type MatchCriterionStatus = 'match' | 'mismatch' | 'neutral';
+
+export interface MatchCriterion {
+  /** Nome curto do critério (ex.: "Moradia", "Quintal"). */
+  label: string;
+  /** match = compatível, mismatch = incompatível, neutral = não informado no perfil. */
+  status: MatchCriterionStatus;
+  /** Mensagem explicativa (igual às usadas em highlights/concerns ou "Não informado no perfil"). */
+  message: string;
+}
+
 export interface MatchResult {
   /** Score 0–100 (ou null se não houver critérios de preferência no pet). */
   score: number | null;
@@ -63,4 +74,6 @@ export interface MatchResult {
   concerns: string[];
   /** Quantidade de critérios do pet que foram considerados (com preferência definida). */
   criteriaCount: number;
+  /** Todos os critérios avaliados: match, mismatch e neutral (para exibir no modal). */
+  criteria: MatchCriterion[];
 }

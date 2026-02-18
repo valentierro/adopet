@@ -14,6 +14,7 @@ describe('computeMatchScore', () => {
     expect(result.highlights).toEqual([]);
     expect(result.concerns).toEqual([]);
     expect(result.criteriaCount).toBe(0);
+    expect(result.criteria).toEqual([]);
   });
 
   it('retorna 100% quando todos os critérios batem', () => {
@@ -87,6 +88,8 @@ describe('computeMatchScore', () => {
     expect(result.score).toBe(50);
     expect(result.highlights.some((h) => h.includes('Moradia'))).toBe(true);
     expect(result.concerns.some((c) => c.toLowerCase().includes('quintal'))).toBe(true);
+    expect(result.criteria).toHaveLength(2);
+    expect(result.criteria.map((c) => c.status)).toEqual(['match', 'mismatch']);
   });
 
   it('moradia INDIFERENTE dá match com casa ou apartamento', () => {

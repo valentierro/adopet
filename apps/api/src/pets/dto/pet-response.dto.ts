@@ -198,11 +198,14 @@ export class PetResponseDto {
   mediaItems?: { id: string; url: string; sortOrder: number }[];
 }
 
-/** Item da lista "Pets similares": pet + score de similaridade (0–100) */
+/** Item da lista "Pets similares": pet + score de similaridade; quando usuário autenticado, inclui matchScore. */
 export class SimilarPetItemDto {
   @ApiProperty({ type: PetResponseDto })
   pet: PetResponseDto;
 
   @ApiProperty({ description: 'Score de similaridade com o pet de referência (0–100)' })
   similarityScore: number;
+
+  @ApiPropertyOptional({ description: 'Score de match com o perfil do usuário (0–100); presente quando autenticado' })
+  matchScore?: number | null;
 }

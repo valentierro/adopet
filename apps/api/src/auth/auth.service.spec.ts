@@ -21,24 +21,27 @@ const PROD_LIKE = {
 describe('AuthService', () => {
   let service: AuthService;
   let prisma: {
-    user: { findUnique: jest.Mock; findFirst: jest.Mock; create: jest.Mock };
+    $transaction: jest.Mock;
+    user: { findUnique: jest.Mock; findFirst: jest.Mock; create: jest.Mock; delete: jest.Mock };
     refreshToken: { findFirst: jest.Mock; delete: jest.Mock; create: jest.Mock; deleteMany: jest.Mock };
     featureFlag: { findUnique: jest.Mock };
+    partner: { updateMany: jest.Mock };
   };
   let configGet: jest.Mock;
   let jwtSign: jest.Mock;
 
   beforeEach(async () => {
     prisma = {
-      user: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn() },
+      $transaction: jest.fn((callback: (tx: typeof prisma) => Promise<unknown>) => callback(prisma)),
+      user: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), delete: jest.fn() },
       refreshToken: {
         findFirst: jest.fn(),
         delete: jest.fn(),
         create: jest.fn(),
         deleteMany: jest.fn(),
       },
-      // AuthService lê REQUIRE_EMAIL_VERIFICATION do banco primeiro; null = fallback para env
       featureFlag: { findUnique: jest.fn().mockResolvedValue(null) },
+      partner: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     };
     configGet = jest.fn();
     jwtSign = jest.fn(() => 'token');
@@ -60,18 +63,19 @@ describe('AuthService', () => {
   });
 
   describe('signup', () => {
+    const validSignupDto = {
+      email: PROD_LIKE.email,
+      password: PROD_LIKE.password,
+      name: PROD_LIKE.name,
+      phone: PROD_LIKE.phone,
+      username: PROD_LIKE.username,
+    };
+
     it('deve rejeitar quando e-mail já existe (valor tipo produção)', async () => {
       prisma.user.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: '1', email: PROD_LIKE.email });
       prisma.user.findFirst.mockResolvedValue(null);
-      await expect(
-        service.signup({
-          email: PROD_LIKE.email,
-          password: PROD_LIKE.password,
-          name: PROD_LIKE.name,
-          phone: PROD_LIKE.phone,
-          username: PROD_LIKE.username,
-        }),
-      ).rejects.toThrow(ConflictException);
+      await expect(service.signup(validSignupDto)).rejects.toThrow(ConflictException);
+      expect(prisma.user.create).not.toHaveBeenCalled();
     });
 
     it('deve criar usuário e retornar requiresEmailVerification quando REQUIRE_EMAIL_VERIFICATION=true', async () => {
@@ -83,13 +87,7 @@ describe('AuthService', () => {
         email: PROD_LIKE.email,
         emailVerificationToken: 'abc123',
       });
-      const res = await service.signup({
-        email: PROD_LIKE.email,
-        password: PROD_LIKE.password,
-        name: PROD_LIKE.name,
-        phone: PROD_LIKE.phone,
-        username: PROD_LIKE.username,
-      });
+      const res = await service.signup(validSignupDto);
       expect(res).toHaveProperty('message');
       expect((res as { requiresEmailVerification?: boolean }).requiresEmailVerification).toBe(true);
       expect((res as { userId?: string }).userId).toBe('user-1');
@@ -104,13 +102,7 @@ describe('AuthService', () => {
         email: PROD_LIKE.email,
       });
       prisma.refreshToken.create.mockResolvedValue({});
-      const res = await service.signup({
-        email: PROD_LIKE.email,
-        password: PROD_LIKE.password,
-        name: PROD_LIKE.name,
-        phone: PROD_LIKE.phone,
-        username: PROD_LIKE.username,
-      });
+      const res = await service.signup(validSignupDto);
       expect(res).toHaveProperty('accessToken', 'token');
       expect(res).toHaveProperty('refreshToken', 'token');
       expect(res).toHaveProperty('expiresIn');
@@ -120,13 +112,12 @@ describe('AuthService', () => {
       prisma.user.findUnique.mockResolvedValueOnce({ id: '1', username: PROD_LIKE.username });
       await expect(
         service.signup({
+          ...validSignupDto,
           email: 'outro@email.com',
-          password: PROD_LIKE.password,
-          name: PROD_LIKE.name,
           phone: '11976543210',
-          username: PROD_LIKE.username,
         }),
       ).rejects.toThrow(ConflictException);
+      expect(prisma.user.create).not.toHaveBeenCalled();
     });
 
     it('deve rejeitar quando telefone já existe', async () => {
@@ -134,13 +125,53 @@ describe('AuthService', () => {
       prisma.user.findFirst.mockResolvedValue({ id: '1', phone: PROD_LIKE.phone });
       await expect(
         service.signup({
+          ...validSignupDto,
           email: 'novo@email.com',
-          password: PROD_LIKE.password,
-          name: PROD_LIKE.name,
-          phone: PROD_LIKE.phone,
           username: 'outro.user',
         }),
       ).rejects.toThrow(ConflictException);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('deve rejeitar quando nome de usuário tem menos de 2 caracteres', async () => {
+      await expect(
+        service.signup({
+          ...validSignupDto,
+          username: 'a',
+        }),
+      ).rejects.toThrow(BadRequestException);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('deve mapear P2002 (email) para ConflictException "Email já cadastrado"', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.findFirst.mockResolvedValue(null);
+      prisma.user.create.mockRejectedValue(
+        Object.assign(new Error('Unique constraint failed'), { code: 'P2002', meta: { target: ['email'] } }),
+      );
+      await expect(service.signup(validSignupDto)).rejects.toThrow(ConflictException);
+      await expect(service.signup(validSignupDto)).rejects.toThrow('Email já cadastrado');
+    });
+
+    it('deve mapear P2002 (username) para ConflictException com mensagem de usuário', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.findFirst.mockResolvedValue(null);
+      prisma.user.create.mockRejectedValue(
+        Object.assign(new Error('Unique constraint failed'), { code: 'P2002', meta: { target: ['username'] } }),
+      );
+      await expect(service.signup(validSignupDto)).rejects.toThrow(ConflictException);
+      await expect(service.signup(validSignupDto)).rejects.toThrow('nome de usuário');
+    });
+
+    it('deve mapear P2002 (phone) para ConflictException "Telefone já cadastrado"', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.findFirst.mockResolvedValue(null);
+      prisma.user.create.mockRejectedValue(
+        Object.assign(new Error('Unique constraint failed'), { code: 'P2002', meta: { target: ['phone'] } }),
+      );
+      await expect(service.signup(validSignupDto)).rejects.toThrow(ConflictException);
+      await expect(service.signup(validSignupDto)).rejects.toThrow('Telefone já cadastrado');
     });
   });
 

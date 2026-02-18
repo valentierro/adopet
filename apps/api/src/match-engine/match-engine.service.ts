@@ -84,4 +84,80 @@ export class MatchEngineService {
     };
     return computeMatchScore(profileForMatch, pet);
   }
+
+  /**
+   * Retorna o score de match (0–100 ou null) para cada pet em relação ao mesmo adotante.
+   * Usado ex.: na lista "Pets similares" para exibir o match do usuário com cada pet.
+   */
+  async getMatchScoresForAdopter(
+    petIds: string[],
+    adopterId: string,
+  ): Promise<Record<string, number | null>> {
+    if (petIds.length === 0) return {};
+    const [adopter, prefs, pets] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: adopterId, deactivatedAt: null },
+        select: {
+          housingType: true,
+          hasYard: true,
+          hasOtherPets: true,
+          hasChildren: true,
+          timeAtHome: true,
+          petsAllowedAtHome: true,
+          dogExperience: true,
+          catExperience: true,
+          householdAgreesToAdoption: true,
+          activityLevel: true,
+          preferredPetAge: true,
+          commitsToVetCare: true,
+          walkFrequency: true,
+          monthlyBudgetForPet: true,
+        },
+      }),
+      this.prisma.userPreferences.findUnique({
+        where: { userId: adopterId },
+        select: { sizePref: true, species: true, sexPref: true },
+      }),
+      this.prisma.pet.findMany({
+        where: { id: { in: petIds } },
+        select: {
+          id: true,
+          species: true,
+          sex: true,
+          preferredTutorHousingType: true,
+          preferredTutorHasYard: true,
+          preferredTutorHasOtherPets: true,
+          preferredTutorHasChildren: true,
+          preferredTutorTimeAtHome: true,
+          preferredTutorPetsAllowedAtHome: true,
+          preferredTutorDogExperience: true,
+          preferredTutorCatExperience: true,
+          preferredTutorHouseholdAgrees: true,
+          preferredTutorWalkFrequency: true,
+          hasOngoingCosts: true,
+          size: true,
+          age: true,
+          energyLevel: true,
+          hasSpecialNeeds: true,
+          healthNotes: true,
+        },
+      }),
+    ]);
+    if (!adopter) return Object.fromEntries(petIds.map((id) => [id, null]));
+    const profileForMatch = {
+      ...adopter,
+      sizePref: prefs?.sizePref ?? undefined,
+      speciesPref: prefs?.species ?? undefined,
+      sexPref: prefs?.sexPref ?? undefined,
+    };
+    const result: Record<string, number | null> = {};
+    for (const pet of pets) {
+      const matchResult = computeMatchScore(profileForMatch, pet);
+      result[pet.id] = matchResult.score;
+    }
+    for (const id of petIds) {
+      if (!(id in result)) result[id] = null;
+    }
+    return result;
+  }
 }
