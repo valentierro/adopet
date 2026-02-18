@@ -211,10 +211,32 @@ export class AdminBulkService {
       const neutered = getCell(row, getCol('neutered', 8));
       const description = getCell(row, getCol('description', 9));
       const adoptionReason = getCell(row, getCol('adoption_reason', 10));
-      const partnerSlug = getCell(row, getCol('partner_slug', 11));
-      const photo1 = getCell(row, getCol('photo_url_1', 12));
-      const photo2 = getCell(row, getCol('photo_url_2', 13));
-      const photo3 = getCell(row, getCol('photo_url_3', 14));
+      const feedingType = getCell(row, getCol('feeding_type', 11));
+      const feedingNotes = getCell(row, getCol('feeding_notes', 12));
+      const energyLevel = getCell(row, getCol('energy_level', 13));
+      const healthNotes = getCell(row, getCol('health_notes', 14));
+      const hasSpecialNeedsStr = getCell(row, getCol('has_special_needs', 15));
+      const goodWithDogs = getCell(row, getCol('good_with_dogs', 16));
+      const goodWithCats = getCell(row, getCol('good_with_cats', 17));
+      const goodWithChildren = getCell(row, getCol('good_with_children', 18));
+      const temperament = getCell(row, getCol('temperament', 19));
+      const isDocileStr = getCell(row, getCol('is_docile', 20));
+      const isTrainedStr = getCell(row, getCol('is_trained', 21));
+      const preferredTutorHousingType = getCell(row, getCol('preferred_tutor_housing_type', 22));
+      const preferredTutorHasYardStr = getCell(row, getCol('preferred_tutor_has_yard', 23));
+      const preferredTutorHasOtherPetsStr = getCell(row, getCol('preferred_tutor_has_other_pets', 24));
+      const preferredTutorHasChildrenStr = getCell(row, getCol('preferred_tutor_has_children', 25));
+      const preferredTutorTimeAtHome = getCell(row, getCol('preferred_tutor_time_at_home', 26));
+      const preferredTutorPetsAllowedAtHome = getCell(row, getCol('preferred_tutor_pets_allowed_at_home', 27));
+      const preferredTutorDogExperience = getCell(row, getCol('preferred_tutor_dog_experience', 28));
+      const preferredTutorCatExperience = getCell(row, getCol('preferred_tutor_cat_experience', 29));
+      const preferredTutorHouseholdAgrees = getCell(row, getCol('preferred_tutor_household_agrees', 30));
+      const preferredTutorWalkFrequency = getCell(row, getCol('preferred_tutor_walk_frequency', 31));
+      const hasOngoingCostsStr = getCell(row, getCol('has_ongoing_costs', 32));
+      const partnerSlug = getCell(row, getCol('partner_slug', 33));
+      const photo1 = getCell(row, getCol('photo_url_1', 34));
+      const photo2 = getCell(row, getCol('photo_url_2', 35));
+      const photo3 = getCell(row, getCol('photo_url_3', 36));
 
       if (!ownerEmail || !name || !species || !description) {
         errors.push({ row: rowNum, message: 'owner_email, name, species e description são obrigatórios.' });
@@ -255,20 +277,47 @@ export class AdminBulkService {
         partnerId = partner.id;
       }
 
+      const optionalStr = (s: string) => (s && s.trim() ? s.trim() : null);
+      const optionalBool = (s: string) => (s && s.trim() ? parseBool(s) : null);
+      const validEnum = (val: string, opts: string[]) =>
+        val && opts.includes(val.toUpperCase()) ? val.toUpperCase() : null;
+
       try {
         const pet = await this.prisma.pet.create({
           data: {
             ownerId: owner.id,
             name,
             species: speciesNorm,
-            breed: breed || null,
+            breed: optionalStr(breed),
             age,
             sex: sexNorm,
             size: sizeOk,
             vaccinated: vaccinatedBool,
             neutered: neuteredBool,
             description,
-            adoptionReason: adoptionReason || null,
+            adoptionReason: optionalStr(adoptionReason),
+            feedingType: (() => { const v = optionalStr(feedingType); return v ? v.toLowerCase() : null; })(),
+            feedingNotes: optionalStr(feedingNotes),
+            energyLevel: validEnum(energyLevel, ['LOW', 'MEDIUM', 'HIGH']),
+            healthNotes: (() => { const v = optionalStr(healthNotes); return v ? v.slice(0, 500) : null; })(),
+            hasSpecialNeeds: optionalBool(hasSpecialNeedsStr),
+            goodWithDogs: validEnum(goodWithDogs, ['YES', 'NO', 'UNKNOWN']),
+            goodWithCats: validEnum(goodWithCats, ['YES', 'NO', 'UNKNOWN']),
+            goodWithChildren: validEnum(goodWithChildren, ['YES', 'NO', 'UNKNOWN']),
+            temperament: validEnum(temperament, ['CALM', 'PLAYFUL', 'SHY', 'SOCIABLE', 'INDEPENDENT']),
+            isDocile: optionalBool(isDocileStr),
+            isTrained: optionalBool(isTrainedStr),
+            preferredTutorHousingType: validEnum(preferredTutorHousingType, ['CASA', 'APARTAMENTO', 'INDIFERENTE']),
+            preferredTutorHasYard: optionalBool(preferredTutorHasYardStr),
+            preferredTutorHasOtherPets: optionalBool(preferredTutorHasOtherPetsStr),
+            preferredTutorHasChildren: optionalBool(preferredTutorHasChildrenStr),
+            preferredTutorTimeAtHome: validEnum(preferredTutorTimeAtHome, ['MOST_DAY', 'HALF_DAY', 'LITTLE']),
+            preferredTutorPetsAllowedAtHome: validEnum(preferredTutorPetsAllowedAtHome, ['YES', 'NO', 'UNSURE']),
+            preferredTutorDogExperience: validEnum(preferredTutorDogExperience, ['NEVER', 'HAD_BEFORE', 'HAVE_NOW']),
+            preferredTutorCatExperience: validEnum(preferredTutorCatExperience, ['NEVER', 'HAD_BEFORE', 'HAVE_NOW']),
+            preferredTutorHouseholdAgrees: validEnum(preferredTutorHouseholdAgrees, ['YES', 'DISCUSSING']),
+            preferredTutorWalkFrequency: validEnum(preferredTutorWalkFrequency, ['DAILY', 'FEW_TIMES_WEEK', 'RARELY', 'INDIFERENTE']),
+            hasOngoingCosts: optionalBool(hasOngoingCostsStr),
             status: 'AVAILABLE',
             publicationStatus: 'PENDING',
             partnerId,
