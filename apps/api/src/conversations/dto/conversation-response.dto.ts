@@ -14,7 +14,7 @@ export class ConversationListItemDto {
   updatedAt: string;
 
   @ApiProperty()
-  pet: { id: string; name: string; photos: string[] };
+  pet: { id: string; name: string; photos: string[]; adoptionFinalized: boolean };
 
   @ApiProperty()
   otherUser: { id: string; name: string; avatarUrl?: string };

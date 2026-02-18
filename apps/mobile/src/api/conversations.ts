@@ -5,7 +5,7 @@ export type ConversationListItem = {
   petId: string;
   createdAt: string;
   updatedAt: string;
-  pet: { id: string; name: string; photos: string[] };
+  pet: { id: string; name: string; photos: string[]; adoptionFinalized?: boolean };
   otherUser: { id: string; name: string; avatarUrl?: string };
   lastMessage?: { content: string; createdAt: string; senderId: string };
   unreadCount: number;
@@ -34,7 +34,7 @@ export type ConversationDetail = {
     hasChildren?: boolean;
     timeAtHome?: string;
   };
-  pet?: { name: string; photoUrl?: string; adoptionFinalized?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string };
+  pet?: { name: string; photoUrl?: string; species?: string; size?: string; age?: number; adoptionFinalized?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string };
   otherUserTyping?: boolean;
 };
 

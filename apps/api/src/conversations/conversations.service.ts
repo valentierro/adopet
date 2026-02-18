@@ -185,7 +185,12 @@ export class ConversationsService {
           : { participants: { some: { userId } } }),
       },
       include: {
-        pet: { include: { media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }], take: 1 } } },
+        pet: {
+          include: {
+            media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }], take: 1 },
+            adoption: { select: { id: true } },
+          },
+        },
         participants: { include: { user: { select: { id: true, name: true, avatarUrl: true } } } },
         messages: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
@@ -210,6 +215,9 @@ export class ConversationsService {
     return convs.map((c) => {
       const other = c.participants.find((p) => p.userId !== userId)?.user;
       const last = c.messages[0];
+      const adoptionFinalized =
+        c.pet.status === 'ADOPTED' &&
+        (!!c.pet.adopterConfirmedAt || !!c.pet.adoption);
       return {
         id: c.id,
         petId: c.petId,
@@ -219,6 +227,7 @@ export class ConversationsService {
           id: c.pet.id,
           name: c.pet.name,
           photos: (c.pet.media ?? []).map((m) => m.url),
+          adoptionFinalized,
         },
         otherUser: {
           id: other?.id ?? '',

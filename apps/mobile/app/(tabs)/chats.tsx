@@ -1,6 +1,5 @@
-import { useCallback, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, RefreshControl } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
+import { useCallback, useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, RefreshControl, SectionList } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -12,45 +11,85 @@ import type { ConversationListItem } from '../../src/api/conversations';
 import { Ionicons } from '@expo/vector-icons';
 import { spacing } from '../../src/theme';
 
+type SectionKey = 'inProgress' | 'finalized';
+
 export default function ChatsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { colors } = useTheme();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [sectionExpanded, setSectionExpanded] = useState<Record<SectionKey, boolean>>({
+    inProgress: true,
+    finalized: true,
+  });
   const { data: conversations = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['conversations'],
     queryFn: getConversations,
     staleTime: 60_000,
   });
 
-  const handleDeleteConversation = (conversationId: string, petName: string) => {
-    Alert.alert(
-      'Apagar conversa',
-      `Deseja apagar a conversa sobre ${petName}? Esta ação não pode ser desfeita.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Apagar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteConversation(conversationId);
-              await queryClient.invalidateQueries({ queryKey: ['conversations'] });
-              setToastMessage('Conversa apagada.');
-            } catch {
-              setToastMessage('Não foi possível apagar a conversa.');
-            }
+  const handleDeleteConversation = useCallback(
+    (conversationId: string, petName: string) => {
+      Alert.alert(
+        'Apagar conversa',
+        `Deseja apagar a conversa sobre ${petName}? Esta ação não pode ser desfeita.`,
+        [
+          { text: 'Cancelar', style: 'cancel' },
+          {
+            text: 'Apagar',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await deleteConversation(conversationId);
+                await queryClient.invalidateQueries({ queryKey: ['conversations'] });
+                setToastMessage('Conversa apagada.');
+              } catch {
+                setToastMessage('Não foi possível apagar a conversa.');
+              }
+            },
           },
-        },
-      ],
-    );
-  };
+        ],
+      );
+    },
+    [queryClient],
+  );
 
   useFocusEffect(
     useCallback(() => {
       refetch();
     }, [refetch]),
   );
+
+  const inProgress = useMemo(
+    () => conversations.filter((c) => !c.pet?.adoptionFinalized),
+    [conversations],
+  );
+  const finalized = useMemo(
+    () => conversations.filter((c) => !!c.pet?.adoptionFinalized),
+    [conversations],
+  );
+
+  const sections = useMemo(
+    () => [
+      {
+        key: 'inProgress' as const,
+        title: 'Adoções em andamento',
+        data: sectionExpanded.inProgress ? inProgress : [],
+        count: inProgress.length,
+      },
+      {
+        key: 'finalized' as const,
+        title: 'Adoções finalizadas',
+        data: sectionExpanded.finalized ? finalized : [],
+        count: finalized.length,
+      },
+    ],
+    [inProgress, finalized, sectionExpanded],
+  );
+
+  const toggleSection = useCallback((key: SectionKey) => {
+    setSectionExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   if (isLoading && conversations.length === 0) {
     return (
@@ -70,7 +109,7 @@ export default function ChatsScreen() {
         <View style={[styles.avisoBox, { backgroundColor: (colors.warning || '#d97706') + '14', borderColor: (colors.warning || '#d97706') + '40' }]}>
           <Ionicons name="information-circle-outline" size={18} color={colors.warning || '#d97706'} style={styles.avisoIcon} />
           <Text style={[styles.avisoText, { color: colors.textSecondary }]}>
-            Mantenha o respeito no chat e use este espaço apenas para combinar a adoção dos pets.
+            Mantenha o respeito no chat e use este espaço apenas para combinar a adoção dos pets. Adoção no Adopet é voluntária e sem custos.
           </Text>
         </View>
         <EmptyState
@@ -91,7 +130,7 @@ export default function ChatsScreen() {
       <View style={[styles.avisoBox, { backgroundColor: (colors.warning || '#d97706') + '14', borderColor: (colors.warning || '#d97706') + '40' }]}>
         <Ionicons name="information-circle-outline" size={18} color={colors.warning || '#d97706'} style={styles.avisoIcon} />
         <Text style={[styles.avisoText, { color: colors.textSecondary }]}>
-          Mantenha o respeito no chat e use este espaço apenas para combinar a adoção dos pets.
+          Mantenha o respeito no chat e use este espaço apenas para combinar a adoção dos pets. Adoção no Adopet é voluntária e sem custos.
         </Text>
       </View>
     </>
@@ -136,14 +175,39 @@ export default function ChatsScreen() {
     [colors, router, handleDeleteConversation],
   );
 
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: (typeof sections)[0] }) => {
+      const expanded = sectionExpanded[section.key];
+      return (
+        <TouchableOpacity
+          style={[styles.sectionHeader, { backgroundColor: colors.background, borderBottomColor: colors.surface }]}
+          onPress={() => toggleSection(section.key)}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{section.title}</Text>
+          <View style={styles.sectionRight}>
+            <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>{section.count}</Text>
+            <Ionicons
+              name={expanded ? 'chevron-down' : 'chevron-forward'}
+              size={20}
+              color={colors.textSecondary}
+            />
+          </View>
+        </TouchableOpacity>
+      );
+    },
+    [colors, sectionExpanded, toggleSection],
+  );
+
   return (
     <ScreenContainer scroll={false}>
       <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
-      <FlashList
-        data={conversations}
+      <SectionList
+        sections={sections}
         keyExtractor={(c) => c.id}
         renderItem={renderItem}
-        estimatedItemSize={80}
+        renderSectionHeader={renderSectionHeader}
+        stickySectionHeadersEnabled
         ListHeaderComponent={listHeader}
         contentContainerStyle={styles.listContent}
         refreshControl={
@@ -158,6 +222,18 @@ const styles = StyleSheet.create({
   skeletonWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', minHeight: 160 },
   listContent: { paddingBottom: spacing.xl },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    marginTop: spacing.md,
+  },
+  sectionTitle: { fontSize: 15, fontWeight: '600' },
+  sectionRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  sectionCount: { fontSize: 13 },
   hint: {
     fontSize: 12,
     marginBottom: spacing.md,
