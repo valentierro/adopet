@@ -34,9 +34,13 @@ export interface AdopterProfile {
  */
 export interface PetTutorPreferences {
   preferredTutorHousingType?: string | null;
-  preferredTutorHasYard?: boolean | null;
-  preferredTutorHasOtherPets?: boolean | null;
-  preferredTutorHasChildren?: boolean | null;
+  /** SIM | NAO | INDIFERENTE */
+  preferredTutorHasYard?: string | null;
+  /** SIM | NAO | INDIFERENTE */
+  preferredTutorHasOtherPets?: string | null;
+  /** SIM | NAO | INDIFERENTE */
+  preferredTutorHasChildren?: string | null;
+  /** MOST_DAY | HALF_DAY | LITTLE | INDIFERENTE */
   preferredTutorTimeAtHome?: string | null;
   preferredTutorPetsAllowedAtHome?: string | null;
   preferredTutorDogExperience?: string | null;

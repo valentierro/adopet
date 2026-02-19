@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -14,6 +14,7 @@ import {
 import type { AdminStatsDto } from './dto/admin-stats.dto';
 import type { AdoptionItemDto } from './dto/adoption-item.dto';
 import type { UserSearchItemDto } from './dto/user-search-item.dto';
+import type { AdminUserListItemDto, AdminUserListResponseDto } from './dto/admin-user-list-item.dto';
 import type { PetAvailableItemDto } from './dto/pet-available-item.dto';
 import type { PendingAdoptionByTutorDto } from './dto/pending-adoption-by-tutor.dto';
 
@@ -265,6 +266,76 @@ export class AdminService {
       take: 20,
     });
     return users;
+  }
+
+  /** [Admin] Lista usuários com busca opcional e paginação (para seção Usuários e banir). */
+  async getUsersList(search?: string, page = 1, limit = 30): Promise<AdminUserListResponseDto> {
+    const term = (search ?? '').trim();
+    const skip = Math.max(0, (page - 1) * limit);
+    const take = Math.min(100, Math.max(1, limit));
+    const where = term.length >= 2
+      ? {
+          OR: [
+            { name: { contains: term, mode: 'insensitive' as const } },
+            { email: { contains: term, mode: 'insensitive' as const } },
+            { username: { contains: term, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
+    const [items, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          username: true,
+          phone: true,
+          deactivatedAt: true,
+          bannedAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take,
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+    return {
+      items: items.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        username: u.username ?? undefined,
+        phone: u.phone ?? undefined,
+        deactivatedAt: u.deactivatedAt?.toISOString(),
+        bannedAt: u.bannedAt?.toISOString(),
+      })),
+      total,
+    };
+  }
+
+  /** [Admin] Banir usuário (sem denúncia). Define deactivatedAt e opcionalmente bannedAt/bannedById/bannedReason. Não permite banir admin. */
+  async banUser(userId: string, adminId: string, reason?: string): Promise<{ message: string }> {
+    const adminIds = this.config.get<string>('ADMIN_USER_IDS')?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+    if (adminIds.includes(userId)) {
+      throw new BadRequestException('Não é permitido banir um administrador.');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true },
+    });
+    if (!user) throw new NotFoundException('Usuário não encontrado.');
+    const now = new Date();
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        deactivatedAt: now,
+        bannedAt: now,
+        bannedById: adminId,
+        bannedReason: reason?.trim() || null,
+      },
+    });
+    return { message: 'Usuário banido. A conta foi desativada e não poderá fazer login; e-mail, nome de usuário e telefone continuam bloqueados para novo cadastro.' };
   }
 
   /** Retorna o id do usuário "Sistema" usado em adoções auto-aprovadas após 48h. Cria se não existir. */

@@ -7,6 +7,8 @@ import { EmailModule } from '../email/email.module';
 import { FeedModule } from '../feed/feed.module';
 import { MeModule } from '../me/me.module';
 import { VerificationModule } from '../verification/verification.module';
+import { PaymentsModule } from '../payments/payments.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { VerificationModule } from '../verification/verification.module';
     forwardRef(() => FeedModule),
     forwardRef(() => MeModule),
     forwardRef(() => VerificationModule),
+    PaymentsModule,
+    NotificationsModule,
   ],
   controllers: [PartnersController],
   providers: [PartnersService],

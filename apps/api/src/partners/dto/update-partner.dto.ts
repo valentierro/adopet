@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsBoolean, MaxLength, MinLength } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsIn, MaxLength, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class UpdatePartnerDto {
   @ApiPropertyOptional()
@@ -76,4 +77,46 @@ export class UpdatePartnerDto {
   @IsOptional()
   @IsBoolean()
   isPaidPartner?: boolean;
+
+  @ApiPropertyOptional({ description: 'Endereço completo do estabelecimento' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  address?: string;
+
+  @ApiPropertyOptional({ example: 'PF', enum: ['PF', 'CNPJ'] })
+  @IsOptional()
+  @IsString()
+  @IsIn(['PF', 'CNPJ'])
+  personType?: 'PF' | 'CNPJ';
+
+  @ApiPropertyOptional({ description: 'CPF apenas dígitos (11)' })
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? value.replace(/\D/g, '') : value))
+  cpf?: string;
+
+  @ApiPropertyOptional({ description: 'CNPJ apenas dígitos (14)' })
+  @IsOptional()
+  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? value.replace(/\D/g, '') : value))
+  cnpj?: string;
+
+  @ApiPropertyOptional({ description: 'Razão social (CNPJ)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  legalName?: string;
+
+  @ApiPropertyOptional({ description: 'Nome fantasia (CNPJ)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  tradeName?: string;
+
+  @ApiPropertyOptional({ example: 'BASIC', enum: ['BASIC', 'DESTAQUE', 'PREMIUM'] })
+  @IsOptional()
+  @IsString()
+  @IsIn(['BASIC', 'DESTAQUE', 'PREMIUM'])
+  planId?: string;
 }

@@ -60,9 +60,9 @@ export class PetsService {
       isDocile?: boolean | null;
       isTrained?: boolean | null;
       preferredTutorHousingType?: string | null;
-      preferredTutorHasYard?: boolean | null;
-      preferredTutorHasOtherPets?: boolean | null;
-      preferredTutorHasChildren?: boolean | null;
+      preferredTutorHasYard?: string | null;
+      preferredTutorHasOtherPets?: string | null;
+      preferredTutorHasChildren?: string | null;
       preferredTutorTimeAtHome?: string | null;
       preferredTutorPetsAllowedAtHome?: string | null;
       preferredTutorDogExperience?: string | null;
@@ -281,6 +281,45 @@ export class PetsService {
       }));
     }
     return dto;
+  }
+
+  /** Lista pública de pets vinculados a um parceiro (apenas aprovados). Usado na página do parceiro. Se userId informado, inclui matchScore. */
+  async findPublicByPartnerId(
+    partnerId: string,
+    opts?: { cursor?: string; species?: string; userId?: string },
+  ): Promise<{ items: PetResponseDto[]; nextCursor: string | null }> {
+    const PAGE_SIZE = 20;
+    const where: { partnerId: string; publicationStatus: string; species?: string } = {
+      partnerId,
+      publicationStatus: 'APPROVED',
+    };
+    if (opts?.species && opts.species !== 'BOTH') {
+      where.species = opts.species.toUpperCase();
+    }
+    const pets = await this.prisma.pet.findMany({
+      where,
+      take: PAGE_SIZE + 1,
+      ...(opts?.cursor ? { skip: 1, cursor: { id: opts.cursor } } : {}),
+      orderBy: { createdAt: 'desc' },
+      include: {
+        media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+      },
+    });
+    const hasMore = pets.length > PAGE_SIZE;
+    const items = pets.slice(0, PAGE_SIZE);
+    const petIds = items.map((p) => p.id);
+    const verifiedIds = await this.verificationService.getVerifiedPetIds(petIds);
+    const dtos = items.map((p) => this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id)));
+    if (opts?.userId && petIds.length > 0) {
+      const matchScores = await this.matchEngine.getMatchScoresForAdopter(petIds, opts.userId);
+      dtos.forEach((dto) => {
+        const score = matchScores[dto.id];
+        if (score !== undefined) dto.matchScore = score;
+      });
+    }
+    const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].id : null;
+    return { items: dtos, nextCursor };
   }
 
   /** [Admin] Listar pets com publicação pendente (para aprovar/rejeitar no feed). */
@@ -600,7 +639,7 @@ export class PetsService {
       this.verificationService.getVerifiedPetIds(petIds),
       this.prisma.favorite.groupBy({
         by: ['petId'],
-        where: { petId: { in: petIds } },
+        where: { petId: { in: petIds }, userId: { not: ownerId } },
         _count: { id: true },
       }).then((rows) => new Map(rows.map((r) => [r.petId, r._count.id]))),
     ]);

@@ -30,6 +30,7 @@ export class NotificationsJobsService implements OnModuleInit {
     this.runNewPetsJob();
     this.runRemindersJob();
     this.runSavedSearchAlertsJob();
+    this.runHighMatchNewPetsJob();
     this.runTutorListingReminderJob();
     this.runExpiryRemindersJob();
     this.runExpireListingsJob();
@@ -37,6 +38,7 @@ export class NotificationsJobsService implements OnModuleInit {
     setInterval(() => this.runNewPetsJob(), NEW_PETS_INTERVAL_MS);
     setInterval(() => this.runRemindersJob(), REMINDERS_INTERVAL_MS);
     setInterval(() => this.runSavedSearchAlertsJob(), NEW_PETS_INTERVAL_MS);
+    setInterval(() => this.runHighMatchNewPetsJob(), NEW_PETS_INTERVAL_MS);
     setInterval(() => this.runTutorListingReminderJob(), LISTING_REMINDER_INTERVAL_MS);
     setInterval(() => this.runExpiryRemindersJob(), LISTING_EXPIRY_INTERVAL_MS);
     setInterval(() => this.runExpireListingsJob(), LISTING_EXPIRY_INTERVAL_MS);
@@ -60,8 +62,8 @@ export class NotificationsJobsService implements OnModuleInit {
       for (const pet of pets) {
         const adoption = pet.adoption as { tutorId: string; adopterId: string } | null;
         if (!adoption) continue;
-        const title = 'Como foi a adoção?';
-        const body = `Conte sua experiência com a adoção de ${pet.name}. Sua opinião nos ajuda a melhorar.`;
+        const title = 'Como foi a adoção? 🐾';
+        const body = `Conta pra gente como está sendo a vida com o ${pet.name}! Sua experiência ajuda outros tutores.`;
         const data = { screen: 'my-adoptions' };
         await this.push.sendToUser(adoption.tutorId, title, body, data);
         if (adoption.adopterId !== adoption.tutorId) {
@@ -107,13 +109,50 @@ export class NotificationsJobsService implements OnModuleInit {
         if (count > 0) {
           const msg =
             count === 1
-              ? '1 novo pet na sua região'
-              : `${count} novos pets na sua região`;
-          await this.push.sendToUser(prefs.userId, 'Novos pets', msg);
+              ? 'Tem um novinho na área! 🐕🐈 Dá uma olhada no feed.'
+              : `${count} pets novos perto de você! Dá uma olhada no feed. 🐾`;
+          await this.push.sendToUser(prefs.userId, 'Novos pets na região 🐾', msg);
         }
       }
     } catch (e) {
       console.warn('[NotificationsJobs] runNewPetsJob failed', e);
+    }
+  }
+
+  /** Push "X pet(s) com alta compatibilidade com você" para usuários com notifyNewPets e localização (match score > 75%). */
+  private async runHighMatchNewPetsJob(): Promise<void> {
+    try {
+      const prefsList = await this.prisma.userPreferences.findMany({
+        where: {
+          notifyNewPets: true,
+          latitude: { not: null },
+          longitude: { not: null },
+          user: { pushToken: { not: null } },
+        },
+        select: { userId: true, species: true, latitude: true, longitude: true, radiusKm: true },
+      });
+      const since = new Date(Date.now() - NEW_PETS_LOOKBACK_MS);
+      for (const prefs of prefsList) {
+        if (prefs.latitude == null || prefs.longitude == null) continue;
+        const count = await this.feedService.countNewPetsInRadiusWithHighMatch(
+          prefs.userId,
+          prefs.latitude,
+          prefs.longitude,
+          prefs.radiusKm ?? 50,
+          since,
+          prefs.species ?? undefined,
+          75,
+        );
+        if (count > 0) {
+          const msg =
+            count === 1
+              ? 'Apareceu um pet que combina muito com você! 💕 Dá uma olhada.'
+              : `${count} pets que combinam com você! Vale a pena conferir. 💕`;
+          await this.push.sendToUser(prefs.userId, 'Match! 💕', msg);
+        }
+      }
+    } catch (e) {
+      console.warn('[NotificationsJobs] runHighMatchNewPetsJob failed', e);
     }
   }
 
@@ -149,8 +188,8 @@ export class NotificationsJobsService implements OnModuleInit {
           if (prefs?.notifyReminders === false) continue;
           await this.push.sendToUser(
             toNotify,
-            'Conversa pendente',
-            `Você tem uma conversa pendente sobre ${c.pet.name}`,
+            'Alguém te esperando! 💬',
+            `Tem uma conversa sobre o ${c.pet.name} esperando sua resposta.`,
             { conversationId: c.id },
           );
           await this.prisma.conversation.update({
@@ -190,8 +229,8 @@ export class NotificationsJobsService implements OnModuleInit {
         if (prefs?.notifyListingReminders === false) continue;
         await this.push.sendToUser(
           u.id,
-          'Seus anúncios estão em dia?',
-          'Se algum pet já foi adotado, atualize no app. Adoções confirmadas entram na sua pontuação e no seu nível de tutor.',
+          'E aí, anúncios em dia? 📋',
+          'Se algum pet já foi adotado, atualiza no app! Sua pontuação e nível de tutor agradecem. 🐾',
           { screen: 'my-pets' },
         );
         await this.prisma.user.update({
@@ -231,8 +270,8 @@ export class NotificationsJobsService implements OnModuleInit {
         if (daysLeft <= 1 && pet.expiryReminder1SentAt == null) {
           await this.push.sendToUser(
             pet.ownerId,
-            'Anúncio expirando',
-            `Oi! O seu anúncio de adoção do pet ${pet.name} expira em 1 dia. Toque para prorrogar e manter ativo.`,
+            'Anúncio expirando amanhã! ⏰',
+            `O anúncio do ${pet.name} expira em 1 dia. Toque aqui para prorrogar e manter no feed.`,
             { screen: 'pet-detail', petId: pet.id },
           );
           await this.prisma.pet.update({
@@ -242,8 +281,8 @@ export class NotificationsJobsService implements OnModuleInit {
         } else if (daysLeft <= 5 && pet.expiryReminder5SentAt == null) {
           await this.push.sendToUser(
             pet.ownerId,
-            'Anúncio expirando',
-            `Oi! O seu anúncio de adoção do pet ${pet.name} expira em 5 dias. Toque para prorrogar e manter ativo.`,
+            'Lembrete: anúncio expirando ⏰',
+            `O anúncio do ${pet.name} expira em 5 dias. Toque para prorrogar quando quiser.`,
             { screen: 'pet-detail', petId: pet.id },
           );
           await this.prisma.pet.update({
@@ -253,8 +292,8 @@ export class NotificationsJobsService implements OnModuleInit {
         } else if (daysLeft <= 10 && pet.expiryReminder10SentAt == null) {
           await this.push.sendToUser(
             pet.ownerId,
-            'Anúncio expirando',
-            `Oi! O seu anúncio de adoção do pet ${pet.name} expira em 10 dias. Toque para prorrogar e manter ativo.`,
+            'Lembrete: anúncio expirando ⏰',
+            `O anúncio do ${pet.name} expira em 10 dias. Toque para prorrogar e manter ativo.`,
             { screen: 'pet-detail', petId: pet.id },
           );
           await this.prisma.pet.update({
@@ -311,8 +350,8 @@ export class NotificationsJobsService implements OnModuleInit {
           if (prefs?.notifyListingReminders !== false) {
             await this.push.sendToUser(
               pet.ownerId,
-              'Anúncio expirado',
-              `Oi! O seu anúncio de adoção do pet ${pet.name} expirou e foi removido do feed.`,
+              'Seu anúncio saiu do feed 📭',
+              `O anúncio do ${pet.name} expirou. Quer republicar? Entra em Meus pets e prorroga quando quiser.`,
               { screen: 'my-pets' },
             );
           }
@@ -351,9 +390,9 @@ export class NotificationsJobsService implements OnModuleInit {
         if (count > 0) {
           const msg =
             count === 1
-              ? '1 pet novo combina com sua busca salva'
-              : `${count} pets novos combinam com sua busca salva`;
-          await this.push.sendToUser(s.userId, 'Busca salva', msg);
+              ? 'Achei! 1 pet novo bate com sua busca salva. 🔍'
+              : `Achei! ${count} pets novos batem com sua busca. Dá uma olhada! 🔍`;
+          await this.push.sendToUser(s.userId, 'Sua busca deu match! 🔍', msg);
         }
         await this.prisma.savedSearch.update({
           where: { id: s.id },

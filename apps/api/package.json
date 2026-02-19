@@ -19,7 +19,10 @@
     "db:assign-placeholder-photos": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/assign-placeholder-pet-photos.ts",
     "db:fix-seed-photo-urls": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/fix-seed-photo-urls.ts",
     "db:backfill-pet-city": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-pet-city.ts",
-    "db:backfill-match-fields": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-match-fields.ts"
+    "db:backfill-match-fields": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-match-fields.ts",
+    "db:delete-users-by-prefix": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/delete-users-by-email-prefix.ts",
+    "db:delete-own-pet-favorites": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/delete-own-pet-favorites.ts",
+    "stripe:create-coupons": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/create-stripe-coupons.ts"
   },
   "dependencies": {
     "@adopet/shared": "workspace:*",

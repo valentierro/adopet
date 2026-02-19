@@ -70,16 +70,16 @@ export class PetResponseDto {
   @ApiPropertyOptional({ description: 'Preferência de tutor (para match); apenas para dono/edição', enum: ['CASA', 'APARTAMENTO', 'INDIFERENTE'] })
   preferredTutorHousingType?: string;
 
-  @ApiPropertyOptional({ description: 'Pet prefere tutor com quintal' })
-  preferredTutorHasYard?: boolean;
+  @ApiPropertyOptional({ enum: ['SIM', 'NAO', 'INDIFERENTE'], description: 'Pet prefere tutor com quintal' })
+  preferredTutorHasYard?: string;
 
-  @ApiPropertyOptional({ description: 'Pet se adapta a outros pets no local' })
-  preferredTutorHasOtherPets?: boolean;
+  @ApiPropertyOptional({ enum: ['SIM', 'NAO', 'INDIFERENTE'], description: 'Pet se adapta a outros pets no local' })
+  preferredTutorHasOtherPets?: string;
 
-  @ApiPropertyOptional({ description: 'Pet se adapta a crianças em casa' })
-  preferredTutorHasChildren?: boolean;
+  @ApiPropertyOptional({ enum: ['SIM', 'NAO', 'INDIFERENTE'], description: 'Pet se adapta a crianças em casa' })
+  preferredTutorHasChildren?: string;
 
-  @ApiPropertyOptional({ enum: ['MOST_DAY', 'HALF_DAY', 'LITTLE'] })
+  @ApiPropertyOptional({ enum: ['MOST_DAY', 'HALF_DAY', 'LITTLE', 'INDIFERENTE'] })
   preferredTutorTimeAtHome?: string;
 
   @ApiPropertyOptional({ enum: ['YES', 'NO', 'UNSURE'] })

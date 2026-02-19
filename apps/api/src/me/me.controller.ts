@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Put, Post, Delete, Patch, Body, Param, Query, UseGuards, StreamableFile, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -15,9 +15,11 @@ import { UpdatePartnerCouponDto } from '../partners/dto/update-partner-coupon.dt
 import { CreatePartnerServiceDto } from '../partners/dto/create-partner-service.dto';
 import { UpdatePartnerServiceDto } from '../partners/dto/update-partner-service.dto';
 import { AddPartnerMemberDto } from '../partners/dto/add-partner-member.dto';
+import { BulkAddPartnerMembersDto } from '../partners/dto/bulk-add-partner-members.dto';
 import { UpdatePartnerMemberDto } from '../partners/dto/update-partner-member.dto';
 import { CreateCheckoutSessionDto } from './dto/checkout-session.dto';
 import { CreateBillingPortalSessionDto } from './dto/billing-portal.dto';
+import { BecomePartnerDto } from './dto/become-partner.dto';
 import type { MeResponseDto } from './dto/me-response.dto';
 import type { PreferencesResponseDto } from './dto/preferences-response.dto';
 import type { MyAdoptionsResponseDto } from './dto/my-adoption-item.dto';
@@ -26,6 +28,8 @@ import type { PartnerCouponResponseDto } from '../partners/dto/partner-coupon-re
 import type { PartnerServiceResponseDto } from '../partners/dto/partner-service-response.dto';
 import type { PartnerMemberDto } from '../partners/partners.service';
 import { TutorStatsResponseDto } from './dto/tutor-stats-response.dto';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
+import type { InAppNotificationItem } from '../notifications/in-app-notifications.service';
 
 @ApiTags('me')
 @ApiBearerAuth()
@@ -37,6 +41,7 @@ export class MeController {
     private readonly tutorStatsService: TutorStatsService,
     private readonly partnersService: PartnersService,
     private readonly stripeService: StripeService,
+    private readonly inAppNotificationsService: InAppNotificationsService,
   ) {}
 
   @Get('tutor-stats')
@@ -51,6 +56,38 @@ export class MeController {
     return this.meService.getMe(user.id);
   }
 
+  @Get('notifications')
+  @ApiOperation({ summary: 'Lista notificações in-app (ex.: parceria encerrada)' })
+  async getMyNotifications(
+    @CurrentUser() user: { id: string },
+    @Query('limit') limit?: string,
+  ): Promise<InAppNotificationItem[]> {
+    return this.inAppNotificationsService.listByUser(user.id, limit ? Math.min(Number(limit), 100) : 50);
+  }
+
+  @Get('notifications/unread-count')
+  @ApiOperation({ summary: 'Quantidade de notificações não lidas' })
+  async getMyNotificationsUnreadCount(@CurrentUser() user: { id: string }): Promise<{ count: number }> {
+    const count = await this.inAppNotificationsService.getUnreadCount(user.id);
+    return { count };
+  }
+
+  @Patch('notifications/read-all')
+  @ApiOperation({ summary: 'Marcar todas as notificações como lidas' })
+  async markAllNotificationsAsRead(@CurrentUser() user: { id: string }): Promise<{ updated: number }> {
+    return this.inAppNotificationsService.markAllAsRead(user.id);
+  }
+
+  @Patch('notifications/:id/read')
+  @ApiOperation({ summary: 'Marcar notificação como lida' })
+  async markNotificationAsRead(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+  ): Promise<{ ok: true }> {
+    await this.inAppNotificationsService.markAsRead(user.id, id);
+    return { ok: true };
+  }
+
   @Get('pending-adoption-confirmations')
   @ApiOperation({ summary: 'Pets em que o usuário foi indicado como adotante e ainda não confirmou' })
   async getPendingAdoptionConfirmations(@CurrentUser() user: { id: string }) {
@@ -61,6 +98,22 @@ export class MeController {
   @ApiOperation({ summary: 'Dados do estabelecimento parceiro (portal do parceiro)' })
   async getMyPartner(@CurrentUser() user: { id: string }): Promise<PartnerMeDto | null> {
     return this.partnersService.getByUserId(user.id);
+  }
+
+  @Get('partner/subscription-details')
+  @ApiOperation({ summary: 'Datas da assinatura: último pagamento e próximo vencimento (portal do parceiro)' })
+  async getMyPartnerSubscriptionDetails(
+    @CurrentUser() user: { id: string },
+  ): Promise<{ lastPaymentAt: string | null; nextBillingAt: string | null }> {
+    return this.stripeService.getSubscriptionBillingInfo(user.id);
+  }
+
+  @Get('partner/payment-history')
+  @ApiOperation({ summary: 'Histórico de faturas/pagamentos da assinatura (portal do parceiro)' })
+  async getMyPartnerPaymentHistory(
+    @CurrentUser() user: { id: string },
+  ): Promise<{ items: Array<{ paidAt: string; amountFormatted: string; status: string }> }> {
+    return this.stripeService.getSubscriptionPaymentHistory(user.id);
   }
 
   @Get('partner/analytics')
@@ -89,6 +142,44 @@ export class MeController {
     return this.stripeService.createBillingPortalSession(user.id, dto.returnUrl);
   }
 
+  @Post('partner/register')
+  @ApiOperation({ summary: 'Usuário logado se tornar parceiro comercial (sem criar nova conta)' })
+  async registerAsPartner(
+    @CurrentUser() user: { id: string },
+    @Body() dto: BecomePartnerDto,
+  ): Promise<PartnerMeDto> {
+    const existing = await this.partnersService.getByUserId(user.id);
+    if (existing) {
+      throw new BadRequestException('Você já é um parceiro. Use o portal do parceiro para gerenciar.');
+    }
+    let documentType: 'CPF' | 'CNPJ' | null = null;
+    let document: string | null = null;
+    if (dto.personType === 'PF' && dto.cpf) {
+      const digits = dto.cpf.replace(/\D/g, '');
+      if (digits.length !== 11) throw new BadRequestException('CPF deve ter 11 dígitos.');
+      documentType = 'CPF';
+      document = digits;
+    } else if (dto.personType === 'CNPJ' && dto.cnpj) {
+      const digits = dto.cnpj.replace(/\D/g, '');
+      if (digits.length !== 14) throw new BadRequestException('CNPJ deve ter 14 dígitos.');
+      documentType = 'CNPJ';
+      document = digits;
+    }
+    await this.partnersService.createForUser(
+      user.id,
+      dto.establishmentName,
+      dto.planId?.trim() || undefined,
+      dto.address?.trim() || null,
+      documentType,
+      document,
+      dto.legalName?.trim() || null,
+      dto.tradeName?.trim() || null,
+    );
+    const partner = await this.partnersService.getByUserId(user.id);
+    if (!partner) throw new BadRequestException('Parceiro não encontrado após cadastro.');
+    return partner;
+  }
+
   @Put('partner')
   @ApiOperation({ summary: 'Atualizar dados do estabelecimento (portal do parceiro)' })
   async updateMyPartner(
@@ -96,6 +187,18 @@ export class MeController {
     @Body() dto: UpdateMyPartnerDto,
   ): Promise<PartnerMeDto> {
     return this.partnersService.updateByUserId(user.id, dto);
+  }
+
+  @Post('partner/leave')
+  @ApiOperation({ summary: 'Desvincular minha ONG (só o admin sai; membros continuam vinculados à ONG inativa)' })
+  async leaveMyPartner(@CurrentUser() user: { id: string }): Promise<{ message: string }> {
+    return this.partnersService.leavePartnershipByUserId(user.id);
+  }
+
+  @Post('partner/leave-and-remove-members')
+  @ApiOperation({ summary: 'Desvincular ONG e remover todos os membros (todos viram usuários comuns)' })
+  async leaveMyPartnerAndRemoveMembers(@CurrentUser() user: { id: string }): Promise<{ message: string }> {
+    return this.partnersService.leavePartnershipAndRemoveAllMembersByUserId(user.id);
   }
 
   @Get('partner/coupons')
@@ -179,6 +282,36 @@ export class MeController {
     @Body() dto: AddPartnerMemberDto,
   ): Promise<PartnerMemberDto> {
     return this.partnersService.addMemberByUserId(user.id, dto);
+  }
+
+  @Get('partner/members/bulk/template')
+  @ApiOperation({ summary: 'Download do modelo CSV para importação em lote de membros (ONG)' })
+  getMyPartnerMembersBulkTemplate(): StreamableFile {
+    const csv =
+      'email,nome,telefone,funcao\n' +
+      'membro@exemplo.org,Maria Silva,11999999999,VOLUNTARIO\n';
+    const buffer = Buffer.from(csv, 'utf-8');
+    return new StreamableFile(buffer, {
+      type: 'text/csv; charset=utf-8',
+      disposition: 'attachment; filename="membros_modelo.csv"',
+    });
+  }
+
+  @Post('partner/members/bulk')
+  @ApiOperation({ summary: 'Adicionar membros em lote à ONG (máx. 25 por vez; apenas para parceiro type=ONG)' })
+  async bulkAddMyPartnerMembers(
+    @CurrentUser() user: { id: string },
+    @Body() dto: BulkAddPartnerMembersDto,
+  ): Promise<{ created: number; errors: { row: number; message: string }[] }> {
+    return this.partnersService.bulkAddMembersByUserId(
+      user.id,
+      dto.members.map((m) => ({
+        email: m.email,
+        name: m.name,
+        phone: m.phone,
+        role: m.role,
+      })),
+    );
   }
 
   @Put('partner/members/:userId')

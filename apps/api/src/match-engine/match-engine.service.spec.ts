@@ -17,7 +17,7 @@ describe('MatchEngineService', () => {
   const petRow = {
     ownerId,
     preferredTutorHousingType: 'CASA',
-    preferredTutorHasYard: true,
+    preferredTutorHasYard: 'SIM',
     preferredTutorHasOtherPets: null,
     preferredTutorHasChildren: null,
     preferredTutorTimeAtHome: null,

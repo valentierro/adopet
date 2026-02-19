@@ -28,7 +28,7 @@ describe('NotificationsJobsService', () => {
         NotificationsJobsService,
         { provide: PrismaService, useValue: fullPrisma },
         { provide: PushService, useValue: push },
-        { provide: FeedService, useValue: { countNewPetsInRadius: jest.fn(), countPetsForSavedSearchAlert: jest.fn() } },
+        { provide: FeedService, useValue: { countNewPetsInRadius: jest.fn(), countPetsForSavedSearchAlert: jest.fn(), countNewPetsInRadiusWithHighMatch: jest.fn() } },
       ],
     }).compile();
     service = module.get<NotificationsJobsService>(NotificationsJobsService);
@@ -59,13 +59,13 @@ describe('NotificationsJobsService', () => {
       expect(push.sendToUser).toHaveBeenCalledTimes(2);
       expect(push.sendToUser).toHaveBeenCalledWith(
         'user-tutor',
-        'Como foi a adoção?',
+        'Como foi a adoção? 🐾',
         expect.stringContaining('Rex'),
         { screen: 'my-adoptions' },
       );
       expect(push.sendToUser).toHaveBeenCalledWith(
         'user-adopter',
-        'Como foi a adoção?',
+        'Como foi a adoção? 🐾',
         expect.stringContaining('Rex'),
         { screen: 'my-adoptions' },
       );

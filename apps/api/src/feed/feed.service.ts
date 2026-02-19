@@ -268,7 +268,9 @@ export class FeedService {
     const favoriteSpeciesSet = new Set(favoritePets.map((f) => f.pet.species));
     const favoriteSizeSet = new Set(favoritePets.map((f) => f.pet.size));
     const swipedIds = swipedPetIds.map((s) => s.petId);
-    const excludeOwnerIds = userId ? [...blockedByMe, ...blockedMe] : [];
+    const excludeOwnerIds = userId
+      ? [userId, ...blockedByMe, ...blockedMe]
+      : [];
 
     const breedFilter = queryBreed?.trim();
     const now = new Date();
@@ -584,7 +586,9 @@ export class FeedService {
       userId ? this.blocksService.getBlockedUserIds(userId) : Promise.resolve([]),
       userId ? this.blocksService.getBlockedByUserIds(userId) : Promise.resolve([]),
     ]);
-    const excludeOwnerIds = userId ? [...blockedByMe, ...blockedMe] : [];
+    const excludeOwnerIds = userId
+      ? [userId, ...blockedByMe, ...blockedMe]
+      : [];
     const now = new Date();
     const candidates = await this.prisma.pet.findMany({
       where: {
@@ -706,6 +710,57 @@ export class FeedService {
     for (const p of candidates) {
       if (p.latitude == null || p.longitude == null) continue;
       if (this.haversineKm(lat, lng, p.latitude, p.longitude) <= radiusKm) count += 1;
+    }
+    return count;
+  }
+
+  /**
+   * Conta pets novos no raio do usuário com match score acima do mínimo (ex.: 75%).
+   * Usado para notificação "pet(s) com alta compatibilidade com você".
+   */
+  async countNewPetsInRadiusWithHighMatch(
+    userId: string,
+    lat: number,
+    lng: number,
+    radiusKm: number,
+    since: Date,
+    species?: string,
+    minMatchScore = 75,
+  ): Promise<number> {
+    const [reportedPetIds, blockedByMe, blockedMe] = await Promise.all([
+      this.reportsService.getReportedPetIds(),
+      this.blocksService.getBlockedUserIds(userId),
+      this.blocksService.getBlockedByUserIds(userId),
+    ]);
+    const excludeOwnerIds = [...blockedByMe, ...blockedMe];
+    const speciesFilter = species && species !== 'BOTH' ? species.toUpperCase() : null;
+    const now = new Date();
+    const candidates = await this.prisma.pet.findMany({
+      where: {
+        status: 'AVAILABLE',
+        publicationStatus: 'APPROVED',
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        createdAt: { gte: since },
+        latitude: { not: null },
+        longitude: { not: null },
+        ownerId: { not: userId },
+        ...(speciesFilter ? { species: speciesFilter } : {}),
+        ...(reportedPetIds.length > 0 ? { id: { notIn: reportedPetIds } } : {}),
+        ...(excludeOwnerIds.length > 0 ? { ownerId: { notIn: excludeOwnerIds } } : {}),
+      },
+      select: { id: true, latitude: true, longitude: true },
+      take: 500,
+    });
+    const idsInRadius: string[] = [];
+    for (const p of candidates) {
+      if (p.latitude == null || p.longitude == null) continue;
+      if (this.haversineKm(lat, lng, p.latitude, p.longitude) <= radiusKm) idsInRadius.push(p.id);
+    }
+    if (idsInRadius.length === 0) return 0;
+    const scores = await this.matchEngine.getMatchScoresForAdopter(idsInRadius, userId);
+    let count = 0;
+    for (const score of Object.values(scores)) {
+      if (score != null && score >= minMatchScore) count += 1;
     }
     return count;
   }

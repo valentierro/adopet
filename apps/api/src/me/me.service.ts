@@ -369,12 +369,23 @@ export class MeService {
 
   /**
    * Desativa a conta e exclui/anonimiza dados pessoais (LGPD – direito à eliminação).
+   * - Bloqueia se o usuário for dono de uma conta parceira (ONG): precisa transferir a administração antes.
    * - Remove tokens, preferências, buscas salvas, favoritos e swipes.
-   * - Desvincula parceiro do usuário.
+   * - Desvincula parceiro do usuário (quando não é dono).
    * - Anonimiza conteúdo de mensagens enviadas pelo usuário.
    * - Anonimiza o registro do usuário (mantém id para integridade referencial).
    */
   async deactivate(userId: string): Promise<{ message: string }> {
+    const partnerAsOwner = await this.prisma.partner.findFirst({
+      where: { userId },
+      select: { id: true, name: true, type: true },
+    });
+    if (partnerAsOwner) {
+      throw new BadRequestException(
+        'Você é responsável por uma conta parceira (ONG). Transfira a administração no portal do parceiro ou entre em contato com o suporte antes de desativar sua conta.',
+      );
+    }
+
     const now = new Date();
     const deletedEmail = `deleted-${userId}@deleted.adopet.local`;
 

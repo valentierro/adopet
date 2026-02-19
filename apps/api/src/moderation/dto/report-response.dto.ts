@@ -30,4 +30,7 @@ export class ReportResponseDto {
 
   @ApiPropertyOptional({ description: 'Feedback enviado ao denunciador ao resolver' })
   resolutionFeedback?: string;
+
+  @ApiPropertyOptional({ description: 'Ação tomada ao resolver (ex.: BAN_USER)' })
+  resolutionAction?: string;
 }

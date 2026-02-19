@@ -6,11 +6,24 @@ import { EmailService } from '../email/email.service';
 import { FeedService } from '../feed/feed.service';
 import { TutorStatsService } from '../me/tutor-stats.service';
 import { VerificationService } from '../verification/verification.service';
+import { StripeService } from '../payments/stripe.service';
+import {
+  InAppNotificationsService,
+  IN_APP_NOTIFICATION_TYPES,
+} from '../notifications/in-app-notifications.service';
 import { getSetPasswordEmailHtml, getSetPasswordEmailText } from '../email/templates/set-password.email';
 import {
   getPartnerMemberInviteEmailHtml,
   getPartnerMemberInviteEmailText,
 } from '../email/templates/partner-member-invite.email';
+import {
+  getPartnershipEndedOngEmailHtml,
+  getPartnershipEndedOngEmailText,
+} from '../email/templates/partnership-ended-ong.email';
+import {
+  getPartnershipEndedPaidScheduledEmailHtml,
+  getPartnershipEndedPaidScheduledEmailText,
+} from '../email/templates/partnership-ended-paid-scheduled.email';
 import type { PartnerPublicDto, PartnerMeDto } from './dto/partner-response.dto';
 import type { PartnerAdminDto } from './dto/partner-response.dto';
 import type { CreatePartnerDto } from './dto/create-partner.dto';
@@ -67,6 +80,8 @@ export class PartnersService {
     private readonly feedService: FeedService,
     private readonly tutorStatsService: TutorStatsService,
     private readonly verificationService: VerificationService,
+    private readonly stripeService: StripeService,
+    private readonly inAppNotificationsService: InAppNotificationsService,
   ) {}
 
   /** Retorna o parceiro do usuário (portal do parceiro). Null se não for parceiro. Sempre permitido para renovar assinatura. */
@@ -82,6 +97,13 @@ export class PartnersService {
     if (!partner.isPaidPartner) {
       throw new ForbiddenException('Assinatura inativa. Renove para acessar o portal do parceiro. Seu histórico foi mantido.');
     }
+  }
+
+  /** ONG pode gerenciar serviços voluntários sem assinatura; parceiro comercial precisa de assinatura ativa. */
+  private ensureCanManageServices(partner: { type: string; isPaidPartner: boolean; id: string } | null): asserts partner is { id: string; type: string; isPaidPartner: boolean } {
+    if (!partner) throw new NotFoundException('Parceiro não encontrado');
+    if (partner.type === 'ONG') return;
+    this.ensurePaidPartner(partner);
   }
 
   /** Lista cupons do parceiro do usuário. Requer assinatura ativa. */
@@ -153,21 +175,21 @@ export class PartnersService {
     return { message: 'OK' };
   }
 
-  /** Lista serviços do parceiro do usuário. Requer assinatura ativa. */
+  /** Lista serviços do parceiro. ONG pode listar serviços voluntários; parceiro comercial requer assinatura ativa. */
   async getServicesByUserId(userId: string): Promise<PartnerServiceResponseDto[]> {
     const partner = await this.prisma.partner.findUnique({
       where: { userId },
       include: { services: { orderBy: { createdAt: 'desc' } } },
     });
     if (!partner) return [];
-    this.ensurePaidPartner(partner);
+    this.ensureCanManageServices(partner);
     return partner.services.map((s) => this.toServiceDto(s));
   }
 
-  /** Cria serviço para o parceiro do usuário. Requer assinatura ativa. */
+  /** Cria serviço. ONG pode criar serviços voluntários; parceiro comercial requer assinatura ativa. */
   async createService(userId: string, dto: CreatePartnerServiceDto): Promise<PartnerServiceResponseDto> {
     const partner = await this.prisma.partner.findUnique({ where: { userId } });
-    this.ensurePaidPartner(partner);
+    this.ensureCanManageServices(partner);
     const service = await this.prisma.partnerService.create({
       data: {
         partnerId: partner.id,
@@ -181,10 +203,10 @@ export class PartnersService {
     return this.toServiceDto(service);
   }
 
-  /** Atualiza serviço do parceiro do usuário. Requer assinatura ativa. */
+  /** Atualiza serviço. ONG ou parceiro com assinatura ativa. */
   async updateService(userId: string, serviceId: string, dto: UpdatePartnerServiceDto): Promise<PartnerServiceResponseDto> {
     const partner = await this.prisma.partner.findUnique({ where: { userId } });
-    this.ensurePaidPartner(partner);
+    this.ensureCanManageServices(partner);
     const service = await this.prisma.partnerService.findFirst({
       where: { id: serviceId, partnerId: partner.id },
     });
@@ -203,16 +225,51 @@ export class PartnersService {
     return this.toServiceDto(updated);
   }
 
-  /** Remove serviço do parceiro do usuário. Requer assinatura ativa. */
+  /** Remove serviço. ONG ou parceiro com assinatura ativa. */
   async deleteService(userId: string, serviceId: string): Promise<{ message: string }> {
     const partner = await this.prisma.partner.findUnique({ where: { userId } });
-    this.ensurePaidPartner(partner);
+    this.ensureCanManageServices(partner);
     const service = await this.prisma.partnerService.findFirst({
       where: { id: serviceId, partnerId: partner.id },
     });
     if (!service) throw new NotFoundException('Serviço não encontrado');
     await this.prisma.partnerService.delete({ where: { id: serviceId } });
     return { message: 'OK' };
+  }
+
+  /** ONG desvincula-se da parceria: apenas o admin perde acesso ao portal; membros continuam vinculados à ONG (parceiro fica inativo). Apenas tipo ONG. */
+  async leavePartnershipByUserId(userId: string): Promise<{ message: string }> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId },
+    });
+    if (!partner) throw new NotFoundException('Parceiro não encontrado');
+    if (partner.type !== 'ONG') {
+      throw new ForbiddenException('Apenas ONGs podem usar esta opção. Parceiros comerciais devem cancelar pela assinatura.');
+    }
+    await this.prisma.partner.update({
+      where: { id: partner.id },
+      data: { userId: null, active: false },
+    });
+    return { message: 'Você foi desvinculado(a) da parceria. Os membros da ONG continuam no app; a ONG saiu da lista de parceiros ativos. Obrigado por ter feito parte.' };
+  }
+
+  /** ONG desvincula-se e remove todos os vínculos dos membros: admin sai, todos os membros deixam de ser membros da ONG (ficam como usuários comuns). Apenas tipo ONG. */
+  async leavePartnershipAndRemoveAllMembersByUserId(userId: string): Promise<{ message: string }> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId },
+    });
+    if (!partner) throw new NotFoundException('Parceiro não encontrado');
+    if (partner.type !== 'ONG') {
+      throw new ForbiddenException('Apenas ONGs podem usar esta opção. Parceiros comerciais devem cancelar pela assinatura.');
+    }
+    await this.prisma.$transaction([
+      this.prisma.partnerMember.deleteMany({ where: { partnerId: partner.id } }),
+      this.prisma.partner.update({
+        where: { id: partner.id },
+        data: { userId: null, active: false },
+      }),
+    ]);
+    return { message: 'Você e todos os membros foram desvinculados da ONG. A ONG saiu da lista de parceiros. Os ex-membros continuam no app como usuários comuns. Obrigado por ter feito parte.' };
   }
 
   /** Atualiza o parceiro do usuário (dados do estabelecimento no portal). ONG não precisa assinatura; comercial requer assinatura ativa. */
@@ -468,6 +525,37 @@ export class PartnersService {
     };
   }
 
+  /** Adiciona vários membros em lote (máx. 25). Retorna quantos foram criados e lista de erros por linha. */
+  async bulkAddMembersByUserId(
+    adminUserId: string,
+    members: Array<{ email: string; name: string; phone?: string; role?: string }>,
+  ): Promise<{ created: number; errors: { row: number; message: string }[] }> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId: adminUserId },
+      select: { id: true, type: true },
+    });
+    this.ensureOngAdmin(partner);
+    const errors: { row: number; message: string }[] = [];
+    let created = 0;
+    for (let i = 0; i < members.length; i++) {
+      const row = i + 1;
+      const dto = members[i];
+      try {
+        await this.addMemberByUserId(adminUserId, {
+          email: dto.email.trim(),
+          name: dto.name.trim(),
+          phone: dto.phone?.trim() || undefined,
+          role: dto.role?.trim() || undefined,
+        });
+        created += 1;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Erro ao adicionar membro';
+        errors.push({ row, message: msg });
+      }
+    }
+    return { created, errors };
+  }
+
   /** Reenvia e-mail de convite para membro que ainda não ativou (não definiu senha). Apenas para admin ONG. */
   async resendMemberInviteByUserId(adminUserId: string, memberUserId: string): Promise<{ message: string }> {
     const partner = await this.prisma.partner.findUnique({
@@ -673,6 +761,11 @@ export class PartnersService {
         phone: true,
         email: true,
         address: true,
+        documentType: true,
+        document: true,
+        legalName: true,
+        tradeName: true,
+        planId: true,
         active: true,
         approvedAt: true,
         activatedAt: true,
@@ -731,6 +824,11 @@ export class PartnersService {
     );
     const approvedAt = dto.approve === true ? new Date() : null;
     const active = dto.active !== false;
+    const documentType = dto.personType ? (dto.personType === 'PF' ? 'CPF' : dto.personType) : null;
+    const document =
+      (dto.personType === 'PF' ? dto.cpf : dto.personType === 'CNPJ' ? dto.cnpj : undefined)
+        ?.replace(/\D/g, '')
+        .trim() || null;
     const partner = await this.prisma.partner.create({
       data: {
         type: dto.type,
@@ -745,6 +843,12 @@ export class PartnersService {
         active,
         approvedAt,
         isPaidPartner: dto.isPaidPartner === true,
+        address: dto.address?.trim() || null,
+        documentType,
+        document,
+        legalName: dto.legalName?.trim() || null,
+        tradeName: dto.tradeName?.trim() || null,
+        planId: dto.planId?.trim() || null,
         ...(dto.userId && { userId: dto.userId }),
       },
     });
@@ -768,6 +872,12 @@ export class PartnersService {
       approvedAt?: Date | null;
       rejectionReason?: string | null;
       isPaidPartner?: boolean;
+      address?: string | null;
+      documentType?: 'CPF' | 'CNPJ' | null;
+      document?: string | null;
+      legalName?: string | null;
+      tradeName?: string | null;
+      planId?: string | null;
     } = {};
     if (dto.name !== undefined) data.name = dto.name.trim();
     if (dto.slug !== undefined) data.slug = dto.slug.trim();
@@ -787,6 +897,13 @@ export class PartnersService {
       data.rejectionReason = dto.rejectionReason?.trim() || null;
     }
     if (dto.isPaidPartner !== undefined) data.isPaidPartner = dto.isPaidPartner;
+    if (dto.address !== undefined) data.address = dto.address?.trim() || null;
+    if (dto.personType !== undefined) data.documentType = dto.personType === 'PF' ? 'CPF' : dto.personType;
+    if (dto.cpf !== undefined) data.document = dto.cpf?.replace(/\D/g, '').trim() || null;
+    if (dto.cnpj !== undefined) data.document = dto.cnpj?.replace(/\D/g, '').trim() || null;
+    if (dto.legalName !== undefined) data.legalName = dto.legalName?.trim() || null;
+    if (dto.tradeName !== undefined) data.tradeName = dto.tradeName?.trim() || null;
+    if (dto.planId !== undefined) data.planId = dto.planId?.trim() || null;
     const partner = await this.prisma.partner.update({
       where: { id },
       data,
@@ -813,6 +930,116 @@ export class PartnersService {
       data: { approvedAt: null, rejectionReason: reason },
     });
     return { updated: result.count };
+  }
+
+  /** [Admin] Encerrar parceria (ONG ou paga).
+   * - ONG: desativa o parceiro na hora (active=false). Contas do admin e membros continuam existindo; só a parceria deixa de aparecer no app. Envia e-mail ao admin/membro.
+   * - Paga: agenda cancelamento da assinatura no Stripe ao final do período já pago (parceiro mantém acesso até lá; não haverá nova cobrança). Envia e-mail com a data fim. O parceiro só é desativado (active=false) quando o período terminar (webhook subscription.deleted), e aí recebe outro e-mail.
+   */
+  async endPartnership(partnerId: string): Promise<PartnerAdminDto> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { id: partnerId },
+      select: { id: true, stripeSubscriptionId: true, active: true, isPaidPartner: true },
+    });
+    if (!partner) throw new NotFoundException('Parceiro não encontrado');
+
+    const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? 'https://appadopet.com.br';
+    const logoUrl = (this.config.get<string>('LOGO_URL') || appUrl + '/logo.png').trim();
+
+    if (partner.stripeSubscriptionId && this.stripeService.isConfigured()) {
+      let periodEnd: Date;
+      try {
+        const result = await this.stripeService.cancelSubscriptionAtPeriodEnd(partner.stripeSubscriptionId);
+        periodEnd = result.periodEnd;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Falha ao cancelar assinatura no Stripe';
+        throw new BadRequestException(`${msg}. Você pode desativar o parceiro manualmente (Editar → Ativo desligado).`);
+      }
+      // Parceria paga: não desativar agora; o webhook subscription.deleted fará active=false quando o período acabar.
+      const updated = await this.prisma.partner.findUniqueOrThrow({
+        where: { id: partnerId },
+        select: {
+          id: true, type: true, name: true, slug: true, city: true, description: true, website: true, logoUrl: true,
+          phone: true, email: true, address: true, documentType: true, document: true, legalName: true, tradeName: true, planId: true,
+          active: true, approvedAt: true, activatedAt: true, rejectionReason: true, isPaidPartner: true,
+          createdAt: true, updatedAt: true, userId: true,
+        },
+      });
+      const periodEndFormatted = periodEnd.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+      const withUser = await this.prisma.partner.findUnique({
+        where: { id: partnerId },
+        select: { name: true, email: true, userId: true, user: { select: { email: true } } },
+      });
+      if (withUser?.userId) {
+        this.inAppNotificationsService
+          .create(
+            withUser.userId,
+            IN_APP_NOTIFICATION_TYPES.PARTNERSHIP_ENDED_PAID_SCHEDULED,
+            'Parceria paga encerrada 📋',
+            `A parceria paga da ${withUser.name} foi encerrada. Você segue com acesso ao portal até ${periodEndFormatted} (fim do período já pago). Depois disso, sua página sai do app. Qualquer dúvida, estamos por aqui!`,
+            { partnerName: withUser.name, periodEndFormatted },
+          )
+          .catch(() => {});
+      }
+      if (this.emailService.isConfigured() && withUser) {
+        const to = withUser.user?.email ?? withUser.email ?? null;
+        if (to) {
+          this.emailService
+            .sendMail({
+              to,
+              subject: 'Parceria encerrada - Adopet',
+              text: getPartnershipEndedPaidScheduledEmailText({ partnerName: withUser.name, periodEndFormatted }),
+              html: getPartnershipEndedPaidScheduledEmailHtml({ partnerName: withUser.name, periodEndFormatted }, logoUrl || undefined),
+            })
+            .catch(() => {});
+        }
+      }
+      return this.toAdminDto(updated);
+    }
+
+    // ONG ou pago sem assinatura ativa: desativar na hora e enviar e-mail.
+    const updated = await this.prisma.partner.update({
+      where: { id: partnerId },
+      data: { active: false },
+      select: {
+        id: true, type: true, name: true, slug: true, city: true, description: true, website: true, logoUrl: true,
+        phone: true, email: true, address: true, documentType: true, document: true, legalName: true, tradeName: true, planId: true,
+        active: true, approvedAt: true, activatedAt: true, rejectionReason: true, isPaidPartner: true,
+        createdAt: true, updatedAt: true, userId: true,
+      },
+    });
+    const titleOng = 'Parceria encerrada 📋';
+    const bodyOng = `A parceria da ${updated.name} foi encerrada. A ONG não aparece mais no app, mas sua conta continua ativa — só a parceria foi desativada. Qualquer coisa, estamos por aqui!`;
+    const userIdsToNotify = new Set<string>();
+    if (updated.userId) userIdsToNotify.add(updated.userId);
+    const members = await this.prisma.partnerMember.findMany({
+      where: { partnerId },
+      select: { userId: true },
+    });
+    members.forEach((m) => userIdsToNotify.add(m.userId));
+    for (const uid of userIdsToNotify) {
+      this.inAppNotificationsService
+        .create(uid, IN_APP_NOTIFICATION_TYPES.PARTNERSHIP_ENDED_ONG, titleOng, bodyOng, { partnerName: updated.name })
+        .catch(() => {});
+    }
+    if (this.emailService.isConfigured()) {
+      const withUser = await this.prisma.partner.findUnique({
+        where: { id: partnerId },
+        select: { name: true, email: true, user: { select: { email: true } } },
+      });
+      const to = withUser?.user?.email ?? withUser?.email ?? null;
+      if (to && withUser) {
+        this.emailService
+          .sendMail({
+            to,
+            subject: 'Parceria encerrada - Adopet',
+            text: getPartnershipEndedOngEmailText({ partnerName: withUser.name }),
+            html: getPartnershipEndedOngEmailHtml({ partnerName: withUser.name }, logoUrl || undefined),
+          })
+          .catch(() => {});
+      }
+    }
+    return this.toAdminDto(updated);
   }
 
   /** [Admin] Reenvia e-mail de definir senha para parceiro que ainda não ativou (primeiro login). Apenas quando tem userId e activatedAt é null. */
@@ -894,6 +1121,12 @@ export class PartnersService {
     logoUrl: string | null;
     phone: string | null;
     email: string | null;
+    address: string | null;
+    documentType: string | null;
+    document: string | null;
+    legalName: string | null;
+    tradeName: string | null;
+    planId: string | null;
     active: boolean;
     approvedAt: Date | null;
     activatedAt: Date | null;
@@ -905,6 +1138,11 @@ export class PartnersService {
   }): PartnerAdminDto {
     return {
       ...this.toPublicDto(p),
+      documentType: p.documentType ?? undefined,
+      document: p.document ?? undefined,
+      legalName: p.legalName ?? undefined,
+      tradeName: p.tradeName ?? undefined,
+      planId: p.planId ?? undefined,
       active: p.active,
       approvedAt: p.approvedAt?.toISOString() ?? undefined,
       activatedAt: p.activatedAt?.toISOString() ?? undefined,

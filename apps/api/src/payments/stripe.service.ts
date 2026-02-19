@@ -2,6 +2,15 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
+import {
+  getPartnershipEndedPaidTodayEmailHtml,
+  getPartnershipEndedPaidTodayEmailText,
+} from '../email/templates/partnership-ended-paid-today.email';
+import {
+  InAppNotificationsService,
+  IN_APP_NOTIFICATION_TYPES,
+} from '../notifications/in-app-notifications.service';
 
 @Injectable()
 export class StripeService {
@@ -12,6 +21,8 @@ export class StripeService {
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly emailService: EmailService,
+    private readonly inAppNotificationsService: InAppNotificationsService,
   ) {
     const key = this.config.get<string>('STRIPE_SECRET_KEY');
     if (key) {
@@ -76,6 +87,7 @@ export class StripeService {
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: successUrl,
       cancel_url: cancelUrl,
+      allow_promotion_codes: true,
       metadata: { partnerId: partner.id, userId, planId },
       subscription_data: {
         metadata: { partnerId: partner.id, userId, planId },
@@ -140,6 +152,141 @@ export class StripeService {
     return { url };
   }
 
+  /**
+   * Se o parceiro tem stripeCustomerId mas não stripeSubscriptionId, busca assinatura ativa no Stripe
+   * e atualiza o parceiro (útil quando o webhook atrasa ou não foi recebido).
+   */
+  private async ensureSubscriptionSynced(partner: {
+    id: string;
+    stripeCustomerId: string | null;
+    stripeSubscriptionId: string | null;
+  }): Promise<void> {
+    if (!this.stripe || !partner.stripeCustomerId || partner.stripeSubscriptionId) return;
+    try {
+      const { data: subs } = await this.stripe.subscriptions.list({
+        customer: partner.stripeCustomerId,
+        status: 'all',
+        limit: 5,
+      });
+      const sub = subs.find((s) => s.status === 'active' || s.status === 'trialing');
+      if (sub) {
+        const planId = (sub.metadata?.planId as string) || undefined;
+        await this.prisma.partner.update({
+          where: { id: partner.id },
+          data: {
+            stripeSubscriptionId: sub.id,
+            subscriptionStatus: sub.status,
+            isPaidPartner: true,
+            ...(planId && { planId }),
+          },
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
+   * Retorna datas de cobrança da assinatura do parceiro (último pagamento e próximo vencimento).
+   * Usado na tela de gerenciar assinatura do portal do parceiro.
+   */
+  async getSubscriptionBillingInfo(userId: string): Promise<{ lastPaymentAt: string | null; nextBillingAt: string | null }> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId },
+      select: { id: true, stripeCustomerId: true, stripeSubscriptionId: true },
+    });
+    if (!partner || !this.stripe) {
+      return { lastPaymentAt: null, nextBillingAt: null };
+    }
+    await this.ensureSubscriptionSynced(partner);
+    const updated = await this.prisma.partner.findUnique({
+      where: { userId },
+      select: { stripeSubscriptionId: true },
+    });
+    if (!updated?.stripeSubscriptionId) {
+      return { lastPaymentAt: null, nextBillingAt: null };
+    }
+    try {
+      const raw = await this.stripe.subscriptions.retrieve(updated.stripeSubscriptionId, {
+        expand: ['latest_invoice'],
+      });
+      // API 2026 types may not expose current_period_end on Subscription; it exists at runtime (or on items[0])
+      const periodEnd =
+        (raw as { current_period_end?: number }).current_period_end ??
+        (raw.items?.data?.[0] as { current_period_end?: number } | undefined)?.current_period_end;
+      const nextBillingAt =
+        periodEnd != null ? new Date(periodEnd * 1000).toISOString() : null;
+      let lastPaymentAt: string | null = null;
+      const latestInvoice = raw.latest_invoice;
+      if (latestInvoice && typeof latestInvoice === 'object' && latestInvoice.status === 'paid') {
+        const inv = latestInvoice as Stripe.Invoice;
+        const paidAt = inv.status_transitions?.paid_at ?? inv.created;
+        if (paidAt != null) lastPaymentAt = new Date(paidAt * 1000).toISOString();
+      }
+      return { lastPaymentAt, nextBillingAt };
+    } catch {
+      return { lastPaymentAt: null, nextBillingAt: null };
+    }
+  }
+
+  /**
+   * Lista o histórico de faturas/pagamentos da assinatura do parceiro (para exibir na tela de gerenciar assinatura).
+   */
+  async getSubscriptionPaymentHistory(
+    userId: string,
+  ): Promise<{ items: Array<{ paidAt: string; amountFormatted: string; status: string }> }> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId },
+      select: { id: true, stripeCustomerId: true, stripeSubscriptionId: true },
+    });
+    if (!partner || !this.stripe) {
+      return { items: [] };
+    }
+    await this.ensureSubscriptionSynced(partner);
+    const refreshed = await this.prisma.partner.findUnique({
+      where: { userId },
+      select: { stripeCustomerId: true, stripeSubscriptionId: true },
+    });
+    if (!refreshed) return { items: [] };
+    let customerId = refreshed.stripeCustomerId;
+    if (!customerId && refreshed.stripeSubscriptionId) {
+      try {
+        const sub = await this.stripe.subscriptions.retrieve(refreshed.stripeSubscriptionId);
+        customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id ?? null;
+      } catch {
+        return { items: [] };
+      }
+    }
+    if (!customerId) return { items: [] };
+    try {
+      const { data: invoices } = await this.stripe.invoices.list({
+        customer: customerId,
+        limit: 12,
+      });
+      const items = invoices.map((inv) => {
+        const paidAt =
+          inv.status === 'paid' && (inv.status_transitions?.paid_at ?? inv.created)
+            ? new Date((inv.status_transitions?.paid_at ?? inv.created) * 1000).toISOString()
+            : new Date(inv.created * 1000).toISOString();
+        const amountCents = inv.amount_paid ?? inv.amount_due ?? 0;
+        const amountFormatted = `R$ ${(amountCents / 100).toFixed(2).replace('.', ',')}`;
+        return { paidAt, amountFormatted, status: inv.status ?? 'unknown' };
+      });
+      return { items };
+    } catch {
+      return { items: [] };
+    }
+  }
+
+  /** Agenda cancelamento da assinatura no Stripe ao final do período já pago (parceiro mantém acesso até lá; não haverá nova cobrança). Retorna a data fim do período. */
+  async cancelSubscriptionAtPeriodEnd(subscriptionId: string): Promise<{ periodEnd: Date }> {
+    if (!this.stripe) return { periodEnd: new Date() };
+    const sub = await this.stripe.subscriptions.retrieve(subscriptionId) as { current_period_end?: number };
+    const periodEnd = sub.current_period_end ? new Date(sub.current_period_end * 1000) : new Date();
+    await this.stripe.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
+    return { periodEnd };
+  }
+
   /** Processa evento do webhook Stripe e atualiza Partner (assinatura ativa/cancelada). */
   async handleWebhook(rawBody: Buffer, signature: string): Promise<void> {
     if (!this.stripe || !this.webhookSecret) {
@@ -176,14 +323,55 @@ export class StripeService {
       const status = subscription.status;
       const isActive = status === 'active' || status === 'trialing';
       const planId = (subscription.metadata?.planId as string) || undefined;
-      await this.prisma.partner.updateMany({
-        where: { stripeSubscriptionId: subscription.id },
-        data: {
-          subscriptionStatus: status,
-          isPaidPartner: isActive,
-          ...(planId && { planId }),
-        },
-      });
+      const isEnded = event.type === 'customer.subscription.deleted' || status === 'canceled';
+
+      if (isEnded) {
+        const partner = await this.prisma.partner.findFirst({
+          where: { stripeSubscriptionId: subscription.id },
+          select: { id: true, name: true, email: true, userId: true, user: { select: { email: true } } },
+        });
+        await this.prisma.partner.updateMany({
+          where: { stripeSubscriptionId: subscription.id },
+          data: {
+            subscriptionStatus: status,
+            isPaidPartner: isActive,
+            active: false,
+            ...(planId && { planId }),
+          },
+        });
+        if (partner?.userId) {
+          this.inAppNotificationsService
+            .create(
+              partner.userId,
+              IN_APP_NOTIFICATION_TYPES.PARTNERSHIP_ENDED_PAID_TODAY,
+              'Parceria paga encerrada hoje 📋',
+              `O período da parceria da ${partner.name} encerrou hoje. Sua página não aparece mais no app. Quer voltar? É só entrar em contato ou solicitar de novo pelo app.`,
+              { partnerName: partner.name },
+            )
+            .catch(() => {});
+        }
+        if (partner && this.emailService.isConfigured()) {
+          const to = partner.user?.email ?? partner.email ?? null;
+          if (to) {
+            const logoUrl = (this.config.get<string>('LOGO_URL') || '').trim();
+            await this.emailService.sendMail({
+              to,
+              subject: 'Parceria encerrada - Adopet',
+              text: getPartnershipEndedPaidTodayEmailText({ partnerName: partner.name }),
+              html: getPartnershipEndedPaidTodayEmailHtml({ partnerName: partner.name }, logoUrl || undefined),
+            });
+          }
+        }
+      } else {
+        await this.prisma.partner.updateMany({
+          where: { stripeSubscriptionId: subscription.id },
+          data: {
+            subscriptionStatus: status,
+            isPaidPartner: isActive,
+            ...(planId && { planId }),
+          },
+        });
+      }
     }
   }
 }

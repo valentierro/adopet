@@ -63,6 +63,22 @@ export class PetsController {
     return this.petsService.findPendingPublication();
   }
 
+  @Get('by-partner/:partnerId')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Anúncios vinculados ao parceiro (público). Se autenticado, inclui matchScore.' })
+  async getByPartner(
+    @Param('partnerId') partnerId: string,
+    @Query('cursor') cursor?: string,
+    @Query('species') species?: string,
+    @CurrentUser() user?: { id: string },
+  ): Promise<{ items: PetResponseDto[]; nextCursor: string | null }> {
+    return this.petsService.findPublicByPartnerId(partnerId, {
+      cursor,
+      species,
+      userId: user?.id,
+    });
+  }
+
   @Get('owner-profile-by-user/:userId')
   @ApiOperation({ summary: 'Perfil público de um usuário por id (ex.: interessado em quem priorizar)' })
   async getOwnerProfileByUserId(@Param('userId') userId: string) {

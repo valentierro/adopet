@@ -31,9 +31,9 @@ describe('computeMatchScore', () => {
     };
     const pet: PetTutorPreferences = {
       preferredTutorHousingType: 'CASA',
-      preferredTutorHasYard: true,
-      preferredTutorHasOtherPets: false,
-      preferredTutorHasChildren: false,
+      preferredTutorHasYard: 'SIM',
+      preferredTutorHasOtherPets: 'NAO',
+      preferredTutorHasChildren: 'NAO',
       preferredTutorTimeAtHome: 'MOST_DAY',
       preferredTutorPetsAllowedAtHome: 'YES',
       preferredTutorDogExperience: 'HAVE_NOW',
@@ -55,7 +55,7 @@ describe('computeMatchScore', () => {
     };
     const pet: PetTutorPreferences = {
       preferredTutorHousingType: 'CASA',
-      preferredTutorHasYard: true,
+      preferredTutorHasYard: 'SIM',
       preferredTutorTimeAtHome: 'MOST_DAY',
     };
     const result = computeMatchScore(adopter, pet);
@@ -68,7 +68,7 @@ describe('computeMatchScore', () => {
     const adopter: AdopterProfile = {}; // nada preenchido
     const pet: PetTutorPreferences = {
       preferredTutorHousingType: 'CASA',
-      preferredTutorHasYard: true,
+      preferredTutorHasYard: 'SIM',
     };
     const result = computeMatchScore(adopter, pet);
     expect(result.score).toBe(50); // 0.5 + 0.5 sobre 2 critérios
@@ -82,7 +82,7 @@ describe('computeMatchScore', () => {
     };
     const pet: PetTutorPreferences = {
       preferredTutorHousingType: 'CASA',
-      preferredTutorHasYard: true,
+      preferredTutorHasYard: 'SIM',
     };
     const result = computeMatchScore(adopter, pet);
     expect(result.score).toBe(50);
@@ -100,6 +100,16 @@ describe('computeMatchScore', () => {
     expect(resultApto.score).toBe(100);
     expect(resultCasa.highlights.some((h) => h.includes('Indiferente') || h.includes('indiferente'))).toBe(true);
     expect(resultApto.highlights.some((h) => h.includes('Indiferente') || h.includes('indiferente'))).toBe(true);
+  });
+
+  it('passeios INDIFERENTE dá match e exibe critério', () => {
+    const pet: PetTutorPreferences = { preferredTutorWalkFrequency: 'INDIFERENTE' };
+    const result = computeMatchScore({}, pet);
+    expect(result.score).toBe(100);
+    expect(result.criteriaCount).toBe(1);
+    expect(result.criteria).toHaveLength(1);
+    expect(result.criteria[0].status).toBe('match');
+    expect(result.criteria[0].message).toMatch(/indiferente|atende/i);
   });
 
   it('experiência: adotante com HAVE_NOW atende preferência HAD_BEFORE', () => {
@@ -136,11 +146,38 @@ describe('computeMatchScore', () => {
     const adopter: AdopterProfile = { housingType: 'CASA', hasYard: true, hasOtherPets: true };
     const pet: PetTutorPreferences = {
       preferredTutorHousingType: 'APARTAMENTO',
-      preferredTutorHasYard: false,
-      preferredTutorHasOtherPets: false,
+      preferredTutorHasYard: 'NAO',
+      preferredTutorHasOtherPets: 'NAO',
     };
     const result = computeMatchScore(adopter, pet);
     expect(result.score).toBeGreaterThanOrEqual(0);
     expect(result.score).toBeLessThanOrEqual(100);
+  });
+
+  it('espécie: adotante prefere BOTH dá match com qualquer pet', () => {
+    const adopter: AdopterProfile = { speciesPref: 'BOTH' };
+    const petDog: PetTutorPreferences = { species: 'DOG' };
+    const petCat: PetTutorPreferences = { species: 'CAT' };
+    const resultDog = computeMatchScore(adopter, petDog);
+    const resultCat = computeMatchScore(adopter, petCat);
+    expect(resultDog.score).toBe(100);
+    expect(resultCat.score).toBe(100);
+    expect(resultDog.criteria).toHaveLength(1);
+    expect(resultDog.criteria[0].status).toBe('match');
+    expect(resultDog.criteria[0].label).toBe('Espécie');
+    expect(resultCat.criteria[0].status).toBe('match');
+  });
+
+  it('sexo: adotante prefere both dá match com qualquer pet', () => {
+    const adopter: AdopterProfile = { sexPref: 'both' };
+    const petMale: PetTutorPreferences = { sex: 'male' };
+    const petFemale: PetTutorPreferences = { sex: 'female' };
+    const resultMale = computeMatchScore(adopter, petMale);
+    const resultFemale = computeMatchScore(adopter, petFemale);
+    expect(resultMale.score).toBe(100);
+    expect(resultFemale.score).toBe(100);
+    expect(resultMale.criteria[0].status).toBe('match');
+    expect(resultMale.criteria[0].label).toBe('Sexo do pet');
+    expect(resultFemale.criteria[0].status).toBe('match');
   });
 });

@@ -6,9 +6,10 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { VerificationModule } from '../verification/verification.module';
 import { PartnersModule } from '../partners/partners.module';
 import { PaymentsModule } from '../payments/payments.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [PrismaModule, forwardRef(() => VerificationModule), forwardRef(() => PartnersModule), PaymentsModule],
+  imports: [PrismaModule, forwardRef(() => VerificationModule), forwardRef(() => PartnersModule), PaymentsModule, NotificationsModule],
   controllers: [MeController],
   providers: [MeService, TutorStatsService],
   exports: [MeService, TutorStatsService],

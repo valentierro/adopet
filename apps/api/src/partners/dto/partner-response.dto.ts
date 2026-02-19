@@ -44,6 +44,21 @@ export class PartnerAdminDto extends PartnerPublicDto {
   @ApiProperty()
   active: boolean;
 
+  @ApiPropertyOptional({ enum: ['CPF', 'CNPJ'] })
+  documentType?: string | null;
+
+  @ApiPropertyOptional({ description: 'CPF ou CNPJ apenas dígitos' })
+  document?: string | null;
+
+  @ApiPropertyOptional({ description: 'Razão social' })
+  legalName?: string | null;
+
+  @ApiPropertyOptional({ description: 'Nome fantasia' })
+  tradeName?: string | null;
+
+  @ApiPropertyOptional({ enum: ['BASIC', 'DESTAQUE', 'PREMIUM'] })
+  planId?: string | null;
+
   @ApiPropertyOptional()
   approvedAt?: string | null;
 

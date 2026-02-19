@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { VerificationService } from '../verification/verification.service';
 import { computeMatchScore } from '../match-engine/compute-match-score';
@@ -39,6 +39,9 @@ export class FavoritesService {
       },
     });
     if (!pet) throw new NotFoundException('Pet não encontrado');
+    if (pet.ownerId === userId) {
+      throw new BadRequestException('Você não pode favoritar seu próprio anúncio.');
+    }
     const existing = await this.prisma.favorite.findUnique({
       where: { userId_petId: { userId, petId } },
     });

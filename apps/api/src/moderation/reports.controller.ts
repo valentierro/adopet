@@ -33,12 +33,12 @@ export class ReportsController {
 
   @Put(':id/resolve')
   @UseGuards(AdminGuard)
-  @ApiOperation({ summary: '[Admin] Marcar denúncia como resolvida (com feedback opcional para o denunciador)' })
+  @ApiOperation({ summary: '[Admin] Marcar denúncia como resolvida (feedback opcional; opção de banir usuário alvo)' })
   async resolve(
     @Param('id') id: string,
     @CurrentUser() user: { id: string },
     @Body() dto: ResolveReportDto,
   ): Promise<ReportResponseDto> {
-    return this.reportsService.resolve(id, user.id, dto?.resolutionFeedback);
+    return this.reportsService.resolve(id, user.id, dto?.resolutionFeedback, dto?.banReportedUser);
   }
 }

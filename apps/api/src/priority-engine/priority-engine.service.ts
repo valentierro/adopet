@@ -61,7 +61,9 @@ export class PriorityEngineService {
       where: { petId },
       select: { userId: true },
     });
-    const adopterIds = [...new Set(favorites.map((f) => f.userId))];
+    const adopterIds = [...new Set(favorites.map((f) => f.userId))].filter(
+      (id) => id !== pet.ownerId,
+    );
     if (adopterIds.length === 0) return [];
 
     const [adopters, conversations] = await Promise.all([

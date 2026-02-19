@@ -2,6 +2,7 @@ import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards } from '@ne
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
 import { AdminService } from './admin.service';
 import { BugReportsService } from '../bug-reports/bug-reports.service';
 import { PartnerRecommendationsService } from '../partner-recommendations/partner-recommendations.service';
@@ -12,6 +13,7 @@ import { AdminStatsDto } from './dto/admin-stats.dto';
 import { AdoptionItemDto } from './dto/adoption-item.dto';
 import { CreateAdoptionDto } from './dto/create-adoption.dto';
 import { UserSearchItemDto } from './dto/user-search-item.dto';
+import type { AdminUserListResponseDto } from './dto/admin-user-list-item.dto';
 import { PetAvailableItemDto } from './dto/pet-available-item.dto';
 import { PendingAdoptionByTutorDto } from './dto/pending-adoption-by-tutor.dto';
 import type { BugReportResponseDto } from '../bug-reports/dto/bug-report-response.dto';
@@ -66,6 +68,28 @@ export class AdminController {
   ): Promise<{ message: string }> {
     await this.adminService.rejectAdoptionByAdopet(petId, body?.rejectionReason);
     return { message: 'OK' };
+  }
+
+  @Get('users/list')
+  @ApiOperation({ summary: '[Admin] Lista usuários com busca e paginação (seção Usuários; banir sem denúncia)' })
+  async getUsersList(
+    @Query('search') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ): Promise<AdminUserListResponseDto> {
+    const pageNum = page ? Math.max(1, parseInt(page, 10) || 1) : 1;
+    const limitNum = limit ? Math.min(100, Math.max(1, parseInt(limit, 10) || 30)) : 30;
+    return this.adminService.getUsersList(search, pageNum, limitNum);
+  }
+
+  @Post('users/:userId/ban')
+  @ApiOperation({ summary: '[Admin] Banir usuário (sem denúncia). Desativa conta; não permite banir admin.' })
+  async banUser(
+    @Param('userId') userId: string,
+    @CurrentUser() user: { id: string },
+    @Body() body?: { reason?: string },
+  ): Promise<{ message: string }> {
+    return this.adminService.banUser(userId, user.id, body?.reason);
   }
 
   @Get('users')
@@ -166,6 +190,12 @@ export class AdminController {
   @ApiOperation({ summary: '[Admin] Reenviar e-mail de definir senha para parceiro que ainda não acessou o app' })
   async resendPartnerConfirmation(@Param('id') id: string): Promise<{ message: string }> {
     return this.partnersService.resendSetPasswordEmail(id);
+  }
+
+  @Post('partners/:id/end')
+  @ApiOperation({ summary: '[Admin] Encerrar parceria (ONG ou paga). Desativa o parceiro e, se pago, cancela a assinatura no Stripe.' })
+  async endPartnership(@Param('id') id: string): Promise<PartnerAdminDto> {
+    return this.partnersService.endPartnership(id);
   }
 
   @Get('feature-flags')

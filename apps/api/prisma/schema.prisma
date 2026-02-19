@@ -37,7 +37,10 @@ model User {
   pushToken    String?   // Expo push token para notificações
   emailVerificationToken String?   // token para confirmar e-mail (limpo após confirmação)
   emailVerifiedAt        DateTime? // quando o e-mail foi confirmado
-  deactivatedAt DateTime? // soft delete: conta desativada
+  deactivatedAt DateTime? // soft delete: conta desativada (auto ou banido por admin)
+  bannedAt      DateTime? // quando admin aplicou ban (sem denúncia ou direto)
+  bannedById    String?   // id do admin que baniu
+  bannedReason  String?   @db.Text // motivo opcional do ban
   lastListingReminderAt DateTime? // último envio de push "atualize seus anúncios" (follow-up tutores)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -60,6 +63,21 @@ model User {
   partner             Partner?  // conta parceiro (se for parceiro pago)
   partnerMemberships  PartnerMember[]  // membro de ONG (não é dono do portal)
   partnerRecommendations PartnerRecommendation[]
+  inAppNotifications  InAppNotification[]
+}
+
+model InAppNotification {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String    // PARTNERSHIP_ENDED_ONG | PARTNERSHIP_ENDED_PAID_SCHEDULED | PARTNERSHIP_ENDED_PAID_TODAY
+  title     String
+  body      String    @db.Text
+  metadata  String?   @db.Text // JSON: { partnerName?, periodEndFormatted? }
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  @@index([userId])
+  @@index([userId, readAt])
 }
 
 model UserPreferences {
@@ -251,12 +269,12 @@ model Pet {
   temperament     String?   // CALM | PLAYFUL | SHY | SOCIABLE | INDEPENDENT — temperamento
   isDocile        Boolean?  // é dócil (manso/calmo com pessoas)
   isTrained       Boolean?  // é adestrado
-  // Preferência de tutor (para engine de match adotante x pet); null = indiferente
-  preferredTutorHousingType       String?   // CASA | APARTAMENTO
-  preferredTutorHasYard           Boolean?  // prefere tutor com quintal
-  preferredTutorHasOtherPets      Boolean?  // OK com outros pets no local
-  preferredTutorHasChildren       Boolean?  // OK com crianças em casa
-  preferredTutorTimeAtHome       String?   // MOST_DAY | HALF_DAY | LITTLE
+  // Preferência de tutor (para engine de match adotante x pet); null = não informar
+  preferredTutorHousingType       String?   // CASA | APARTAMENTO | INDIFERENTE
+  preferredTutorHasYard           String?   // SIM | NAO | INDIFERENTE — prefere tutor com quintal
+  preferredTutorHasOtherPets      String?   // SIM | NAO | INDIFERENTE — OK com outros pets no local
+  preferredTutorHasChildren       String?   // SIM | NAO | INDIFERENTE — OK com crianças em casa
+  preferredTutorTimeAtHome       String?   // MOST_DAY | HALF_DAY | LITTLE | INDIFERENTE
   preferredTutorPetsAllowedAtHome String?   // YES | NO | UNSURE — pets permitidos no local
   preferredTutorDogExperience    String?   // NEVER | HAD_BEFORE | HAVE_NOW
   preferredTutorCatExperience    String?   // NEVER | HAD_BEFORE | HAVE_NOW
@@ -394,6 +412,7 @@ model Report {
   resolvedAt          DateTime? // preenchido quando admin resolve a denúncia
   resolvedById        String?   // admin que resolveu
   resolutionFeedback  String?   // feedback para o denunciador (opcional)
+  resolutionAction    String?   // ex.: BAN_USER quando admin optou por banir o usuário denunciado
   createdAt           DateTime  @default(now())
   @@index([targetType, targetId])
   @@index([targetType, resolvedAt])

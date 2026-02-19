@@ -7,7 +7,7 @@ import type { INestApplication } from '@nestjs/common';
 describe('Feed (e2e)', () => {
   let app: INestApplication;
   let accessToken: string | null;
-  /** Pet criado pelo usuário do token, aprovado para o feed (para testar visibilidade no próprio feed). */
+  /** Pet criado pelo usuário do token, aprovado para o feed (para testar que não aparece no próprio feed). */
   let ownApprovedPetId: string | null = null;
 
   beforeAll(async () => {
@@ -42,7 +42,7 @@ describe('Feed (e2e)', () => {
     expect(body).toHaveProperty('nextCursor');
   });
 
-  it('pets cadastrados e aprovados pelo usuário aparecem no feed para ele mesmo', async () => {
+  it('pets do próprio tutor não aparecem no feed nem no mapa', async () => {
     if (!accessToken) return;
     const agent = getAgent(app).set(authHeaders(accessToken));
 
@@ -57,13 +57,13 @@ describe('Feed (e2e)', () => {
         size: 'small',
         vaccinated: true,
         neutered: false,
-        description: 'Pet para confirmar que aparece no feed do próprio usuário.',
+        description: 'Pet para confirmar que não aparece no feed do próprio usuário.',
       })
       .expect(201);
     const created = responseBody<{ id: string }>(createRes);
     ownApprovedPetId = created.id;
 
-    // 2) Aprovar publicação (admin) para o pet entrar no feed
+    // 2) Aprovar publicação (admin) para o pet estar aprovado no feed
     const patchRes = await agent
       .patch(`/v1/pets/${ownApprovedPetId}/publication`)
       .send({ status: 'APPROVED' });
@@ -74,11 +74,17 @@ describe('Feed (e2e)', () => {
     expect([200, 404]).toContain(patchRes.status);
     if (patchRes.status === 404) return;
 
-    // 3) Buscar feed e garantir que o próprio pet está nos items
+    // 3) Feed: próprio pet não deve aparecer
     const feedRes = await agent.get('/v1/feed').expect(200);
     const feedBody = responseBody<{ items: { id: string }[] }>(feedRes);
-    const ids = (feedBody.items ?? []).map((i) => i.id);
-    expect(ids).toContain(ownApprovedPetId);
+    const feedIds = (feedBody.items ?? []).map((i) => i.id);
+    expect(feedIds).not.toContain(ownApprovedPetId);
+
+    // 4) Mapa: próprio pet não deve aparecer nos pins
+    const mapRes = await agent.get('/v1/feed/map?lat=-8.05&lng=-34.88&radiusKm=50').expect(200);
+    const mapBody = responseBody<{ items: { id: string }[] }>(mapRes);
+    const mapIds = (mapBody.items ?? []).map((i) => i.id);
+    expect(mapIds).not.toContain(ownApprovedPetId);
   });
 
   it('GET /v1/feed/map com token retorna 200 e items (pins)', async () => {

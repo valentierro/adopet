@@ -279,6 +279,15 @@ export class AdminBulkService {
 
       const optionalStr = (s: string) => (s && s.trim() ? s.trim() : null);
       const optionalBool = (s: string) => (s && s.trim() ? parseBool(s) : null);
+      /** SIM | NAO | INDIFERENTE para preferência de tutor; aceita true/false/sim/não/indiferente. */
+      const optionalSimNaoIndiferente = (s: string): 'SIM' | 'NAO' | 'INDIFERENTE' | null => {
+        if (!s || !s.trim()) return null;
+        const v = s.trim().toUpperCase();
+        if (v === 'INDIFERENTE' || v === 'INDIFERENT') return 'INDIFERENTE';
+        if (v === 'SIM' || v === 'S' || v === 'YES' || v === 'Y' || v === 'TRUE' || v === '1') return 'SIM';
+        if (v === 'NAO' || v === 'NÃO' || v === 'NO' || v === 'N' || v === 'FALSE' || v === '0') return 'NAO';
+        return null;
+      };
       const validEnum = (val: string, opts: string[]) =>
         val && opts.includes(val.toUpperCase()) ? val.toUpperCase() : null;
 
@@ -308,10 +317,10 @@ export class AdminBulkService {
             isDocile: optionalBool(isDocileStr),
             isTrained: optionalBool(isTrainedStr),
             preferredTutorHousingType: validEnum(preferredTutorHousingType, ['CASA', 'APARTAMENTO', 'INDIFERENTE']),
-            preferredTutorHasYard: optionalBool(preferredTutorHasYardStr),
-            preferredTutorHasOtherPets: optionalBool(preferredTutorHasOtherPetsStr),
-            preferredTutorHasChildren: optionalBool(preferredTutorHasChildrenStr),
-            preferredTutorTimeAtHome: validEnum(preferredTutorTimeAtHome, ['MOST_DAY', 'HALF_DAY', 'LITTLE']),
+            preferredTutorHasYard: optionalSimNaoIndiferente(preferredTutorHasYardStr),
+            preferredTutorHasOtherPets: optionalSimNaoIndiferente(preferredTutorHasOtherPetsStr),
+            preferredTutorHasChildren: optionalSimNaoIndiferente(preferredTutorHasChildrenStr),
+            preferredTutorTimeAtHome: validEnum(preferredTutorTimeAtHome, ['MOST_DAY', 'HALF_DAY', 'LITTLE', 'INDIFERENTE']),
             preferredTutorPetsAllowedAtHome: validEnum(preferredTutorPetsAllowedAtHome, ['YES', 'NO', 'UNSURE']),
             preferredTutorDogExperience: validEnum(preferredTutorDogExperience, ['NEVER', 'HAD_BEFORE', 'HAVE_NOW']),
             preferredTutorCatExperience: validEnum(preferredTutorCatExperience, ['NEVER', 'HAD_BEFORE', 'HAVE_NOW']),

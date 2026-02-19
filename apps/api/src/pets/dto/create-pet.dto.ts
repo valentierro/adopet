@@ -157,25 +157,28 @@ export class CreatePetDto {
   @IsIn(['CASA', 'APARTAMENTO', 'INDIFERENTE'])
   preferredTutorHousingType?: string;
 
-  @ApiPropertyOptional({ description: 'Pet prefere tutor com quintal' })
-  @IsOptional()
-  @IsBoolean()
-  preferredTutorHasYard?: boolean;
-
-  @ApiPropertyOptional({ description: 'Pet se adapta a outros pets no local' })
-  @IsOptional()
-  @IsBoolean()
-  preferredTutorHasOtherPets?: boolean;
-
-  @ApiPropertyOptional({ description: 'Pet se adapta a crianças em casa' })
-  @IsOptional()
-  @IsBoolean()
-  preferredTutorHasChildren?: boolean;
-
-  @ApiPropertyOptional({ enum: ['MOST_DAY', 'HALF_DAY', 'LITTLE'], description: 'Preferência de tempo em casa do tutor' })
+  @ApiPropertyOptional({ enum: ['SIM', 'NAO', 'INDIFERENTE'], description: 'Pet prefere tutor com quintal' })
   @IsOptional()
   @IsString()
-  @IsIn(['MOST_DAY', 'HALF_DAY', 'LITTLE'])
+  @IsIn(['SIM', 'NAO', 'INDIFERENTE'])
+  preferredTutorHasYard?: string;
+
+  @ApiPropertyOptional({ enum: ['SIM', 'NAO', 'INDIFERENTE'], description: 'Pet se adapta a outros pets no local' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['SIM', 'NAO', 'INDIFERENTE'])
+  preferredTutorHasOtherPets?: string;
+
+  @ApiPropertyOptional({ enum: ['SIM', 'NAO', 'INDIFERENTE'], description: 'Pet se adapta a crianças em casa' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['SIM', 'NAO', 'INDIFERENTE'])
+  preferredTutorHasChildren?: string;
+
+  @ApiPropertyOptional({ enum: ['MOST_DAY', 'HALF_DAY', 'LITTLE', 'INDIFERENTE'], description: 'Preferência de tempo em casa do tutor' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['MOST_DAY', 'HALF_DAY', 'LITTLE', 'INDIFERENTE'])
   preferredTutorTimeAtHome?: string;
 
   @ApiPropertyOptional({ enum: ['YES', 'NO', 'UNSURE'], description: 'Pets permitidos no local do tutor' })
