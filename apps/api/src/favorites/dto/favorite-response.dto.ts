@@ -30,5 +30,7 @@ export class FavoriteItemDto {
     partner?: { id: string; name: string; slug: string; logoUrl?: string | null; isPaidPartner?: boolean };
     /** Score de compatibilidade 0–100 (adotante logado vs preferências do pet). */
     matchScore?: number | null;
+    /** Pessoas únicas que viram o pet nas últimas 24h. */
+    viewCountLast24h?: number;
   };
 }

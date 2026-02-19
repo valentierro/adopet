@@ -6,6 +6,7 @@ import { ReportsService } from '../moderation/reports.service';
 import { BlocksService } from '../moderation/blocks.service';
 import { VerificationService } from '../verification/verification.service';
 import { MatchEngineService } from '../match-engine/match-engine.service';
+import { PetViewService } from '../pets/pet-view.service';
 import { computeMatchScore } from '../match-engine/compute-match-score';
 import type { AdopterProfile } from '../match-engine/match-engine.types';
 import type { FeedQueryDto } from './dto/feed-query.dto';
@@ -38,6 +39,7 @@ export class FeedService {
     private readonly blocksService: BlocksService,
     private readonly verificationService: VerificationService,
     private readonly matchEngine: MatchEngineService,
+    private readonly petViewService: PetViewService,
   ) {}
 
   private mapToDto(
@@ -439,7 +441,10 @@ export class FeedService {
         : null;
 
     const itemPetIds = items.map(({ pet }) => pet.id);
-    const verifiedIds = await this.verificationService.getVerifiedPetIds(itemPetIds);
+    const [verifiedIds, viewCounts] = await Promise.all([
+      this.verificationService.getVerifiedPetIds(itemPetIds),
+      this.petViewService.getViewCountsLast24h(itemPetIds),
+    ]);
 
     const itemPets = items.map(({ pet }) => pet);
     const ownerIdsNeedingPartner = [...new Set(itemPets.filter((p) => !(p as { partner?: unknown }).partner).map((p) => p.ownerId))];
@@ -464,6 +469,8 @@ export class FeedService {
           const matchResult = computeMatchScore(profileForMatch, pet);
           dto.matchScore = matchResult.score;
         }
+        const vc = viewCounts.get(pet.id);
+        if (vc !== undefined && vc > 0) dto.viewCountLast24h = vc;
         return dto;
       }),
       nextCursor,
@@ -527,7 +534,10 @@ export class FeedService {
     const hasMore = pets.length > pageSize;
     const items = pets.slice(0, pageSize);
     const itemPetIds = items.map((p) => p.id);
-    const verifiedIds = await this.verificationService.getVerifiedPetIds(itemPetIds);
+    const [verifiedIds, viewCounts] = await Promise.all([
+      this.verificationService.getVerifiedPetIds(itemPetIds),
+      this.petViewService.getViewCountsLast24h(itemPetIds),
+    ]);
     const ownerIdsNeedingPartner = [...new Set(items.filter((p) => !(p as { partner?: unknown }).partner).map((p) => p.ownerId))];
     const ownerPartners =
       ownerIdsNeedingPartner.length > 0
@@ -549,6 +559,8 @@ export class FeedService {
           const matchResult = computeMatchScore(profileForMatch, pet);
           dto.matchScore = matchResult.score;
         }
+        const vc = viewCounts.get(pet.id);
+        if (vc !== undefined && vc > 0) dto.viewCountLast24h = vc;
         return dto;
       }),
       nextCursor: hasMore && items.length > 0 ? items[items.length - 1].id : null,

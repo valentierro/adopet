@@ -18,49 +18,73 @@ export class ConversationsService {
     this.typingService.setTyping(conversationId, userId);
   }
 
-  async createOrGet(userId: string, petId: string): Promise<{ id: string }> {
+  async createOrGet(userId: string, petId: string, adopterIdParam?: string): Promise<{ id: string }> {
     const pet = await this.prisma.pet.findUnique({ where: { id: petId } });
     if (!pet) throw new NotFoundException('Pet não encontrado');
-    const favorited = await this.prisma.favorite.findUnique({
-      where: { userId_petId: { userId, petId } },
-    });
-    if (!favorited) throw new ForbiddenException('Só é possível conversar com pets que você favoritou');
     const ownerId = pet.ownerId;
-    if (ownerId === userId) throw new ForbiddenException('Você é o dono do pet');
 
-    const blocked = await this.blocksService.isBlockedBetween(userId, ownerId);
+    const isOwnerCalling = userId === ownerId;
+    const adopterId = adopterIdParam ?? (isOwnerCalling ? undefined : userId);
+
+    if (adopterIdParam != null) {
+      if (!isOwnerCalling) throw new ForbiddenException('Apenas o dono do pet pode iniciar conversa com um adotante específico.');
+      if (adopterIdParam === ownerId) throw new ForbiddenException('Você não pode iniciar conversa consigo mesmo.');
+      const favorited = await this.prisma.favorite.findUnique({
+        where: { userId_petId: { userId: adopterIdParam, petId } },
+      });
+      if (!favorited) throw new ForbiddenException('Este usuário não favoritou este pet.');
+    } else {
+      const favorited = await this.prisma.favorite.findUnique({
+        where: { userId_petId: { userId, petId } },
+      });
+      if (!favorited) throw new ForbiddenException('Só é possível conversar com pets que você favoritou');
+      if (isOwnerCalling) throw new ForbiddenException('Você é o dono do pet. Use adopterId para iniciar conversa com quem favoritou.');
+    }
+
+    const blocked = await this.blocksService.isBlockedBetween(userId, adopterId!);
     if (blocked) throw new ForbiddenException('Não é possível iniciar conversa com este usuário.');
 
     const existing = await this.prisma.conversation.findUnique({
-      where: { petId_adopterId_type: { petId, adopterId: userId, type: 'NORMAL' } },
+      where: { petId_adopterId_type: { petId, adopterId: adopterId!, type: 'NORMAL' } },
     });
     if (existing) return { id: existing.id };
 
-    const [adopter, ownerPrefs] = await Promise.all([
-      this.prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
+    const [adopter, ownerPrefs, adopterPrefs, ownerUser] = await Promise.all([
+      this.prisma.user.findUnique({ where: { id: adopterId }, select: { name: true } }),
       this.prisma.userPreferences.findUnique({ where: { userId: ownerId }, select: { notifyMessages: true } }),
+      this.prisma.userPreferences.findUnique({ where: { userId: adopterId! }, select: { notifyMessages: true } }),
+      this.prisma.user.findUnique({ where: { id: ownerId }, select: { name: true } }),
     ]);
     const conv = await this.prisma.conversation.create({
       data: {
         petId,
-        adopterId: userId,
+        adopterId: adopterId!,
         type: 'NORMAL',
         participants: {
           create: [
             { userId: ownerId },
-            { userId },
+            { userId: adopterId! },
           ],
         },
       },
       include: { pet: { select: { name: true } } },
     });
-    if (ownerPrefs?.notifyMessages !== false && adopter?.name && conv.pet) {
-      await this.push.sendToUser(
-        ownerId,
-        'Nova conversa',
-        `${adopter.name} quer conversar sobre ${conv.pet.name}`,
-        { conversationId: conv.id },
-      );
+    if (conv.pet) {
+      if (isOwnerCalling && adopterPrefs?.notifyMessages !== false && ownerUser?.name) {
+        await this.push.sendToUser(
+          adopterId!,
+          'Nova conversa',
+          `${ownerUser.name} quer conversar sobre ${conv.pet.name}`,
+          { conversationId: conv.id },
+        );
+      } else if (!isOwnerCalling && ownerPrefs?.notifyMessages !== false && adopter?.name) {
+        await this.push.sendToUser(
+          ownerId,
+          'Nova conversa',
+          `${adopter.name} quer conversar sobre ${conv.pet.name}`,
+          { conversationId: conv.id },
+        );
+      }
     }
     return { id: conv.id };
   }

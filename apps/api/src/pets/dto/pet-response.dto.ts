@@ -154,6 +154,9 @@ export class PetResponseDto {
   @ApiPropertyOptional({ description: 'Quantidade de pessoas que favoritaram o pet (apenas em GET /pets/mine)' })
   favoritesCount?: number;
 
+  @ApiPropertyOptional({ description: 'Pessoas únicas que viram o pet nas últimas 24h (feed, meus anúncios, favoritos, detalhe)' })
+  viewCountLast24h?: number;
+
   @ApiPropertyOptional({ description: 'Parceiro (ONG/Clínica/Loja) quando o anúncio é em parceria' })
   partner?: {
     id: string;

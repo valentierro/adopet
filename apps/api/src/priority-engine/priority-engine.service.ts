@@ -26,12 +26,7 @@ const PROFILE_FIELDS = [
 
 const PROFILE_FIELDS_COUNT = PROFILE_FIELDS.length;
 
-/** Peso do match no score de prioridade (0–1) */
-const WEIGHT_MATCH = 0.5;
-/** Peso da completude do perfil (0–1) */
-const WEIGHT_COMPLETENESS = 0.3;
-/** Peso de "já conversou" (0–1) */
-const WEIGHT_CONVERSATION = 0.2;
+/** Ordenação: primeiro por match score (maior primeiro), depois perfil completo, depois se já conversou. */
 
 @Injectable()
 export class PriorityEngineService {
@@ -129,13 +124,6 @@ export class PriorityEngineService {
 
         const hasConversation = conversationAdopterIds.has(u.id);
 
-        const priorityScore = Math.round(
-          (WEIGHT_MATCH * (matchScore ?? 0) / 100 +
-            WEIGHT_COMPLETENESS * profileCompleteness / 100 +
-            WEIGHT_CONVERSATION * (hasConversation ? 1 : 0)) *
-            100,
-        );
-
         return {
           adopterId: u.id,
           name: u.name,
@@ -144,12 +132,18 @@ export class PriorityEngineService {
           profileCompleteness,
           hasConversation,
           conversationId: conversationByAdopterId.get(u.id) ?? undefined,
-          priorityScore: Math.min(100, Math.max(0, priorityScore)),
+          priorityScore: matchScore ?? 0, // mantido para compatibilidade; ordenação usa match primeiro
         };
       }),
     );
 
-    items.sort((a, b) => b.priorityScore - a.priorityScore);
+    items.sort((a, b) => {
+      const mA = a.matchScore ?? 0;
+      const mB = b.matchScore ?? 0;
+      if (mB !== mA) return mB - mA;
+      if (b.profileCompleteness !== a.profileCompleteness) return b.profileCompleteness - a.profileCompleteness;
+      return (b.hasConversation ? 1 : 0) - (a.hasConversation ? 1 : 0);
+    });
     return items;
   }
 }

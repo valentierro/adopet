@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { VerificationService } from '../verification/verification.service';
+import { PetViewService } from '../pets/pet-view.service';
 import { computeMatchScore } from '../match-engine/compute-match-score';
 import type { AdopterProfile } from '../match-engine/match-engine.types';
 import type { FavoriteItemDto } from './dto/favorite-response.dto';
@@ -27,6 +28,7 @@ export class FavoritesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly verificationService: VerificationService,
+    private readonly petViewService: PetViewService,
   ) {}
 
   async add(userId: string, petId: string): Promise<FavoriteItemDto> {
@@ -97,8 +99,9 @@ export class FavoritesService {
     const items = withPet.slice(0, this.PAGE_SIZE);
     const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].id : null;
     const petIds = items.map((f) => f.pet!.id);
-    const [verifiedIds, adopterProfile, prefs] = await Promise.all([
+    const [verifiedIds, viewCounts, adopterProfile, prefs] = await Promise.all([
       this.verificationService.getVerifiedPetIds(petIds),
+      this.petViewService.getViewCountsLast24h(petIds),
       this.prisma.user.findUnique({
         where: { id: userId },
         select: ADOPTER_SELECT,
@@ -115,6 +118,10 @@ export class FavoritesService {
         if (dto && profileForMatch && f.pet) {
           const matchResult = computeMatchScore(profileForMatch, f.pet);
           dto.pet.matchScore = matchResult.score;
+        }
+        if (dto) {
+          const vc = viewCounts.get(f.pet!.id);
+          if (vc !== undefined && vc > 0) dto.pet.viewCountLast24h = vc;
         }
         return dto;
       })

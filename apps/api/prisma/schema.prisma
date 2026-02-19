@@ -64,6 +64,7 @@ model User {
   partnerMemberships  PartnerMember[]  // membro de ONG (não é dono do portal)
   partnerRecommendations PartnerRecommendation[]
   inAppNotifications  InAppNotification[]
+  petViews            PetView[]
 }
 
 model InAppNotification {
@@ -310,6 +311,7 @@ model Pet {
   swipes          Swipe[]
   favorites       Favorite[]
   conversations   Conversation[]
+  views           PetView[]
 
   @@index([publicationStatus, status, id])
   @@index([publicationStatus, status, expiresAt, id])
@@ -360,6 +362,18 @@ model Favorite {
   createdAt DateTime @default(now())
   @@unique([userId, petId])
   @@index([userId, createdAt])
+}
+
+model PetView {
+  id                   String    @id @default(uuid())
+  petId                String
+  pet                  Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
+  userId               String
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  viewedAt             DateTime  @default(now())
+  revisitedFromPassedAt DateTime? // quando o usuário abriu o detalhe pela tela "Pets que passou" (conta +1 por usuário, atualizado a cada acesso)
+  @@unique([petId, userId])
+  @@index([petId, viewedAt])
 }
 
 model Conversation {

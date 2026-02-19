@@ -19,7 +19,7 @@ export class ConversationsController {
     @CurrentUser() user: { id: string },
     @Body() dto: CreateConversationDto,
   ): Promise<{ id: string }> {
-    return this.conversationsService.createOrGet(user.id, dto.petId);
+    return this.conversationsService.createOrGet(user.id, dto.petId, dto.adopterId);
   }
 
   @Get()

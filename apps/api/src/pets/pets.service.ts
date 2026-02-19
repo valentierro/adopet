@@ -7,6 +7,7 @@ import { PushService } from '../notifications/push.service';
 import { AdminService } from '../admin/admin.service';
 import { SimilarPetsEngineService } from '../similar-pets-engine/similar-pets-engine.service';
 import { MatchEngineService } from '../match-engine/match-engine.service';
+import { PetViewService } from './pet-view.service';
 import { reverseGeocode } from '../common/geocoding';
 import type { PetResponseDto, SimilarPetItemDto } from './dto/pet-response.dto';
 import type { CreatePetDto } from './dto/create-pet.dto';
@@ -23,6 +24,7 @@ export class PetsService {
     private readonly adminService: AdminService,
     private readonly similarPetsEngine: SimilarPetsEngineService,
     private readonly matchEngine: MatchEngineService,
+    private readonly petViewService: PetViewService,
   ) {}
 
   private mapToDto(
@@ -215,7 +217,7 @@ export class PetsService {
     return pets.map((p) => this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id)));
   }
 
-  async findOne(id: string, userLat?: number, userLng?: number): Promise<PetResponseDto | null> {
+  async findOne(id: string, userLat?: number, userLng?: number, userId?: string): Promise<PetResponseDto | null> {
     const pet = await this.prisma.pet.findUnique({
       where: { id },
       include: {
@@ -280,7 +282,22 @@ export class PetsService {
         sortOrder: m.sortOrder ?? 0,
       }));
     }
+    const viewCounts = await this.petViewService.getViewCountsLast24h([pet.id]);
+    const viewCount = viewCounts.get(pet.id);
+    if (viewCount !== undefined && viewCount > 0) dto.viewCountLast24h = viewCount;
+    if (!userId) {
+      delete dto.owner;
+    }
     return dto;
+  }
+
+  /** Registra visualização do pet (ao abrir a página do pet). */
+  async recordView(petId: string, userId: string, fromPassedScreen = false): Promise<void> {
+    if (fromPassedScreen) {
+      await this.petViewService.recordViewFromPassedScreen(petId, userId);
+    } else {
+      await this.petViewService.recordView(petId, userId);
+    }
   }
 
   /** Lista pública de pets vinculados a um parceiro (apenas aprovados). Usado na página do parceiro. Se userId informado, inclui matchScore. */
@@ -635,13 +652,14 @@ export class PetsService {
     const hasMore = pets.length > this.MINE_PAGE_SIZE;
     const items = pets.slice(0, this.MINE_PAGE_SIZE);
     const petIds = items.map((p) => p.id);
-    const [verifiedIds, favoriteCounts] = await Promise.all([
+    const [verifiedIds, favoriteCounts, viewCounts] = await Promise.all([
       this.verificationService.getVerifiedPetIds(petIds),
       this.prisma.favorite.groupBy({
         by: ['petId'],
         where: { petId: { in: petIds }, userId: { not: ownerId } },
         _count: { id: true },
       }).then((rows) => new Map(rows.map((r) => [r.petId, r._count.id]))),
+      this.petViewService.getViewCountsLast24h(petIds),
     ]);
     const dtos = items.map((p) => {
       const dto = this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id));
@@ -651,6 +669,8 @@ export class PetsService {
       if (p.adoption) dto.confirmedByAdopet = !p.adoptionRejectedAt && !!(p as { adopetConfirmedAt?: Date | null }).adopetConfirmedAt;
       const count = favoriteCounts.get(p.id);
       if (count !== undefined) dto.favoritesCount = count;
+      const vc = viewCounts.get(p.id);
+      if (vc !== undefined && vc > 0) dto.viewCountLast24h = vc;
       return dto;
     });
     const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].id : null;

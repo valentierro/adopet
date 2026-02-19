@@ -24,7 +24,8 @@ import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import type { ChangePasswordDto } from './dto/change-password.dto';
 import * as crypto from 'crypto';
 
-const ACCESS_TOKEN_EXPIRES = '15m';
+const ACCESS_TOKEN_EXPIRES_PRODUCTION = '15m';
+const ACCESS_TOKEN_EXPIRES_DEV = '7d'; // em desenvolvimento evita "sessão expirada" constante ao testar
 const REFRESH_TOKEN_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const SALT_ROUNDS = 10;
 const TEMP_PASSWORD_LENGTH = 12;
@@ -374,10 +375,16 @@ export class AuthService {
     return result;
   }
 
+  private getAccessTokenExpires(): string {
+    const env = this.config.get<string>('NODE_ENV');
+    return env === 'production' ? ACCESS_TOKEN_EXPIRES_PRODUCTION : ACCESS_TOKEN_EXPIRES_DEV;
+  }
+
   private async issueTokens(userId: string, email: string): Promise<AuthResponseDto> {
+    const accessExpires = this.getAccessTokenExpires();
     const accessToken = this.jwtService.sign(
       { sub: userId, email },
-      { expiresIn: ACCESS_TOKEN_EXPIRES } as object,
+      { expiresIn: accessExpires } as object,
     );
     const refreshToken = this.jwtService.sign(
       { sub: userId, type: 'refresh' },
@@ -391,7 +398,8 @@ export class AuthService {
         expiresAt,
       },
     });
-    const expiresInSeconds = 15 * 60; // 900
+    // Valor informativo para o app (15 min em prod; em dev 7 dias em segundos)
+    const expiresInSeconds = accessExpires === ACCESS_TOKEN_EXPIRES_PRODUCTION ? 15 * 60 : 7 * 24 * 60 * 60;
     return { accessToken, refreshToken, expiresIn: expiresInSeconds };
   }
 

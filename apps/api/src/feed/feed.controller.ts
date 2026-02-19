@@ -3,29 +3,31 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { FeedService } from './feed.service';
 import { FeedQueryDto } from './dto/feed-query.dto';
 import { FeedResponseDto } from './dto/feed-response.dto';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/optional-jwt.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 @ApiTags('feed')
-@ApiBearerAuth()
 @Controller('feed')
-@UseGuards(JwtAuthGuard)
 export class FeedController {
   constructor(private readonly feedService: FeedService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Feed de pets disponíveis (cursor pagination)' })
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Feed de pets disponíveis. Sem auth: listagem pública (grid visitante).' })
   async getFeed(
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string } | undefined,
     @Query() query: FeedQueryDto,
   ): Promise<FeedResponseDto> {
-    return this.feedService.getFeed({ ...query, userId: user.id });
+    return this.feedService.getFeed({ ...query, userId: user?.id });
   }
 
   @Get('map')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Pins de pets no mapa (lat, lng, radiusKm, species)' })
   async getMap(
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string } | undefined,
     @Query('lat') lat: string,
     @Query('lng') lng: string,
     @Query('radiusKm') radiusKm?: string,
@@ -38,6 +40,6 @@ export class FeedController {
       return { items: [] };
     }
     const speciesFilter = species === 'DOG' || species === 'CAT' ? species : undefined;
-    return this.feedService.getMapPins(latNum, lngNum, radius, user.id, speciesFilter);
+    return this.feedService.getMapPins(latNum, lngNum, radius, user?.id, speciesFilter);
   }
 }

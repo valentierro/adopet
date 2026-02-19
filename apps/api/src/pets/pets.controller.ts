@@ -178,10 +178,28 @@ export class PetsController {
     return this.matchEngineService.getMatchScore(id, adopterId.trim(), user.id);
   }
 
+  @Post(':id/view')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Registrar visualização do pet. fromPassedScreen: true quando abre pela tela "Pets que passou" (conta +1 por usuário).' })
+  async recordView(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+    @Body() body?: { fromPassedScreen?: boolean },
+  ): Promise<{ ok: boolean }> {
+    await this.petsService.recordView(id, user.id, body?.fromPassedScreen === true);
+    return { ok: true };
+  }
+
   @Get(':id')
-  @ApiOperation({ summary: 'Buscar pet por ID' })
-  async findOne(@Param('id') id: string): Promise<PetResponseDto> {
-    const pet = await this.petsService.findOne(id);
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Buscar pet por ID. Sem auth: retorno sem tutor e sem match (visita pública).' })
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser() user?: { id: string },
+  ): Promise<PetResponseDto> {
+    const pet = await this.petsService.findOne(id, undefined, undefined, user?.id);
     if (!pet) throw new NotFoundException('Pet não encontrado');
     return pet;
   }
