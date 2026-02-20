@@ -3,7 +3,7 @@
 const baseExpo = {
   name: 'Adopet',
   slug: 'adopet',
-  version: '1.0.27',
+  version: '1.0.34',
   orientation: 'portrait',
   icon: './assets/brand/icon/app_icon_light.png',
   userInterfaceStyle: 'automatic',
@@ -29,8 +29,8 @@ const baseExpo = {
       backgroundColor: '#FFFFFF',
     },
     package: 'br.com.adopet.app',
-    // Último publicado na Play Store: 32. Cada novo upload precisa de versionCode maior.
-    versionCode: 32,
+    // Último publicado na Play Store: 41. Cada novo upload precisa de versionCode maior.
+    versionCode: 41,
   },
   plugins: [
     'expo-router',
