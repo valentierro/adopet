@@ -8,7 +8,7 @@ import { AdminService } from '../admin/admin.service';
 import { SimilarPetsEngineService } from '../similar-pets-engine/similar-pets-engine.service';
 import { MatchEngineService } from '../match-engine/match-engine.service';
 import { PetViewService } from './pet-view.service';
-import { reverseGeocode } from '../common/geocoding';
+import { reverseGeocode, forwardGeocode } from '../common/geocoding';
 import type { PetResponseDto, SimilarPetItemDto } from './dto/pet-response.dto';
 import type { CreatePetDto } from './dto/create-pet.dto';
 import type { UpdatePetDto } from './dto/update-pet.dto';
@@ -375,7 +375,7 @@ export class PetsService {
   /** Vida útil padrão do anúncio (dias). */
   private static readonly LISTING_LIFETIME_DAYS = 60;
 
-  /** [Admin] Aprovar ou rejeitar anúncio (publicação no feed). Ao aprovar, define expiresAt = now + 60 dias. */
+  /** [Admin] Aprovar ou rejeitar anúncio (publicação no feed). Ao aprovar, define expiresAt = now + 60 dias. Se o pet não tiver lat/lng, tenta preencher por geocoding da cidade (pet ou tutor) para aparecer no mapa. */
   async setPublicationStatus(
     petId: string,
     status: 'APPROVED' | 'REJECTED',
@@ -386,6 +386,7 @@ export class PetsService {
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
         partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        owner: { select: { city: true } },
       },
     });
     if (!pet) return null;
@@ -414,6 +415,19 @@ export class PetsService {
     const ownerId = updated.ownerId;
     const petName = updated.name || 'Seu anúncio';
     if (status === 'APPROVED') {
+      // Preencher lat/lng a partir da cidade se o pet não tiver coordenadas (para aparecer no mapa)
+      const needsCoords = updated.latitude == null || updated.longitude == null;
+      const cityForGeocode = (updated.city ?? (pet as { owner?: { city: string | null } }).owner?.city)?.trim();
+      if (needsCoords && cityForGeocode) {
+        const coords = await forwardGeocode(cityForGeocode).catch(() => null);
+        if (coords) {
+          await this.prisma.pet.update({
+            where: { id: petId },
+            data: { latitude: coords.lat, longitude: coords.lng },
+          });
+          Object.assign(updated, { latitude: coords.lat, longitude: coords.lng });
+        }
+      }
       this.push
         .sendToUser(ownerId, 'Anúncio aprovado', `${petName} foi aprovado e já está visível no feed.`, {
           screen: 'pet',
@@ -687,8 +701,17 @@ export class PetsService {
       }
     }
     let city: string | null = null;
-    if (dto.latitude != null && dto.longitude != null) {
-      city = await reverseGeocode(dto.latitude, dto.longitude);
+    let latitude: number | null = dto.latitude ?? null;
+    let longitude: number | null = dto.longitude ?? null;
+    if (latitude != null && longitude != null) {
+      city = await reverseGeocode(latitude, longitude);
+    } else if (dto.city?.trim()) {
+      city = dto.city.trim();
+      const coords = await forwardGeocode(city).catch(() => null);
+      if (coords) {
+        latitude = coords.lat;
+        longitude = coords.lng;
+      }
     }
     const pet = await this.prisma.pet.create({
       data: {
@@ -725,8 +748,8 @@ export class PetsService {
         preferredTutorHouseholdAgrees: dto.preferredTutorHouseholdAgrees ?? null,
         preferredTutorWalkFrequency: dto.preferredTutorWalkFrequency ?? null,
         hasOngoingCosts: dto.hasOngoingCosts ?? null,
-        latitude: dto.latitude,
-        longitude: dto.longitude,
+        latitude,
+        longitude,
         city,
         partnerId: dto.partnerId ?? null,
         status: 'AVAILABLE',
@@ -774,7 +797,9 @@ export class PetsService {
     }
     const latitudeChanged = dto.latitude !== undefined;
     const longitudeChanged = dto.longitude !== undefined;
+    const cityChanged = dto.city !== undefined;
     let cityUpdate: { city: string | null } | undefined;
+    let latLngUpdate: { latitude: number | null; longitude: number | null } | undefined;
     if (latitudeChanged || longitudeChanged) {
       const current = await this.prisma.pet.findUnique({
         where: { id },
@@ -787,6 +812,18 @@ export class PetsService {
         cityUpdate = { city };
       } else {
         cityUpdate = { city: null };
+      }
+      latLngUpdate = { latitude: finalLat, longitude: finalLng };
+    } else if (cityChanged) {
+      const cityStr = dto.city?.trim() || null;
+      cityUpdate = { city: cityStr };
+      if (cityStr) {
+        const coords = await forwardGeocode(cityStr).catch(() => null);
+        latLngUpdate = coords
+          ? { latitude: coords.lat, longitude: coords.lng }
+          : { latitude: null, longitude: null };
+      } else {
+        latLngUpdate = { latitude: null, longitude: null };
       }
     }
     const pet = await this.prisma.pet.update({
@@ -824,8 +861,7 @@ export class PetsService {
         ...(dto.preferredTutorHouseholdAgrees !== undefined && { preferredTutorHouseholdAgrees: dto.preferredTutorHouseholdAgrees ?? null }),
         ...(dto.preferredTutorWalkFrequency !== undefined && { preferredTutorWalkFrequency: dto.preferredTutorWalkFrequency ?? null }),
         ...(dto.hasOngoingCosts !== undefined && { hasOngoingCosts: dto.hasOngoingCosts ?? null }),
-        ...(dto.latitude !== undefined && { latitude: dto.latitude }),
-        ...(dto.longitude !== undefined && { longitude: dto.longitude }),
+        ...(latLngUpdate !== undefined && latLngUpdate),
         ...(cityUpdate !== undefined && cityUpdate),
         ...(dto.partnerId !== undefined && { partnerId: dto.partnerId || null }),
       },

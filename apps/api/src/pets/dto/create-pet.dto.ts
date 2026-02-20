@@ -130,12 +130,18 @@ export class CreatePetDto {
   @IsBoolean()
   isTrained?: boolean;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Cidade onde o pet está (para aparecer no mapa). Se informada sem lat/lng, as coordenadas são obtidas por geocoding.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  city?: string;
+
+  @ApiPropertyOptional({ description: 'Latitude (opcional; se não informada, pode ser obtida a partir de city)' })
   @IsOptional()
   @Type(() => Number)
   latitude?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ description: 'Longitude (opcional; se não informada, pode ser obtida a partir de city)' })
   @IsOptional()
   @Type(() => Number)
   longitude?: number;
