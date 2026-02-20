@@ -1,0 +1,95 @@
+# Atualiza apps/api/app-version.json quando uma nova versão do app é publicada (tag v*).
+# Opcionalmente atualiza as env vars APP_LATEST_VERSION e APP_MIN_SUPPORTED_VERSION no Vercel (evita atualizar manualmente).
+# Uso: após publicar o app nas lojas, crie e envie a tag com a versão, ex.:
+#   git tag v1.0.36
+#   git push origin v1.0.36
+# Configure no repositório (Settings > Secrets): VERCEL_TOKEN (token da API Vercel) e, se usar time, VERCEL_TEAM_ID.
+
+name: Update app version (app-config)
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  contents: write  # para fazer push do commit
+
+env:
+  VERCEL_PROJECT_ID: adopet-api  # nome ou id do projeto na Vercel
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Update app-version.json
+        id: file
+        run: |
+          FILE="apps/api/app-version.json"
+          if [ ! -f "$FILE" ]; then
+            echo '{"latestVersion":"'"${{ steps.version.outputs.version }}"'","minSupportedVersion":"0.0.0"}' > "$FILE"
+          else
+            node -e "
+              const fs = require('fs');
+              const p = 'apps/api/app-version.json';
+              const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
+              data.latestVersion = '${{ steps.version.outputs.version }}';
+              fs.writeFileSync(p, JSON.stringify(data, null, 2) + '\n');
+            "
+          fi
+          cat "$FILE"
+          # Exportar para step do Vercel
+          echo "latest=${{ steps.version.outputs.version }}" >> $GITHUB_OUTPUT
+          MIN=$(node -e "const d=require('./apps/api/app-version.json'); console.log(d.minSupportedVersion||'0.0.0')")
+          echo "min=$MIN" >> $GITHUB_OUTPUT
+
+      - name: Update Vercel env vars
+        if: secrets.VERCEL_TOKEN != ''
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+        run: |
+          LATEST="${{ steps.file.outputs.latest }}"
+          MIN="${{ steps.file.outputs.min }}"
+          Q="upsert=true"
+          [ -n "$VERCEL_TEAM_ID" ] && Q="teamId=$VERCEL_TEAM_ID&$Q"
+          URL="https://api.vercel.com/v10/projects/${{ env.VERCEL_PROJECT_ID }}/env?$Q"
+          BODY=$(cat <<EOF
+          [
+            {"key":"APP_LATEST_VERSION","value":"$LATEST","type":"plain","target":["production","preview"]},
+            {"key":"APP_MIN_SUPPORTED_VERSION","value":"$MIN","type":"plain","target":["production","preview"]}
+          ]
+          EOF
+          )
+          curl -s -X POST "$URL" \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$BODY"
+          echo "Vercel env vars updated: APP_LATEST_VERSION=$LATEST, APP_MIN_SUPPORTED_VERSION=$MIN"
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add apps/api/app-version.json
+          if git diff --staged --quiet; then
+            echo "No change (version already set)"
+          else
+            git commit -m "chore(api): set app latestVersion to ${{ steps.version.outputs.version }} [skip ci]"
+            git push origin HEAD:${{ github.event.repository.default_branch }}
+          fi
