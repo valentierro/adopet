@@ -13,8 +13,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
-  contents: write  # para fazer push do commit
+  contents: write  # read + write para fazer push do commit
 
 env:
   VERCEL_PROJECT_ID: adopet-api  # nome ou id do projeto na Vercel
