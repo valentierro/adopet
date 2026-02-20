@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { PushService } from '../notifications/push.service';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
+import { IN_APP_NOTIFICATION_TYPES } from '../notifications/in-app-notifications.service';
 import { BlocksService } from '../moderation/blocks.service';
 import type { MessageItemDto } from './dto/message-response.dto';
 import type { MessagesPageDto } from './dto/message-response.dto';
@@ -12,7 +13,7 @@ const PAGE_SIZE = 30;
 export class MessagesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly push: PushService,
+    private readonly inAppNotifications: InAppNotificationsService,
     private readonly blocksService: BlocksService,
     private readonly config: ConfigService,
   ) {}
@@ -75,10 +76,18 @@ export class MessagesService {
           select: { notifyMessages: true },
         });
         if (prefs?.notifyMessages !== false) {
+          const title = `Tutor de ${conv.pet.name}`;
           const body = imageUrl
             ? `${conv.pet.name}: Foto`
             : `${conv.pet.name}: ${content.slice(0, 80)}${content.length > 80 ? '...' : ''}`;
-          await this.push.sendToUser(other.userId, `Tutor de ${conv.pet.name}`, body, { conversationId });
+          await this.inAppNotifications.create(
+            other.userId,
+            IN_APP_NOTIFICATION_TYPES.NEW_MESSAGE,
+            title,
+            body,
+            { conversationId },
+            { conversationId },
+          );
         }
       }
     }

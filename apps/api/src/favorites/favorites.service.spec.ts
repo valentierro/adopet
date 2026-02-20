@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { VerificationService } from '../verification/verification.service';
+import { PetViewService } from '../pets/pet-view.service';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { FavoritesService } from './favorites.service';
 
 describe('FavoritesService', () => {
@@ -9,16 +11,20 @@ describe('FavoritesService', () => {
   let prisma: {
     pet: { findUnique: jest.Mock };
     favorite: { findUnique: jest.Mock; create: jest.Mock; delete: jest.Mock; findMany: jest.Mock };
+    user: { findUnique: jest.Mock };
+    userPreferences: { findUnique: jest.Mock };
   };
 
   const userId = 'user-1';
   const petId = 'pet-1';
+  const ownerId = 'owner-1';
   const mockPet = {
     id: petId,
     name: 'Rex',
     species: 'DOG',
     age: 2,
     status: 'AVAILABLE',
+    ownerId,
     createdAt: new Date(),
     media: [{ url: 'https://example.com/1.jpg' }],
   };
@@ -32,6 +38,8 @@ describe('FavoritesService', () => {
         delete: jest.fn(),
         findMany: jest.fn(),
       },
+      user: { findUnique: jest.fn().mockResolvedValue({ name: 'Test User' }) },
+      userPreferences: { findUnique: jest.fn().mockResolvedValue(null) },
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -45,6 +53,8 @@ describe('FavoritesService', () => {
             getVerifiedPetIds: jest.fn().mockResolvedValue(new Set<string>()),
           },
         },
+        { provide: PetViewService, useValue: { recordView: jest.fn(), getViewCountsLast24h: jest.fn().mockResolvedValue(new Map()) } },
+        { provide: InAppNotificationsService, useValue: { create: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
     service = module.get<FavoritesService>(FavoritesService);

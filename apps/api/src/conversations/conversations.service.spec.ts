@@ -3,7 +3,7 @@ import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BlocksService } from '../moderation/blocks.service';
 import { TypingService } from './typing.service';
-import { PushService } from '../notifications/push.service';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { ConversationsService } from './conversations.service';
 
 describe('ConversationsService', () => {
@@ -43,7 +43,7 @@ describe('ConversationsService', () => {
           },
         },
         { provide: TypingService, useValue: { setTyping: jest.fn() } },
-        { provide: PushService, useValue: { sendToUser: jest.fn().mockResolvedValue(undefined) } },
+        { provide: InAppNotificationsService, useValue: { create: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
     service = module.get<ConversationsService>(ConversationsService);

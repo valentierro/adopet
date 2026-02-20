@@ -4,6 +4,7 @@ import { AdminService } from './admin.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { EmailService } from '../email/email.service';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 
 describe('AdminService', () => {
   let service: AdminService;
@@ -11,18 +12,21 @@ describe('AdminService', () => {
     adoption: { findMany: jest.Mock };
     pet: { findUnique: jest.Mock; update: jest.Mock };
   };
+  let inAppNotificationsService: { create: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
       adoption: { findMany: jest.fn() },
       pet: { findUnique: jest.fn(), update: jest.fn() },
     };
+    inAppNotificationsService = { create: jest.fn().mockResolvedValue(undefined) };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AdminService,
         { provide: PrismaService, useValue: prisma },
         { provide: ConfigService, useValue: { get: jest.fn() } },
         { provide: EmailService, useValue: { send: jest.fn() } },
+        { provide: InAppNotificationsService, useValue: inAppNotificationsService },
       ],
     }).compile();
     service = module.get<AdminService>(AdminService);
@@ -101,8 +105,9 @@ describe('AdminService', () => {
     it('atualiza adopetConfirmedAt quando ainda nao confirmada', async () => {
       prisma.pet.findUnique.mockResolvedValue({
         id: 'pet-1',
+        name: 'Rex',
         adopetConfirmedAt: null,
-        adoption: { id: 'adopt-1' },
+        adoption: { id: 'adopt-1', tutorId: 'tutor-1', adopterId: 'adopter-1' },
       });
       prisma.pet.update.mockResolvedValue({});
       await service.confirmAdoptionByAdopet('pet-1');
@@ -110,6 +115,21 @@ describe('AdminService', () => {
         where: { id: 'pet-1' },
         data: { adopetConfirmedAt: expect.any(Date) },
       });
+      expect(inAppNotificationsService.create).toHaveBeenCalledTimes(2);
+      expect(inAppNotificationsService.create).toHaveBeenCalledWith(
+        'tutor-1',
+        'ADOPTION_CONFIRMED_BY_ADOPET',
+        'Adoção confirmada pelo Adopet',
+        expect.stringContaining('Rex'),
+        expect.objectContaining({ petId: 'pet-1' }),
+      );
+      expect(inAppNotificationsService.create).toHaveBeenCalledWith(
+        'adopter-1',
+        'ADOPTION_CONFIRMED_BY_ADOPET',
+        'Adoção confirmada pelo Adopet',
+        expect.stringContaining('Rex'),
+        expect.objectContaining({ petId: 'pet-1' }),
+      );
     });
   });
 });

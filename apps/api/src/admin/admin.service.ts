@@ -11,6 +11,7 @@ import {
   getAdoptionCongratulationsTutorHtml,
   getAdoptionCongratulationsTutorText,
 } from '../email/templates/adoption-congratulations-tutor.email';
+import { InAppNotificationsService, IN_APP_NOTIFICATION_TYPES } from '../notifications/in-app-notifications.service';
 import type { AdminStatsDto } from './dto/admin-stats.dto';
 import type { AdoptionItemDto } from './dto/adoption-item.dto';
 import type { UserSearchItemDto } from './dto/user-search-item.dto';
@@ -29,6 +30,7 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly emailService: EmailService,
+    private readonly inAppNotificationsService: InAppNotificationsService,
   ) {}
 
   async getStats(): Promise<AdminStatsDto> {
@@ -433,7 +435,7 @@ export class AdminService {
     return { processed };
   }
 
-  /** [Admin] Marca uma adoção já existente como confirmada pela Adopet (badge "Confirmado pelo Adopet"). Idempotente: se já confirmada, não faz nada. */
+  /** [Admin] Marca uma adoção já existente como confirmada pela Adopet (badge "Confirmado pelo Adopet"). Idempotente: se já confirmada, não faz nada. Notifica tutor e adotante in-app + push. */
   async confirmAdoptionByAdopet(petId: string): Promise<void> {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
@@ -446,6 +448,26 @@ export class AdminService {
       where: { id: petId },
       data: { adopetConfirmedAt: new Date() },
     });
+    const petName = pet.name || 'Pet';
+    const title = 'Adoção confirmada pelo Adopet';
+    const body = `A adoção do ${petName} foi oficialmente confirmada pelo Adopet. 🎉`;
+    const metadata = { petId, type: IN_APP_NOTIFICATION_TYPES.ADOPTION_CONFIRMED_BY_ADOPET };
+    await Promise.all([
+      this.inAppNotificationsService.create(
+        pet.adoption.tutorId,
+        IN_APP_NOTIFICATION_TYPES.ADOPTION_CONFIRMED_BY_ADOPET,
+        title,
+        body,
+        metadata,
+      ),
+      this.inAppNotificationsService.create(
+        pet.adoption.adopterId,
+        IN_APP_NOTIFICATION_TYPES.ADOPTION_CONFIRMED_BY_ADOPET,
+        title,
+        body,
+        metadata,
+      ),
+    ]);
   }
 
   /** [Admin] Rejeita uma adoção já existente pela Adopet; exibe badge "Rejeitado pelo Adopet" para tutor e adotante. */

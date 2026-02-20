@@ -5,7 +5,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import { VerificationService } from '../verification/verification.service';
 import { TutorStatsService } from '../me/tutor-stats.service';
 import { PushService } from '../notifications/push.service';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { AdminService } from '../admin/admin.service';
+import { SimilarPetsEngineService } from '../similar-pets-engine/similar-pets-engine.service';
+import { MatchEngineService } from '../match-engine/match-engine.service';
+import { PetViewService } from './pet-view.service';
 
 jest.mock('../common/geocoding', () => ({
   reverseGeocode: jest.fn().mockResolvedValue(null),
@@ -71,7 +75,11 @@ describe('PetsService', () => {
     const tutorStats = { getStats: jest.fn().mockResolvedValue({ points: 0, level: '0', title: '', verifiedCount: 0, adoptedCount: 0 }) };
     const config = { get: jest.fn().mockReturnValue(50) };
     const push = { sendToUser: jest.fn().mockResolvedValue(undefined) };
+    const inAppNotifications = { create: jest.fn().mockResolvedValue(undefined) };
     const admin = { notifyNewPetSubmission: jest.fn().mockResolvedValue(undefined) };
+    const similarPetsEngine = { getSimilarPetIds: jest.fn().mockResolvedValue([]) };
+    const matchEngine = { getMatchScore: jest.fn(), getMatchScoresForAdopter: jest.fn().mockResolvedValue({}) };
+    const petViewService = { recordView: jest.fn().mockResolvedValue(undefined), getViewCountsLast24h: jest.fn().mockResolvedValue(new Map()) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -81,7 +89,11 @@ describe('PetsService', () => {
         { provide: TutorStatsService, useValue: tutorStats },
         { provide: ConfigService, useValue: config },
         { provide: PushService, useValue: push },
+        { provide: InAppNotificationsService, useValue: inAppNotifications },
         { provide: AdminService, useValue: admin },
+        { provide: SimilarPetsEngineService, useValue: similarPetsEngine },
+        { provide: MatchEngineService, useValue: matchEngine },
+        { provide: PetViewService, useValue: petViewService },
       ],
     }).compile();
     service = module.get<PetsService>(PetsService);

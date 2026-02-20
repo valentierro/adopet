@@ -2,7 +2,8 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service';
 import { BlocksService } from '../moderation/blocks.service';
 import { TypingService } from './typing.service';
-import { PushService } from '../notifications/push.service';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
+import { IN_APP_NOTIFICATION_TYPES } from '../notifications/in-app-notifications.service';
 import type { ConversationListItemDto } from './dto/conversation-response.dto';
 
 @Injectable()
@@ -11,7 +12,7 @@ export class ConversationsService {
     private readonly prisma: PrismaService,
     private readonly blocksService: BlocksService,
     private readonly typingService: TypingService,
-    private readonly push: PushService,
+    private readonly inAppNotifications: InAppNotificationsService,
   ) {}
 
   setTyping(conversationId: string, userId: string): void {
@@ -71,17 +72,21 @@ export class ConversationsService {
     });
     if (conv.pet) {
       if (isOwnerCalling && adopterPrefs?.notifyMessages !== false && ownerUser?.name) {
-        await this.push.sendToUser(
+        await this.inAppNotifications.create(
           adopterId!,
+          IN_APP_NOTIFICATION_TYPES.NEW_CONVERSATION,
           'Nova conversa',
           `${ownerUser.name} quer conversar sobre ${conv.pet.name}`,
           { conversationId: conv.id },
+          { conversationId: conv.id },
         );
       } else if (!isOwnerCalling && ownerPrefs?.notifyMessages !== false && adopter?.name) {
-        await this.push.sendToUser(
+        await this.inAppNotifications.create(
           ownerId,
+          IN_APP_NOTIFICATION_TYPES.NEW_CONVERSATION,
           'Nova conversa',
           `${adopter.name} quer conversar sobre ${conv.pet.name}`,
+          { conversationId: conv.id },
           { conversationId: conv.id },
         );
       }

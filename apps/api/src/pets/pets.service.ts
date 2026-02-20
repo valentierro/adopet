@@ -4,6 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { VerificationService } from '../verification/verification.service';
 import { TutorStatsService } from '../me/tutor-stats.service';
 import { PushService } from '../notifications/push.service';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
+import { IN_APP_NOTIFICATION_TYPES } from '../notifications/in-app-notifications.service';
 import { AdminService } from '../admin/admin.service';
 import { SimilarPetsEngineService } from '../similar-pets-engine/similar-pets-engine.service';
 import { MatchEngineService } from '../match-engine/match-engine.service';
@@ -21,6 +23,7 @@ export class PetsService {
     private readonly tutorStatsService: TutorStatsService,
     private readonly config: ConfigService,
     private readonly push: PushService,
+    private readonly inAppNotifications: InAppNotificationsService,
     private readonly adminService: AdminService,
     private readonly similarPetsEngine: SimilarPetsEngineService,
     private readonly matchEngine: MatchEngineService,
@@ -428,19 +431,30 @@ export class PetsService {
           Object.assign(updated, { latitude: coords.lat, longitude: coords.lng });
         }
       }
-      this.push
-        .sendToUser(ownerId, 'Anúncio aprovado', `${petName} foi aprovado e já está visível no feed.`, {
-          screen: 'pet',
-          petId: updated.id,
-        })
-        .catch((e) => console.warn('[PetsService] push publication approved failed', e));
+      this.inAppNotifications
+        .create(
+          ownerId,
+          IN_APP_NOTIFICATION_TYPES.PET_PUBLICATION_APPROVED,
+          'Anúncio aprovado',
+          `${petName} foi aprovado e já está visível no feed.`,
+          { petId: updated.id },
+          { screen: 'pet', petId: updated.id },
+        )
+        .catch((e) => console.warn('[PetsService] in-app publication approved failed', e));
     } else {
       const body = rejectionReason?.trim()
         ? `O anúncio de ${petName} não foi aprovado: ${rejectionReason.trim()}. Você pode editar e reenviar para análise.`
         : `O anúncio de ${petName} não foi aprovado. Você pode editar e reenviar para análise.`;
-      this.push
-        .sendToUser(ownerId, 'Anúncio não aprovado', body, { screen: 'pet', petId: updated.id })
-        .catch((e) => console.warn('[PetsService] push publication rejected failed', e));
+      this.inAppNotifications
+        .create(
+          ownerId,
+          IN_APP_NOTIFICATION_TYPES.PET_PUBLICATION_REJECTED,
+          'Anúncio não aprovado',
+          body,
+          { petId: updated.id },
+          { screen: 'pet', petId: updated.id },
+        )
+        .catch((e) => console.warn('[PetsService] in-app publication rejected failed', e));
     }
     const verified = await this.verificationService.isPetVerified(updated.id);
     return this.mapToDto(updated, undefined, undefined, verified);
@@ -971,10 +985,12 @@ export class PetsService {
         data: { updatedAt: new Date() },
       }),
     ]);
-    await this.push.sendToUser(
+    await this.inAppNotifications.create(
       adopterId,
+      IN_APP_NOTIFICATION_TYPES.ADOPTION_CONFIRMATION_REQUESTED,
       'Confirme sua adoção',
       `${tutorName} indicou você como adotante de ${petName}. Confirme no app.`,
+      { conversationId: conv.id, petId },
       { conversationId: conv.id, petId },
     );
   }

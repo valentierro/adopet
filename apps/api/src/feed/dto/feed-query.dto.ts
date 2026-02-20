@@ -42,6 +42,16 @@ export class FeedQueryDto {
   @IsString()
   breed?: string;
 
+  @ApiPropertyOptional({ description: 'Filtro por sexo do pet: male | female' })
+  @IsOptional()
+  @IsString()
+  sex?: string;
+
+  @ApiPropertyOptional({ description: 'Filtro por porte: small | medium | large | xlarge' })
+  @IsOptional()
+  @IsString()
+  size?: string;
+
   @ApiPropertyOptional({ enum: ['LOW', 'MEDIUM', 'HIGH'], description: 'Filtro por nível de energia' })
   @IsOptional()
   @IsString()

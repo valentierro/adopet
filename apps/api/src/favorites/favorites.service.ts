@@ -2,6 +2,8 @@ import { Injectable, BadRequestException, ConflictException, NotFoundException }
 import { PrismaService } from '../prisma/prisma.service';
 import { VerificationService } from '../verification/verification.service';
 import { PetViewService } from '../pets/pet-view.service';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
+import { IN_APP_NOTIFICATION_TYPES } from '../notifications/in-app-notifications.service';
 import { computeMatchScore } from '../match-engine/compute-match-score';
 import type { AdopterProfile } from '../match-engine/match-engine.types';
 import type { FavoriteItemDto } from './dto/favorite-response.dto';
@@ -29,6 +31,7 @@ export class FavoritesService {
     private readonly prisma: PrismaService,
     private readonly verificationService: VerificationService,
     private readonly petViewService: PetViewService,
+    private readonly inAppNotifications: InAppNotificationsService,
   ) {}
 
   async add(userId: string, petId: string): Promise<FavoriteItemDto> {
@@ -48,18 +51,34 @@ export class FavoritesService {
       where: { userId_petId: { userId, petId } },
     });
     if (existing) throw new ConflictException('Pet já está nos favoritos');
-    const fav = await this.prisma.favorite.create({
-      data: { userId, petId },
-      include: {
-        pet: {
-          include: {
-            media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-            partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
-            owner: { select: { city: true } },
+    const [fav, favoriter] = await Promise.all([
+      this.prisma.favorite.create({
+        data: { userId, petId },
+        include: {
+          pet: {
+            include: {
+              media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+              partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+              owner: { select: { city: true } },
+            },
           },
         },
-      },
-    });
+      }),
+      this.prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
+    ]);
+    const ownerId = pet.ownerId;
+    if (ownerId) {
+      this.inAppNotifications
+        .create(
+          ownerId,
+          IN_APP_NOTIFICATION_TYPES.PET_FAVORITED,
+          'Alguém favoritou seu pet',
+          `${favoriter?.name ?? 'Alguém'} favoritou ${pet.name}`,
+          { petId },
+          { screen: 'pet', petId },
+        )
+        .catch(() => {});
+    }
     const verified = await this.verificationService.isPetVerified(petId);
     const dto = this.toItemDto(fav, verified);
     if (!dto) throw new NotFoundException('Pet não encontrado');

@@ -6,6 +6,15 @@ export const IN_APP_NOTIFICATION_TYPES = {
   PARTNERSHIP_ENDED_ONG: 'PARTNERSHIP_ENDED_ONG',
   PARTNERSHIP_ENDED_PAID_SCHEDULED: 'PARTNERSHIP_ENDED_PAID_SCHEDULED',
   PARTNERSHIP_ENDED_PAID_TODAY: 'PARTNERSHIP_ENDED_PAID_TODAY',
+  ADOPTION_CONFIRMED_BY_ADOPET: 'ADOPTION_CONFIRMED_BY_ADOPET',
+  NEW_MESSAGE: 'NEW_MESSAGE',
+  NEW_CONVERSATION: 'NEW_CONVERSATION',
+  ADOPTION_CONFIRMATION_REQUESTED: 'ADOPTION_CONFIRMATION_REQUESTED',
+  PET_PUBLICATION_APPROVED: 'PET_PUBLICATION_APPROVED',
+  PET_PUBLICATION_REJECTED: 'PET_PUBLICATION_REJECTED',
+  VERIFICATION_APPROVED: 'VERIFICATION_APPROVED',
+  VERIFICATION_REJECTED: 'VERIFICATION_REJECTED',
+  PET_FAVORITED: 'PET_FAVORITED',
 } as const;
 
 export type InAppNotificationType = (typeof IN_APP_NOTIFICATION_TYPES)[keyof typeof IN_APP_NOTIFICATION_TYPES];
@@ -27,19 +36,21 @@ export class InAppNotificationsService {
     private readonly pushService: PushService,
   ) {}
 
-  /** Cria notificação in-app e envia push (não falha se push falhar). */
+  /** Cria notificação in-app e envia push (não falha se push falhar). pushData é enviado no payload do push para deep link (valores devem ser string). */
   async create(
     userId: string,
     type: InAppNotificationType,
     title: string,
     body: string,
     metadata?: Record<string, unknown>,
+    pushData?: Record<string, string>,
   ): Promise<void> {
     const metadataStr = metadata ? JSON.stringify(metadata) : null;
     await this.prisma.inAppNotification.create({
       data: { userId, type, title, body, metadata: metadataStr },
     });
-    this.pushService.sendToUser(userId, title, body, { type }).catch(() => {});
+    const data: Record<string, string> = { type, ...pushData };
+    this.pushService.sendToUser(userId, title, body, data).catch(() => {});
   }
 
   async listByUser(userId: string, limit = 50): Promise<InAppNotificationItem[]> {

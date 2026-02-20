@@ -24,6 +24,7 @@ export class HealthController {
   /**
    * Versões do app mobile para checagem de atualização.
    * Lê de app-version.json (atualizado automaticamente pelo GitHub Action ao publicar tag v*).
+   * Tenta vários caminhos para funcionar em dist/, em monorepo ou cwd da API.
    * Fallback: env APP_LATEST_VERSION e APP_MIN_SUPPORTED_VERSION.
    */
   @Get('app-config')
@@ -32,15 +33,25 @@ export class HealthController {
   appConfig() {
     let latest = this.config.get<string>('APP_LATEST_VERSION')?.trim() || '0.0.0';
     let minSupported = this.config.get<string>('APP_MIN_SUPPORTED_VERSION')?.trim() || '0.0.0';
-    try {
-      const path = join(__dirname, '..', 'app-version.json');
-      if (existsSync(path)) {
-        const data = JSON.parse(readFileSync(path, 'utf-8')) as { latestVersion?: string; minSupportedVersion?: string };
-        if (data.latestVersion?.trim()) latest = data.latestVersion.trim();
-        if (data.minSupportedVersion?.trim()) minSupported = data.minSupportedVersion.trim();
+    const candidates = [
+      join(__dirname, '..', 'app-version.json'), // dist/app-version.json quando roda de dist/
+      join(process.cwd(), 'app-version.json'), // cwd da API (ex.: apps/api ou raiz do deploy)
+      join(process.cwd(), 'dist', 'app-version.json'),
+    ];
+    for (const path of candidates) {
+      try {
+        if (existsSync(path)) {
+          const data = JSON.parse(readFileSync(path, 'utf-8')) as {
+            latestVersion?: string;
+            minSupportedVersion?: string;
+          };
+          if (data.latestVersion?.trim()) latest = data.latestVersion.trim();
+          if (data.minSupportedVersion?.trim()) minSupported = data.minSupportedVersion.trim();
+          break;
+        }
+      } catch {
+        // tenta próximo caminho
       }
-    } catch {
-      // keep env fallback
     }
     return { latestVersion: latest, minSupportedVersion: minSupported };
   }

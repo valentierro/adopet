@@ -4,6 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ReportsService } from '../moderation/reports.service';
 import { BlocksService } from '../moderation/blocks.service';
 import { VerificationService } from '../verification/verification.service';
+import { MatchEngineService } from '../match-engine/match-engine.service';
+import { PetViewService } from '../pets/pet-view.service';
 
 describe('FeedService', () => {
   let service: FeedService;
@@ -74,6 +76,8 @@ describe('FeedService', () => {
         { provide: ReportsService, useValue: reports },
         { provide: BlocksService, useValue: blocks },
         { provide: VerificationService, useValue: verification },
+        { provide: MatchEngineService, useValue: { getMatchScoresForAdopter: jest.fn().mockResolvedValue({}) } },
+        { provide: PetViewService, useValue: { getViewCountsLast24h: jest.fn().mockResolvedValue({}) } },
       ],
     }).compile();
     service = module.get<FeedService>(FeedService);
@@ -233,6 +237,158 @@ describe('FeedService', () => {
           where: expect.objectContaining({ isTrained: true }),
         }),
       );
+    });
+
+    it('inclui sex no where quando sex é passado (female)', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, sex: 'female' });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ sex: 'female' }),
+        }),
+      );
+    });
+
+    it('inclui sex no where quando sex é passado (male)', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, sex: 'male' });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ sex: 'male' }),
+        }),
+      );
+    });
+
+    it('normaliza sex para lowercase no where', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, sex: 'FEMALE' });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ sex: 'female' }),
+        }),
+      );
+    });
+
+    it('inclui size no where quando size é passado (small)', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, size: 'small' });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ size: 'small' }),
+        }),
+      );
+    });
+
+    it('inclui size no where para medium, large e xlarge', async () => {
+      for (const size of ['medium', 'large', 'xlarge'] as const) {
+        prisma.pet.findMany.mockClear();
+        prisma.pet.findMany.mockResolvedValue([]);
+        await service.getFeed({ ...baseQuery, size });
+        expect(prisma.pet.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({ size }),
+          }),
+        );
+      }
+    });
+
+    it('não inclui size no where quando size é inválido', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, size: 'invalid' });
+      const call = prisma.pet.findMany.mock.calls[0][0];
+      expect(call.where.size).toBeUndefined();
+    });
+
+    it('inclui breed no where quando breed é passado', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, breed: 'Golden Retriever' });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            breed: { equals: 'Golden Retriever', mode: 'insensitive' },
+          }),
+        }),
+      );
+    });
+
+    it('inclui breed case-insensitive (SRD, srd, Srd)', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, breed: 'SRD' });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            breed: { equals: 'SRD', mode: 'insensitive' },
+          }),
+        }),
+      );
+    });
+
+    it('não inclui breed no where quando breed é só espaços', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, breed: '   ' });
+      const call = prisma.pet.findMany.mock.calls[0][0];
+      expect(call.where.breed).toBeUndefined();
+    });
+
+    it('aceita múltiplas raças (vírgula) e usa OR no where', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({ ...baseQuery, breed: 'Labrador,SRD (vira-lata),Persa' });
+      const call = prisma.pet.findMany.mock.calls[0][0];
+      expect(call.where.AND).toBeDefined();
+      expect(Array.isArray(call.where.AND)).toBe(true);
+      const orBreed = call.where.AND.find((c: { OR?: { breed?: unknown }[] }) => c.OR?.[0]?.breed);
+      expect(orBreed?.OR).toHaveLength(3);
+    });
+
+    it('combina sex, size e breed no where quando todos são passados', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({
+        ...baseQuery,
+        sex: 'female',
+        size: 'medium',
+        breed: 'SRD',
+      });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            sex: 'female',
+            size: 'medium',
+            breed: { equals: 'SRD', mode: 'insensitive' },
+          }),
+        }),
+      );
+    });
+
+    it('combina species + sex + size + breed + energyLevel no where', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({
+        ...baseQuery,
+        species: 'DOG',
+        sex: 'male',
+        size: 'large',
+        breed: 'Golden',
+        energyLevel: 'LOW',
+      });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            species: { equals: 'DOG', mode: 'insensitive' },
+            sex: 'male',
+            size: 'large',
+            breed: { equals: 'Golden', mode: 'insensitive' },
+            energyLevel: 'LOW',
+          }),
+        }),
+      );
+    });
+
+    it('sem filtros sex/size/breed não adiciona esses campos ao where', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed(baseQuery);
+      const call = prisma.pet.findMany.mock.calls[0][0];
+      expect(call.where.sex).toBeUndefined();
+      expect(call.where.size).toBeUndefined();
+      expect(call.where.breed).toBeUndefined();
     });
   });
 });

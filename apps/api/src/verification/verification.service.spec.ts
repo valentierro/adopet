@@ -2,13 +2,14 @@ import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { VerificationService } from './verification.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { PushService } from '../notifications/push.service';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
+import { TutorStatsService } from '../me/tutor-stats.service';
 
 describe('VerificationService', () => {
   let service: VerificationService;
   let prisma: {
     pet: { findFirst: jest.Mock };
-    verification: { findFirst: jest.Mock; findMany: jest.Mock; create: jest.Mock };
+    verification: { findFirst: jest.Mock; findMany: jest.Mock; create: jest.Mock; update: jest.Mock };
   };
 
   const userId = 'user-1';
@@ -17,13 +18,14 @@ describe('VerificationService', () => {
   beforeEach(async () => {
     prisma = {
       pet: { findFirst: jest.fn() },
-      verification: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn() },
+      verification: { findFirst: jest.fn(), findMany: jest.fn(), create: jest.fn(), update: jest.fn() },
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         VerificationService,
         { provide: PrismaService, useValue: prisma },
-        { provide: PushService, useValue: { sendToUser: jest.fn().mockResolvedValue(undefined) } },
+        { provide: InAppNotificationsService, useValue: { create: jest.fn().mockResolvedValue(undefined) } },
+        { provide: TutorStatsService, useValue: { getStats: jest.fn().mockResolvedValue({}) } },
       ],
     }).compile();
     service = module.get<VerificationService>(VerificationService);

@@ -208,6 +208,8 @@ export class FeedService {
       userId,
       species: querySpecies,
       breed: queryBreed,
+      sex: querySex,
+      size: querySize,
       energyLevel: queryEnergyLevel,
       temperament: queryTemperament,
       goodWithChildren: queryGoodWithChildren,
@@ -274,15 +276,17 @@ export class FeedService {
       ? [userId, ...blockedByMe, ...blockedMe]
       : [];
 
-    const breedFilter = queryBreed?.trim();
+    const breedFilters = queryBreed?.split(',').map((b) => b.trim()).filter(Boolean) ?? [];
+    const sexFilter = querySex?.toLowerCase().trim() || null;
+    const sizeFilter = querySize?.toLowerCase().trim() || null;
     const now = new Date();
-    const where = {
+    const baseWhere = {
       status: 'AVAILABLE' as const,
       publicationStatus: 'APPROVED' as const,
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
-      // species no banco pode ser "cat"/"dog" (create) ou "CAT"/"DOG"; filtro case-insensitive
       ...(speciesFilter ? { species: { equals: speciesFilter, mode: 'insensitive' as const } } : {}),
-      ...(breedFilter ? { breed: { equals: breedFilter, mode: 'insensitive' as const } } : {}),
+      ...(sexFilter === 'male' || sexFilter === 'female' ? { sex: sexFilter } : {}),
+      ...(sizeFilter && ['small', 'medium', 'large', 'xlarge'].includes(sizeFilter) ? { size: sizeFilter } : {}),
       ...(queryEnergyLevel ? { energyLevel: queryEnergyLevel } : {}),
       ...(queryTemperament ? { temperament: queryTemperament } : {}),
       ...(queryGoodWithChildren ? { goodWithChildren: queryGoodWithChildren } : {}),
@@ -295,6 +299,17 @@ export class FeedService {
       ...(reportedPetIds.length > 0 ? { id: { notIn: reportedPetIds } } : {}),
       ...(excludeOwnerIds.length > 0 ? { ownerId: { notIn: excludeOwnerIds } } : {}),
     };
+    const where =
+      breedFilters.length === 0
+        ? baseWhere
+        : breedFilters.length === 1
+          ? { ...baseWhere, breed: { equals: breedFilters[0], mode: 'insensitive' as const } }
+          : {
+              AND: [
+                baseWhere,
+                { OR: breedFilters.map((b) => ({ breed: { equals: b, mode: 'insensitive' as const } })) },
+              ],
+            };
 
     const include = {
       media: { orderBy: { sortOrder: 'asc' as const } },

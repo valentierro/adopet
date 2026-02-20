@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { PushService } from '../notifications/push.service';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
+import { IN_APP_NOTIFICATION_TYPES } from '../notifications/in-app-notifications.service';
 import { TutorStatsService } from '../me/tutor-stats.service';
 import type { VerificationStatusDto, VerificationItemDto } from './dto/verification-status.dto';
 
@@ -8,7 +9,7 @@ import type { VerificationStatusDto, VerificationItemDto } from './dto/verificat
 export class VerificationService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly push: PushService,
+    private readonly inAppNotifications: InAppNotificationsService,
     @Inject(forwardRef(() => TutorStatsService))
     private readonly tutorStats: TutorStatsService,
   ) {}
@@ -256,18 +257,30 @@ export class VerificationService {
       : null;
     const targetLabel = v.type === 'PET_VERIFIED' && petName ? `pet ${petName}` : 'perfil';
     if (status === 'APPROVED') {
-      this.push
-        .sendToUser(v.userId, 'Verificação aprovada', `Sua verificação de ${targetLabel} foi aprovada!`, {
-          screen: 'verification',
-        })
-        .catch((e) => console.warn('[VerificationService] push approved failed', e));
+      this.inAppNotifications
+        .create(
+          v.userId,
+          IN_APP_NOTIFICATION_TYPES.VERIFICATION_APPROVED,
+          'Verificação aprovada',
+          `Sua verificação de ${targetLabel} foi aprovada!`,
+          undefined,
+          { screen: 'verification' },
+        )
+        .catch((e) => console.warn('[VerificationService] in-app approved failed', e));
     } else {
       const body = rejectionReason
         ? `Sua solicitação de verificação não foi aprovada: ${rejectionReason}. Você pode solicitar novamente após ajustes.`
         : 'Sua solicitação de verificação não foi aprovada. Você pode solicitar novamente após ajustes.';
-      this.push
-        .sendToUser(v.userId, 'Verificação não aprovada', body, { screen: 'verification' })
-        .catch((e) => console.warn('[VerificationService] push rejected failed', e));
+      this.inAppNotifications
+        .create(
+          v.userId,
+          IN_APP_NOTIFICATION_TYPES.VERIFICATION_REJECTED,
+          'Verificação não aprovada',
+          body,
+          undefined,
+          { screen: 'verification' },
+        )
+        .catch((e) => console.warn('[VerificationService] in-app rejected failed', e));
     }
     return dto;
   }

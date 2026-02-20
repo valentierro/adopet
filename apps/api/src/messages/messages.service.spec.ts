@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { PushService } from '../notifications/push.service';
+import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { BlocksService } from '../moderation/blocks.service';
 import { MessagesService } from './messages.service';
 
@@ -13,7 +13,7 @@ describe('MessagesService', () => {
     conversation: { findUnique: jest.Mock };
     userPreferences: { findUnique: jest.Mock };
   };
-  let push: { sendToUser: jest.Mock };
+  let inAppNotifications: { create: jest.Mock };
 
   const userId = 'user-1';
   const otherUserId = 'user-2';
@@ -25,13 +25,13 @@ describe('MessagesService', () => {
       conversation: { findUnique: jest.fn() },
       userPreferences: { findUnique: jest.fn().mockResolvedValue({ notifyMessages: true }) },
     };
-    push = { sendToUser: jest.fn().mockResolvedValue(undefined) };
+    inAppNotifications = { create: jest.fn().mockResolvedValue(undefined) };
     const blocksService = { isBlockedBetween: jest.fn().mockResolvedValue(false) };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MessagesService,
         { provide: PrismaService, useValue: prisma },
-        { provide: PushService, useValue: push },
+        { provide: InAppNotificationsService, useValue: inAppNotifications },
         { provide: BlocksService, useValue: blocksService },
         { provide: ConfigService, useValue: { get: jest.fn() } },
       ],
@@ -119,10 +119,12 @@ describe('MessagesService', () => {
       expect(prisma.message.create).toHaveBeenCalledWith({
         data: { conversationId, senderId: userId, content: 'Hello', imageUrl: undefined },
       });
-      expect(push.sendToUser).toHaveBeenCalledWith(
+      expect(inAppNotifications.create).toHaveBeenCalledWith(
         otherUserId,
+        'NEW_MESSAGE',
         'Tutor de Rex',
         'Rex: Hello',
+        { conversationId },
         { conversationId },
       );
     });
@@ -149,7 +151,7 @@ describe('MessagesService', () => {
       });
       prisma.userPreferences.findUnique.mockResolvedValueOnce({ notifyMessages: false });
       await service.send(conversationId, userId, { content: 'Oi' });
-      expect(push.sendToUser).not.toHaveBeenCalled();
+      expect(inAppNotifications.create).not.toHaveBeenCalled();
     });
 
     it('marca mensagens como lidas ao buscar pagina (getPage)', async () => {
