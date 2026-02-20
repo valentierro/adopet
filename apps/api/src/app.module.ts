@@ -1,3 +1,4 @@
+/** Adopet API - NestJS app root module */
 import { Module } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
