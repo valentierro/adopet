@@ -82,12 +82,17 @@ export class AuthController {
   async confirmEmailPage(@Query('token') token: string, @Res() res: Response): Promise<void> {
     const result = await this.authService.confirmEmail(typeof token === 'string' ? token : '');
     const isSuccess = result.success;
+    const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? 'https://appadopet.com.br';
+    const logoUrl = (this.config.get<string>('LOGO_URL') || appUrl + '/logo.png').trim();
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${isSuccess ? 'E-mail confirmado' : 'Link inválido'} - Adopet</title></head>
 <body style="margin:0;padding:0;background:#E5EDEA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;">
   <div style="max-width:400px;width:100%;background:#fff;border:2px solid #D97706;border-radius:16px;padding:32px 24px;text-align:center;margin:24px;">
-    <p style="font-size:22px;font-weight:700;color:#1C1917;margin:0 0 8px 0;">Adopet</p>
+    <div style="text-align:center;margin-bottom:20px;">
+      <img src="${logoUrl}" alt="Adopet" width="160" height="56" style="max-height:56px;width:auto;object-fit:contain;" onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />
+      <span style="font-size:28px;font-weight:700;color:#D97706;display:none;">Adopet</span>
+    </div>
     <p style="font-size:15px;color:#57534E;line-height:1.6;margin:0;">${result.message}</p>
   </div>
 </body>
@@ -101,12 +106,17 @@ export class AuthController {
     const tokenStr = Array.isArray(token) ? (token[0] ?? '') : (typeof token === 'string' ? token : '');
     const result = await this.authService.confirmResetPassword(tokenStr);
     const isSuccess = result.success;
+    const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? 'https://appadopet.com.br';
+    const logoUrl = (this.config.get<string>('LOGO_URL') || appUrl + '/logo.png').trim();
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>${isSuccess ? 'Senha enviada' : 'Link inválido'} - Adopet</title></head>
 <body style="margin:0;padding:0;background:#E5EDEA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;">
   <div style="max-width:400px;width:100%;background:#fff;border:2px solid #D97706;border-radius:16px;padding:32px 24px;text-align:center;margin:24px;">
-    <p style="font-size:22px;font-weight:700;color:#1C1917;margin:0 0 8px 0;">Adopet</p>
+    <div style="text-align:center;margin-bottom:20px;">
+      <img src="${logoUrl}" alt="Adopet" width="160" height="56" style="max-height:56px;width:auto;object-fit:contain;" onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />
+      <span style="font-size:28px;font-weight:700;color:#D97706;display:none;">Adopet</span>
+    </div>
     <p style="font-size:15px;color:#57534E;line-height:1.6;margin:0;">${result.message}</p>
   </div>
 </body>

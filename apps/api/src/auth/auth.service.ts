@@ -130,7 +130,8 @@ export class AuthService {
       const apiUrl = this.config.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ?? '';
       if (apiUrl && this.emailService.isConfigured() && emailVerificationToken) {
         const confirmLink = `${apiUrl}/v1/auth/confirm-email?token=${encodeURIComponent(emailVerificationToken)}`;
-        const logoUrl = (this.config.get<string>('LOGO_URL') || apiUrl + '/logo.png').trim();
+        const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? '';
+        const logoUrl = (this.config.get<string>('LOGO_URL') || (appUrl ? appUrl + '/logo.png' : apiUrl + '/logo.png')).trim();
         await this.emailService.sendMail({
           to: user.email,
           subject: 'Confirme seu e-mail - Adopet',

@@ -5,6 +5,7 @@ import { PartnersService } from '../partners/partners.service';
 import { AuthService } from '../auth/auth.service';
 import { EmailService } from '../email/email.service';
 import { getSetPasswordEmailHtml, getSetPasswordEmailText } from '../email/templates/set-password.email';
+import { getPartnerWelcomeOngEmailHtml, getPartnerWelcomeOngEmailText } from '../email/templates/partner-welcome-ong.email';
 
 export type PartnershipRequestAdminDto = {
   id: string;
@@ -116,6 +117,14 @@ export class PartnershipRequestsService {
         text: getSetPasswordEmailText(emailData),
         html: getSetPasswordEmailHtml(emailData, logoUrl),
       }).catch(() => { /* não falhar aprovação se e-mail falhar */ });
+      this.emailService
+        .sendMail({
+          to: req.email,
+          subject: 'Bem-vindo(a) à parceria Adopet',
+          text: getPartnerWelcomeOngEmailText({ ongName: req.instituicao }),
+          html: getPartnerWelcomeOngEmailHtml({ ongName: req.instituicao }, logoUrl),
+        })
+        .catch(() => { /* não falhar aprovação se e-mail falhar */ });
     }
 
     return { partnerId: partner.id };

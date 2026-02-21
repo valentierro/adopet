@@ -8,6 +8,10 @@ import {
   getPartnershipEndedPaidTodayEmailText,
 } from '../email/templates/partnership-ended-paid-today.email';
 import {
+  getPartnerWelcomePaidEmailHtml,
+  getPartnerWelcomePaidEmailText,
+} from '../email/templates/partner-welcome-paid.email';
+import {
   InAppNotificationsService,
   IN_APP_NOTIFICATION_TYPES,
 } from '../notifications/in-app-notifications.service';
@@ -315,6 +319,24 @@ export class StripeService {
             approvedAt: new Date(),
           },
         });
+        if (this.emailService.isConfigured()) {
+          const partner = await this.prisma.partner.findUnique({
+            where: { id: partnerId },
+            select: { name: true, email: true, user: { select: { email: true } } },
+          });
+          const to = partner?.user?.email ?? partner?.email ?? null;
+          if (to && partner?.name) {
+            const logoUrl = (this.config.get<string>('LOGO_URL') || '').trim();
+            this.emailService
+              .sendMail({
+                to,
+                subject: 'Bem-vindo(a) à parceria Adopet',
+                text: getPartnerWelcomePaidEmailText({ partnerName: partner.name }),
+                html: getPartnerWelcomePaidEmailHtml({ partnerName: partner.name }, logoUrl || undefined),
+              })
+              .catch((e) => console.warn('[StripeService] partner welcome email failed', e));
+          }
+        }
       }
       return;
     }
