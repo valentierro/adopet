@@ -35,7 +35,7 @@ export class FeedController {
   ): Promise<{ items: { id: string; name: string; age: number; species: string; city?: string; latitude: number; longitude: number; photoUrl: string }[] }> {
     const latNum = parseFloat(lat);
     const lngNum = parseFloat(lng);
-    const radius = radiusKm != null ? parseInt(radiusKm, 10) : 50;
+    const radius = radiusKm != null ? parseInt(radiusKm, 10) : 300;
     if (Number.isNaN(latNum) || Number.isNaN(lngNum)) {
       return { items: [] };
     }

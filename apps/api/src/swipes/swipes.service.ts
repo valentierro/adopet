@@ -47,7 +47,11 @@ export class SwipesService {
   async getPassed(userId: string): Promise<{ items: PetResponseDto[] }> {
     const [swipes, adopterProfile, prefs] = await Promise.all([
       this.prisma.swipe.findMany({
-        where: { userId, action: 'PASS' },
+        where: {
+          userId,
+          action: 'PASS',
+          pet: { owner: { deactivatedAt: null } },
+        },
         orderBy: { createdAt: 'desc' },
         include: {
           pet: {

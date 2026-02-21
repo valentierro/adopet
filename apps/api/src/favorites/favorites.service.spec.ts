@@ -130,7 +130,10 @@ describe('FavoritesService', () => {
       expect(result.items[0]).toHaveProperty('petId', petId);
       expect(result.items[0].pet.name).toBe('Rex');
       expect(prisma.favorite.findMany).toHaveBeenCalledWith({
-        where: { userId },
+        where: {
+          userId,
+          pet: { owner: { deactivatedAt: null } },
+        },
         take: 21,
         orderBy: { createdAt: 'desc' },
         include: expect.any(Object),

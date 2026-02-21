@@ -284,6 +284,7 @@ export class FeedService {
       status: 'AVAILABLE' as const,
       publicationStatus: 'APPROVED' as const,
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      owner: { deactivatedAt: null },
       ...(speciesFilter ? { species: { equals: speciesFilter, mode: 'insensitive' as const } } : {}),
       ...(sexFilter === 'male' || sexFilter === 'female' ? { sex: sexFilter } : {}),
       ...(sizeFilter && ['small', 'medium', 'large', 'xlarge'].includes(sizeFilter) ? { size: sizeFilter } : {}),
@@ -360,7 +361,7 @@ export class FeedService {
         : null;
 
     const nowMs = Date.now();
-    const radiusKm = Number(queryRadiusKm ?? prefs?.radiusKm ?? 50) || 50;
+    const radiusKm = Number(queryRadiusKm ?? prefs?.radiusKm ?? 300) || 300;
     const hasUserLocation = lat != null && lng != null;
     const scored = candidates.map((pet) => {
       // Pet sem coordenadas: não excluir do feed. Trata como dentro do raio (distanceKm = radiusKm)
@@ -371,7 +372,7 @@ export class FeedService {
           ? this.haversineKm(lat!, lng!, pet.latitude, pet.longitude)
           : hasUserLocation
             ? radiusKm
-            : 50;
+            : 300;
       const daysSinceCreated = (nowMs - pet.createdAt.getTime()) / (1000 * 60 * 60 * 24);
       const favoriteCount = favByPetId[pet.id] ?? 0;
       const speciesMatch = speciesFilter == null || pet.species === speciesFilter ? 1 : 0;
@@ -504,6 +505,7 @@ export class FeedService {
     const now = new Date();
     const where = {
       ownerId,
+      owner: { deactivatedAt: null },
       status: 'AVAILABLE' as const,
       publicationStatus: 'APPROVED' as const,
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
@@ -622,6 +624,7 @@ export class FeedService {
         status: 'AVAILABLE',
         publicationStatus: 'APPROVED',
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        owner: { deactivatedAt: null },
         latitude: { not: null },
         longitude: { not: null },
         ...(species ? { species } : {}),
@@ -722,6 +725,7 @@ export class FeedService {
         status: 'AVAILABLE',
         publicationStatus: 'APPROVED',
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        owner: { deactivatedAt: null },
         createdAt: { gte: since },
         latitude: { not: null },
         longitude: { not: null },
@@ -767,6 +771,7 @@ export class FeedService {
         status: 'AVAILABLE',
         publicationStatus: 'APPROVED',
         OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+        owner: { deactivatedAt: null },
         createdAt: { gte: since },
         latitude: { not: null },
         longitude: { not: null },
@@ -819,6 +824,7 @@ export class FeedService {
       status: 'AVAILABLE',
       publicationStatus: 'APPROVED',
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      owner: { deactivatedAt: null },
       createdAt: { gte: s.lastCheckedAt },
       ownerId: { not: s.userId },
       ...(speciesFilter ? { species: speciesFilter } : {}),
@@ -836,7 +842,7 @@ export class FeedService {
       select: { id: true, latitude: true, longitude: true },
       take: 2000,
     });
-    const radiusKm = s.radiusKm ?? 50;
+    const radiusKm = s.radiusKm ?? 300;
     if (s.latitude != null && s.longitude != null) {
       let count = 0;
       for (const p of candidates) {

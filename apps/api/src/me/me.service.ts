@@ -308,7 +308,7 @@ export class MeService {
       create: {
         userId,
         species: dto.species ?? 'BOTH',
-        radiusKm: dto.radiusKm ?? 50,
+        radiusKm: dto.radiusKm ?? 300,
         sizePref: dto.sizePref ?? undefined,
         sexPref: dto.sexPref ?? undefined,
         latitude: dto.latitude ?? undefined,

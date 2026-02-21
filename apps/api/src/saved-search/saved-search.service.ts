@@ -17,7 +17,7 @@ export class SavedSearchService {
         breed: dto.breed?.trim() || undefined,
         latitude: dto.latitude ?? undefined,
         longitude: dto.longitude ?? undefined,
-        radiusKm: dto.radiusKm ?? 50,
+        radiusKm: dto.radiusKm ?? 300,
       },
     });
     return this.toDto(search);
@@ -46,7 +46,7 @@ export class SavedSearchService {
     if (dto.breed !== undefined) data.breed = dto.breed?.trim() || null;
     if (dto.latitude !== undefined) data.latitude = dto.latitude ?? null;
     if (dto.longitude !== undefined) data.longitude = dto.longitude ?? null;
-    if (dto.radiusKm !== undefined) data.radiusKm = dto.radiusKm ?? 50;
+    if (dto.radiusKm !== undefined) data.radiusKm = dto.radiusKm ?? 300;
     const updated = await this.prisma.savedSearch.update({
       where: { id },
       data,

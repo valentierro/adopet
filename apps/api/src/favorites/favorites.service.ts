@@ -98,7 +98,10 @@ export class FavoritesService {
 
   async list(userId: string, cursor?: string): Promise<{ items: FavoriteItemDto[]; nextCursor: string | null }> {
     const list = await this.prisma.favorite.findMany({
-      where: { userId },
+      where: {
+        userId,
+        pet: { owner: { deactivatedAt: null } },
+      },
       take: this.PAGE_SIZE + 1,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
       orderBy: { createdAt: 'desc' },

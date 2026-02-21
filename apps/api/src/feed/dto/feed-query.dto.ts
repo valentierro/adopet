@@ -19,7 +19,7 @@ export class FeedQueryDto {
   @Max(180)
   lng?: number;
 
-  @ApiPropertyOptional({ description: 'Raio em km (default: 50)', default: 50 })
+  @ApiPropertyOptional({ description: 'Raio em km (default: 300)', default: 300 })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()

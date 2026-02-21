@@ -97,13 +97,18 @@ export class MessagesService {
   private async ensureParticipant(conversationId: string, userId: string): Promise<void> {
     const conv = await this.prisma.conversation.findUnique({
       where: { id: conversationId },
-      include: { participants: true },
+      include: { participants: { include: { user: { select: { deactivatedAt: true } } } } },
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada');
     const isParticipant = conv.participants.some((p) => p.userId === userId);
     if (!isParticipant) throw new ForbiddenException('Você não participa desta conversa');
     const other = conv.participants.find((p) => p.userId !== userId);
     if (other) {
+      if ((other.user as { deactivatedAt: Date | null })?.deactivatedAt) {
+        throw new ForbiddenException(
+          'Este chat foi desativado pois o usuário não está mais ativo no app.',
+        );
+      }
       const blocked = await this.blocksService.isBlockedBetween(userId, other.userId);
       if (blocked) throw new ForbiddenException('Não é possível enviar mensagens nesta conversa.');
     }

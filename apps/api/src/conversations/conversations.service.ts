@@ -122,6 +122,7 @@ export class ConversationsService {
                 hasOtherPets: true,
                 hasChildren: true,
                 timeAtHome: true,
+                deactivatedAt: true,
               },
             },
           },
@@ -136,8 +137,9 @@ export class ConversationsService {
     });
     if (!conv) return null;
     const other = conv.participants.find((p) => p.userId !== userId)?.user as
-      | { id: string; name: string; avatarUrl: string | null; city: string | null; housingType: string | null; hasYard: boolean | null; hasOtherPets: boolean | null; hasChildren: boolean | null; timeAtHome: string | null }
+      | { id: string; name: string; avatarUrl: string | null; city: string | null; housingType: string | null; hasYard: boolean | null; hasOtherPets: boolean | null; hasChildren: boolean | null; timeAtHome: string | null; deactivatedAt: Date | null }
       | undefined;
+    const otherUserDeactivated = !!other?.deactivatedAt;
     const otherUserTyping = this.typingService.isOtherUserTyping(conversationId, userId);
     // Adoção finalizada = adotante já confirmou ou já existe registro Adoption; antes disso exibe botão "Confirmar adoção"
     const adoptionFinalized =
@@ -160,6 +162,7 @@ export class ConversationsService {
       };
       pet?: { name: string; photoUrl?: string; species?: string; size?: string; age?: number; adoptionFinalized?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string };
       otherUserTyping?: boolean;
+      otherUserDeactivated?: boolean;
     } = {
       id: conv.id,
       type: conv.type ?? 'NORMAL',
@@ -178,6 +181,7 @@ export class ConversationsService {
           }
         : { id: '', name: '' },
       otherUserTyping,
+      ...(otherUserDeactivated && { otherUserDeactivated: true }),
     };
     if (conv.pet) {
       result.pet = {

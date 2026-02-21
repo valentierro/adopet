@@ -309,9 +309,10 @@ export class PetsService {
     opts?: { cursor?: string; species?: string; userId?: string },
   ): Promise<{ items: PetResponseDto[]; nextCursor: string | null }> {
     const PAGE_SIZE = 20;
-    const where: { partnerId: string; publicationStatus: string; species?: string } = {
+    const where: { partnerId: string; publicationStatus: string; species?: string; owner?: { deactivatedAt: null } } = {
       partnerId,
       publicationStatus: 'APPROVED',
+      owner: { deactivatedAt: null },
     };
     if (opts?.species && opts.species !== 'BOTH') {
       where.species = opts.species.toUpperCase();

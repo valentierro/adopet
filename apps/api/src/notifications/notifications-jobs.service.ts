@@ -102,7 +102,7 @@ export class NotificationsJobsService implements OnModuleInit {
           prefs.userId,
           prefs.latitude,
           prefs.longitude,
-          prefs.radiusKm ?? 50,
+          prefs.radiusKm ?? 300,
           since,
           prefs.species ?? undefined,
         );
@@ -138,7 +138,7 @@ export class NotificationsJobsService implements OnModuleInit {
           prefs.userId,
           prefs.latitude,
           prefs.longitude,
-          prefs.radiusKm ?? 50,
+          prefs.radiusKm ?? 300,
           since,
           prefs.species ?? undefined,
           75,
@@ -385,7 +385,7 @@ export class NotificationsJobsService implements OnModuleInit {
           breed: s.breed,
           latitude: s.latitude,
           longitude: s.longitude,
-          radiusKm: s.radiusKm ?? 50,
+          radiusKm: s.radiusKm ?? 300,
         });
         if (count > 0) {
           const msg =
