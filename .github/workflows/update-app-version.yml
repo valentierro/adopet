@@ -92,6 +92,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No change (version already set)"
           else
-            git commit -m "chore(api): set app latestVersion to ${{ steps.version.outputs.version }} [skip ci]"
+            git commit -m "chore(api): set app latestVersion to ${{ steps.version.outputs.version }}"
             git push origin HEAD:${{ github.event.repository.default_branch }}
           fi
