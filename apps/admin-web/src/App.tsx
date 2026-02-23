@@ -16,6 +16,8 @@ import { PartnerRecommendations } from '@/routes/PartnerRecommendations';
 import { BugReports } from '@/routes/BugReports';
 import { FeatureFlags } from '@/routes/FeatureFlags';
 import { Users } from '@/routes/Users';
+import { BulkImport } from '@/routes/BulkImport';
+import { Relatorios } from '@/routes/Relatorios';
 import { About } from '@/routes/About';
 
 const queryClient = new QueryClient({
@@ -62,6 +64,8 @@ function AppRoutes() {
         <Route path="bug-reports" element={<BugReports />} />
         <Route path="feature-flags" element={<FeatureFlags />} />
         <Route path="users" element={<Users />} />
+        <Route path="bulk-import" element={<BulkImport />} />
+        <Route path="relatorios" element={<Relatorios />} />
         <Route path="about" element={<About />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

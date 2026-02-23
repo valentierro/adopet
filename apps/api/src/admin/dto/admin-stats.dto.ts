@@ -18,4 +18,7 @@ export class AdminStatsDto {
 
   @ApiProperty({ description: 'Solicitações de verificação (selo) pendentes' })
   pendingVerificationsCount: number;
+
+  @ApiProperty({ description: 'Verificações de identidade (KYC) pendentes' })
+  pendingKycCount: number;
 }

@@ -74,7 +74,8 @@ export function Adoptions() {
     onError: () => toast.addToast('error', 'Não foi possível confirmar.'),
   });
   const rejectMutation = useMutation({
-    mutationFn: (id: string) => adminApi.rejectAdoptionByAdopet(id),
+    mutationFn: ({ petId, rejectionReason }: { petId: string; rejectionReason?: string }) =>
+      adminApi.rejectAdoptionByAdopet(petId, rejectionReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'adoptions'] });
       toast.addToast('success', 'Adoção rejeitada pela Adopet.');
@@ -204,7 +205,13 @@ export function Adoptions() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => rejectMutation.mutate(a.petId)}
+                              onClick={() => {
+                                const reason = window.prompt('Motivo da rejeição (opcional):');
+                                rejectMutation.mutate({
+                                  petId: a.petId,
+                                  rejectionReason: reason?.trim() || undefined,
+                                });
+                              }}
                               disabled={rejectMutation.isPending}
                               className="text-adopet-accent font-medium hover:underline"
                             >

@@ -12,12 +12,20 @@ import {
   getAdoptionCongratulationsTutorText,
 } from '../email/templates/adoption-congratulations-tutor.email';
 import { InAppNotificationsService, IN_APP_NOTIFICATION_TYPES } from '../notifications/in-app-notifications.service';
+import { FeatureFlagService } from '../feature-flag/feature-flag.service';
+import { UploadsService } from '../uploads/uploads.service';
 import type { AdminStatsDto } from './dto/admin-stats.dto';
 import type { AdoptionItemDto } from './dto/adoption-item.dto';
 import type { UserSearchItemDto } from './dto/user-search-item.dto';
 import type { AdminUserListItemDto, AdminUserListResponseDto } from './dto/admin-user-list-item.dto';
 import type { PetAvailableItemDto } from './dto/pet-available-item.dto';
 import type { PendingAdoptionByTutorDto } from './dto/pending-adoption-by-tutor.dto';
+import type { TopTutorPfItemDto } from './dto/top-tutor-pf.dto';
+import type {
+  PetsReportAggregatesDto,
+  UsersReportAggregatesDto,
+  AdoptionsReportAggregatesDto,
+} from './dto/reports-aggregates.dto';
 
 const SYSTEM_USER_EMAIL_DEFAULT = 'system@adopet.internal';
 const SYSTEM_USER_NAME_DEFAULT = 'Adopet';
@@ -31,6 +39,8 @@ export class AdminService {
     private readonly config: ConfigService,
     private readonly emailService: EmailService,
     private readonly inAppNotificationsService: InAppNotificationsService,
+    private readonly featureFlagService: FeatureFlagService,
+    private readonly uploadsService: UploadsService,
   ) {}
 
   async getStats(): Promise<AdminStatsDto> {
@@ -44,6 +54,7 @@ export class AdminService {
       pendingReportsCount,
       pendingAdoptionsByTutorCount,
       pendingVerificationsCount,
+      pendingKycCount,
     ] = await Promise.all([
       this.prisma.adoption.count(),
       this.prisma.adoption.count({
@@ -58,6 +69,7 @@ export class AdminService {
         },
       }),
       this.prisma.verification.count({ where: { status: 'PENDING' } }),
+      this.prisma.user.count({ where: { kycStatus: 'PENDING' } }),
     ]);
 
     return {
@@ -67,7 +79,88 @@ export class AdminService {
       pendingReportsCount,
       pendingAdoptionsByTutorCount,
       pendingVerificationsCount,
+      pendingKycCount,
     };
+  }
+
+  /** Tutores PF (sem conta parceiro) com mais adoções concluídas nos últimos 12 meses. Útil para identificar possíveis red flags. */
+  async getTopTutorsPfByAdoptions(limit = 50): Promise<TopTutorPfItemDto[]> {
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+
+    const grouped = await this.prisma.adoption.groupBy({
+      by: ['tutorId'],
+      where: { adoptedAt: { gte: twelveMonthsAgo } },
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+    });
+
+    if (grouped.length === 0) return [];
+
+    const tutorIds = grouped.map((g) => g.tutorId);
+    const users = await this.prisma.user.findMany({
+      where: {
+        id: { in: tutorIds },
+        partner: null, // PF = sem conta parceiro
+      },
+      select: { id: true, name: true, email: true, username: true },
+    });
+    const userMap = new Map(users.map((u) => [u.id, u]));
+    const countByTutorId = new Map(grouped.map((g) => [g.tutorId, g._count.id]));
+
+    const result: TopTutorPfItemDto[] = [];
+    for (const g of grouped) {
+      const user = userMap.get(g.tutorId);
+      if (!user) continue; // ONG/parceiro, pulado
+      result.push({
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        username: user.username ?? null,
+        adoptionCount: countByTutorId.get(g.tutorId) ?? 0,
+      });
+      if (result.length >= limit) break;
+    }
+    return result;
+  }
+
+  /** Lista usuários com KYC pendente (documento + selfie enviados, aguardando análise). */
+  async getPendingKyc(): Promise<
+    Array<{
+      userId: string;
+      name: string;
+      email: string;
+      phone?: string | null;
+      document?: string | null;
+      kycSubmittedAt: string;
+      documentUrl?: string | null;
+      selfieUrl?: string | null;
+    }>
+  > {
+    const users = await this.prisma.user.findMany({
+      where: { kycStatus: 'PENDING' },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        document: true,
+        kycSubmittedAt: true,
+        kycDocumentKey: true,
+        kycSelfieKey: true,
+      },
+      orderBy: { kycSubmittedAt: 'asc' },
+    });
+    return users.map((u) => ({
+      userId: u.id,
+      name: u.name,
+      email: u.email,
+      phone: u.phone ?? null,
+      document: u.document ?? null,
+      kycSubmittedAt: u.kycSubmittedAt?.toISOString() ?? '',
+      documentUrl: this.uploadsService.getPublicUrl(u.kycDocumentKey) ?? null,
+      selfieUrl: this.uploadsService.getPublicUrl(u.kycSelfieKey) ?? null,
+    }));
   }
 
   async getPendingAdoptionsByTutor(): Promise<PendingAdoptionByTutorDto[]> {
@@ -130,8 +223,13 @@ export class AdminService {
     });
   }
 
-  /** Cria registro de adoção. fromAdopetConfirmation=true quando admin ou auto-approve confirma (badge "Confirmado pelo Adopet"). */
-  async createAdoption(petId: string, adopterUserId?: string, fromAdopetConfirmation = false): Promise<AdoptionItemDto> {
+  /** Cria registro de adoção. fromAdopetConfirmation=true quando admin ou auto-approve confirma (badge "Confirmado pelo Adopet"). responsibilityTermAcceptedAt quando o adotante aceitou o termo no app. */
+  async createAdoption(
+    petId: string,
+    adopterUserId?: string,
+    fromAdopetConfirmation = false,
+    responsibilityTermAcceptedAt?: Date,
+  ): Promise<AdoptionItemDto> {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
       include: { owner: { select: { id: true, name: true } }, pendingAdopter: { select: { id: true, name: true } } },
@@ -166,6 +264,7 @@ export class AdminService {
           petId,
           tutorId: pet.ownerId,
           adopterId: resolvedAdopterId,
+          ...(responsibilityTermAcceptedAt && { responsibilityTermAcceptedAt }),
         },
         include: {
           pet: { select: { name: true } },
@@ -187,6 +286,9 @@ export class AdminService {
 
     this.sendAdoptionCongratulationsEmails(adoption.id).catch((e) =>
       console.warn('[AdminService] sendAdoptionCongratulationsEmails failed', e),
+    );
+    this.sendSatisfactionSurveyNotifications(adoption.id).catch((e) =>
+      console.warn('[AdminService] sendSatisfactionSurveyNotifications failed', e),
     );
     return {
       id: adoption.id,
@@ -340,6 +442,92 @@ export class AdminService {
     return { message: 'Usuário banido. A conta foi desativada e não poderá fazer login; e-mail, nome de usuário e telefone continuam bloqueados para novo cadastro.' };
   }
 
+  /** Aprovar ou rejeitar KYC de um usuário. Ao aprovar, envia mensagem no chat. Após decisão, apaga as imagens do storage e zera as keys (não retenção; redução de risco jurídico). */
+  async updateUserKyc(
+    userId: string,
+    status: 'VERIFIED' | 'REJECTED',
+    rejectionReason?: string,
+  ): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, kycStatus: true, name: true, kycDocumentKey: true, kycSelfieKey: true },
+    });
+    if (!user) throw new NotFoundException('Usuário não encontrado.');
+    if (user.kycStatus !== 'PENDING') {
+      throw new BadRequestException(
+        `KYC do usuário não está pendente (status atual: ${user.kycStatus ?? 'nunca enviou'}).`,
+      );
+    }
+    if (status === 'REJECTED' && !rejectionReason?.trim()) {
+      throw new BadRequestException('Informe o motivo da rejeição para notificar o solicitante.');
+    }
+    const now = new Date();
+    const docKey = user.kycDocumentKey;
+    const selfieKey = user.kycSelfieKey;
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(status === 'VERIFIED'
+          ? { kycStatus: 'VERIFIED', kycVerifiedAt: now, kycRejectedAt: null, kycRejectionReason: null }
+          : {
+              kycStatus: 'REJECTED',
+              kycRejectedAt: now,
+              kycRejectionReason: rejectionReason?.trim() || null,
+              kycVerifiedAt: null,
+            }),
+        kycDocumentKey: null,
+        kycSelfieKey: null,
+      },
+    });
+
+    await Promise.all([
+      this.uploadsService.deleteByKey(docKey),
+      this.uploadsService.deleteByKey(selfieKey),
+    ]);
+    if (status === 'VERIFIED') {
+      const convs = await this.prisma.conversation.findMany({
+        where: { type: 'NORMAL', participants: { some: { userId } } },
+        select: { id: true },
+      });
+      const content = `O interessado ${user.name} finalizou a verificação de identidade. Você já pode marcá-lo como adotante.`;
+      await Promise.all(
+        convs.map((c) =>
+          this.prisma.message.create({
+            data: { conversationId: c.id, senderId: null, isSystem: true, content },
+          }),
+        ),
+      );
+      await this.inAppNotificationsService
+        .create(
+          userId,
+          IN_APP_NOTIFICATION_TYPES.KYC_APPROVED,
+          'Parabéns!',
+          'Sua verificação de identidade foi aprovada. Você já pode confirmar adoções no app.',
+          undefined,
+          { screen: 'profile' },
+        )
+        .catch((e) => console.warn('[AdminService] KYC approved in-app notification failed', e));
+    } else {
+      const body = rejectionReason?.trim()
+        ? `Sua verificação de identidade não foi aprovada: ${rejectionReason.trim()}. Você pode enviar novamente em Perfil → Verificação de identidade.`
+        : 'Sua verificação de identidade não foi aprovada. Você pode enviar novamente em Perfil → Verificação de identidade.';
+      await this.inAppNotificationsService
+        .create(
+          userId,
+          IN_APP_NOTIFICATION_TYPES.KYC_REJECTED,
+          'Verificação de identidade',
+          body,
+          undefined,
+          { screen: 'profile' },
+        )
+        .catch((e) => console.warn('[AdminService] KYC rejected in-app notification failed', e));
+    }
+    return {
+      message: status === 'VERIFIED' ? 'KYC aprovado. O usuário pode confirmar adoções.' : 'KYC rejeitado.',
+    };
+  }
+
   /** Retorna o id do usuário "Sistema" usado em adoções auto-aprovadas após 48h. Cria se não existir. */
   async getOrCreateSystemUser(): Promise<string> {
     const email =
@@ -403,6 +591,9 @@ export class AdminService {
         this.sendAdoptionCongratulationsEmails(created.id).catch((e) =>
           console.warn('[AdminService] sendAdoptionCongratulationsEmails (auto) failed', e),
         );
+        this.sendSatisfactionSurveyNotifications(created.id).catch((e) =>
+          console.warn('[AdminService] sendSatisfactionSurveyNotifications (auto) failed', e),
+        );
         processed++;
       } catch (e) {
         console.warn('[AdminService] runAutoApproveAdoptions: skip pet', pet.id, e);
@@ -426,6 +617,9 @@ export class AdminService {
           where: { id: a.petId },
           data: { adopetConfirmedAt: new Date() },
         });
+        this.sendSatisfactionSurveyNotifications(a.id).catch((e) =>
+          console.warn('[AdminService] sendSatisfactionSurveyNotifications (auto confirm) failed', e),
+        );
         processed++;
       } catch (e) {
         console.warn('[AdminService] runAutoApproveAdoptions: skip adoption', a.id, e);
@@ -466,6 +660,39 @@ export class AdminService {
         title,
         body,
         metadata,
+      ),
+    ]);
+    this.sendSatisfactionSurveyNotifications(pet.adoption.id).catch((e) =>
+      console.warn('[AdminService] sendSatisfactionSurveyNotifications failed', e),
+    );
+  }
+
+  /** Envia notificação in-app + push para tutor e adotante convidando à pesquisa de satisfação (após adoção confirmada). */
+  private async sendSatisfactionSurveyNotifications(adoptionId: string): Promise<void> {
+    const adoption = await this.prisma.adoption.findUnique({
+      where: { id: adoptionId },
+      select: { tutorId: true, adopterId: true },
+    });
+    if (!adoption) return;
+    const title = 'Como foi sua experiência?';
+    const body = 'Avalie o app em poucos toques. Sua opinião nos ajuda a melhorar.';
+    const type = IN_APP_NOTIFICATION_TYPES.SATISFACTION_SURVEY;
+    await Promise.all([
+      this.inAppNotificationsService.create(
+        adoption.tutorId,
+        type,
+        title,
+        body,
+        { adoptionId, role: 'TUTOR' },
+        { adoptionId, role: 'TUTOR' },
+      ),
+      this.inAppNotificationsService.create(
+        adoption.adopterId,
+        type,
+        title,
+        body,
+        { adoptionId, role: 'ADOPTER' },
+        { adoptionId, role: 'ADOPTER' },
       ),
     ]);
   }
@@ -531,43 +758,246 @@ export class AdminService {
     }));
   }
 
-  /** Flags conhecidas que aparecem no portal mesmo sem registro no banco (enabled = env até o primeiro toggle). */
-  private static readonly KNOWN_FLAGS: Array<{ key: string; description: string }> = [
-    {
-      key: 'REQUIRE_EMAIL_VERIFICATION',
-      description: 'Quando ligada, o cadastro exige confirmação de e-mail antes do login; signup envia link de confirmação.',
-    },
-  ];
-
-  /** [Admin] Listar feature flags (key, enabled, description). Inclui flags conhecidas ainda não persistidas. */
-  async getFeatureFlags(): Promise<{ key: string; enabled: boolean; description: string | null }[]> {
-    const list = await this.prisma.featureFlag.findMany({
-      orderBy: { key: 'asc' },
-      select: { key: true, enabled: true, description: true },
+  /** [Admin] Listar todas as feature flags (com scope, cityId, partnerId, rollout). */
+  async listFeatureFlags(): Promise<
+    Array<{
+      id: string;
+      key: string;
+      enabled: boolean;
+      description: string | null;
+      scope: string;
+      cityId: string | null;
+      partnerId: string | null;
+      rolloutPercent: number | null;
+      createdAt: Date;
+      updatedAt: Date;
+    }>
+  > {
+    return this.prisma.featureFlag.findMany({
+      orderBy: [{ key: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        key: true,
+        enabled: true,
+        description: true,
+        scope: true,
+        cityId: true,
+        partnerId: true,
+        rolloutPercent: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
-    const byKey = new Map(list.map((f) => [f.key, f]));
-    for (const known of AdminService.KNOWN_FLAGS) {
-      if (!byKey.has(known.key)) {
-        const fromEnv = this.config.get<string>('REQUIRE_EMAIL_VERIFICATION');
-        const enabled = fromEnv === 'true' || fromEnv === '1';
-        byKey.set(known.key, { key: known.key, enabled, description: known.description });
-      }
-    }
-    return Array.from(byKey.values()).sort((a, b) => a.key.localeCompare(b.key));
   }
 
-  /** [Admin] Habilitar ou desabilitar uma feature flag (cria se não existir). */
-  async setFeatureFlag(key: string, enabled: boolean): Promise<{ key: string; enabled: boolean }> {
-    const keyNorm = key.trim();
+  /** [Admin] Criar feature flag. */
+  async createFeatureFlag(dto: {
+    key: string;
+    enabled?: boolean;
+    description?: string | null;
+    scope?: string;
+    cityId?: string | null;
+    partnerId?: string | null;
+    rolloutPercent?: number | null;
+  }): Promise<{
+    id: string;
+    key: string;
+    enabled: boolean;
+    description: string | null;
+    scope: string;
+    cityId: string | null;
+    partnerId: string | null;
+    rolloutPercent: number | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }> {
+    const keyNorm = (dto.key ?? '').trim();
     if (!keyNorm) throw new BadRequestException('Key é obrigatória');
-    const known = AdminService.KNOWN_FLAGS.find((f) => f.key === keyNorm);
-    const description = known?.description ?? null;
-    const flag = await this.prisma.featureFlag.upsert({
-      where: { key: keyNorm },
-      create: { key: keyNorm, enabled, description },
-      update: { enabled },
-      select: { key: true, enabled: true },
+    const scope = dto.scope ?? 'GLOBAL';
+    const cityId = scope === 'CITY' ? (dto.cityId ?? null) : null;
+    const partnerId = scope === 'PARTNER' ? (dto.partnerId ?? null) : null;
+    const flag = await this.prisma.featureFlag.create({
+      data: {
+        key: keyNorm,
+        enabled: dto.enabled ?? false,
+        description: dto.description ?? null,
+        scope,
+        cityId,
+        partnerId,
+        rolloutPercent: dto.rolloutPercent ?? null,
+      },
     });
+    this.featureFlagService.invalidateKey(keyNorm);
     return flag;
+  }
+
+  /** [Admin] Atualizar feature flag por id. */
+  async updateFeatureFlag(
+    id: string,
+    dto: {
+      enabled?: boolean;
+      description?: string | null;
+      scope?: string;
+      cityId?: string | null;
+      partnerId?: string | null;
+      rolloutPercent?: number | null;
+    },
+  ): Promise<{
+    id: string;
+    key: string;
+    enabled: boolean;
+    description: string | null;
+    scope: string;
+    cityId: string | null;
+    partnerId: string | null;
+    rolloutPercent: number | null;
+    createdAt: Date;
+    updatedAt: Date;
+  }> {
+    const existing = await this.prisma.featureFlag.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Feature flag não encontrada');
+    const scope = dto.scope ?? existing.scope;
+    const cityId = scope === 'CITY' ? (dto.cityId ?? existing.cityId) : null;
+    const partnerId = scope === 'PARTNER' ? (dto.partnerId ?? existing.partnerId) : null;
+    const flag = await this.prisma.featureFlag.update({
+      where: { id },
+      data: {
+        ...(dto.enabled !== undefined && { enabled: dto.enabled }),
+        ...(dto.description !== undefined && { description: dto.description }),
+        scope,
+        cityId,
+        partnerId,
+        ...(dto.rolloutPercent !== undefined && { rolloutPercent: dto.rolloutPercent }),
+      },
+    });
+    this.featureFlagService.invalidateKey(existing.key);
+    return flag;
+  }
+
+  /** [Admin] Agregados para relatórios de pets/anúncios */
+  async getPetsReportAggregates(): Promise<PetsReportAggregatesDto> {
+    const pets = await this.prisma.pet.findMany({
+      select: {
+        species: true,
+        breed: true,
+        sex: true,
+        city: true,
+        age: true,
+        publicationStatus: true,
+        status: true,
+        vaccinated: true,
+        neutered: true,
+      },
+    });
+    const bySpecies: Record<string, number> = {};
+    const byBreed: Record<string, number> = {};
+    const bySex: Record<string, number> = {};
+    const byCity: Record<string, number> = {};
+    const byAgeRange: Record<string, number> = {};
+    const byPublicationStatus: Record<string, number> = {};
+    const byStatus: Record<string, number> = {};
+    const byVaccinated: Record<string, number> = {};
+    const byNeutered: Record<string, number> = {};
+
+    for (const p of pets) {
+      const sp = p.species ?? 'OUTRO';
+      bySpecies[sp] = (bySpecies[sp] ?? 0) + 1;
+      const breed = p.breed?.trim() || 'SRD/Não informada';
+      byBreed[breed] = (byBreed[breed] ?? 0) + 1;
+      const sex = p.sex ?? 'Não informado';
+      bySex[sex] = (bySex[sex] ?? 0) + 1;
+      const city = p.city?.trim() || 'Não informada';
+      byCity[city] = (byCity[city] ?? 0) + 1;
+      const age = p.age ?? 0;
+      const range = age <= 1 ? '0-1 ano' : age <= 5 ? '2-5 anos' : age <= 10 ? '6-10 anos' : '11+ anos';
+      byAgeRange[range] = (byAgeRange[range] ?? 0) + 1;
+      byPublicationStatus[p.publicationStatus] = (byPublicationStatus[p.publicationStatus] ?? 0) + 1;
+      byStatus[p.status] = (byStatus[p.status] ?? 0) + 1;
+      byVaccinated[p.vaccinated ? 'Sim' : 'Não'] = (byVaccinated[p.vaccinated ? 'Sim' : 'Não'] ?? 0) + 1;
+      byNeutered[p.neutered ? 'Sim' : 'Não'] = (byNeutered[p.neutered ? 'Sim' : 'Não'] ?? 0) + 1;
+    }
+
+    return {
+      total: pets.length,
+      bySpecies,
+      byBreed,
+      bySex,
+      byCity,
+      byAgeRange,
+      byPublicationStatus,
+      byStatus,
+      byVaccinated,
+      byNeutered,
+    };
+  }
+
+  /** [Admin] Agregados para relatórios de usuários */
+  async getUsersReportAggregates(): Promise<UsersReportAggregatesDto> {
+    const users = await this.prisma.user.findMany({
+      select: {
+        city: true,
+        createdAt: true,
+        kycStatus: true,
+        deactivatedAt: true,
+        id: true,
+      },
+    });
+    const byCity: Record<string, number> = {};
+    const byMonth: Record<string, number> = {};
+    const byKycStatus: Record<string, number> = {};
+    let withListings = 0;
+    let deactivated = 0;
+
+    const ownerIdsWithPets = await this.prisma.pet
+      .findMany({ select: { ownerId: true } })
+      .then((rows) => new Set(rows.map((r) => r.ownerId)));
+
+    for (const u of users) {
+      const city = u.city?.trim() || 'Não informada';
+      byCity[city] = (byCity[city] ?? 0) + 1;
+      const month = u.createdAt.toISOString().slice(0, 7);
+      byMonth[month] = (byMonth[month] ?? 0) + 1;
+      const kyc = u.kycStatus ?? 'Nunca enviou';
+      byKycStatus[kyc] = (byKycStatus[kyc] ?? 0) + 1;
+      if (ownerIdsWithPets.has(u.id)) withListings++;
+      if (u.deactivatedAt != null) deactivated++;
+    }
+
+    return {
+      total: users.length,
+      byCity,
+      byMonth,
+      byKycStatus,
+      withListings,
+      withoutListings: users.length - withListings,
+      deactivated,
+    };
+  }
+
+  /** [Admin] Agregados para relatório de adoções (inclui species do pet) */
+  async getAdoptionsReportAggregates(): Promise<AdoptionsReportAggregatesDto> {
+    const adoptions = await this.prisma.adoption.findMany({
+      orderBy: { adoptedAt: 'desc' },
+      include: { pet: { select: { species: true, adopetConfirmedAt: true } } },
+    });
+    const byMonth: Record<string, number> = {};
+    const bySpecies: Record<string, number> = {};
+    let confirmedByAdopet = 0;
+
+    for (const a of adoptions) {
+      const month = a.adoptedAt.toISOString().slice(0, 7);
+      byMonth[month] = (byMonth[month] ?? 0) + 1;
+      const sp = (a.pet as { species: string }).species ?? 'OUTRO';
+      bySpecies[sp] = (bySpecies[sp] ?? 0) + 1;
+      if ((a.pet as { adopetConfirmedAt: Date | null }).adopetConfirmedAt != null) confirmedByAdopet++;
+    }
+
+    return {
+      total: adoptions.length,
+      byMonth,
+      bySpecies,
+      confirmedByAdopet,
+      notConfirmedByAdopet: adoptions.length - confirmedByAdopet,
+    };
   }
 }

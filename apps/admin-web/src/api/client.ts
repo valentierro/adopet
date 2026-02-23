@@ -35,11 +35,33 @@ export async function request<T>(
   return JSON.parse(text) as T;
 }
 
+export async function requestWithFile<T>(
+  endpoint: string,
+  method: 'POST' | 'PUT' | 'PATCH',
+  formData: FormData
+): Promise<T> {
+  const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = (BASE_URL + path).replace(/\/?$/, '');
+  const token = tokenGetter?.();
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(url, { method, headers, body: formData });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+  const text = await res.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
+}
+
 export const api = {
   get: <T>(path: string, params?: Record<string, string>) =>
     request<T>(path, { method: 'GET', params }),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
+  postFile: <T>(path: string, formData: FormData) =>
+    requestWithFile<T>(path, 'POST', formData),
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>

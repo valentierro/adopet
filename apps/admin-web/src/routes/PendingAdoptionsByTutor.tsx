@@ -13,7 +13,8 @@ export function PendingAdoptionsByTutor() {
   });
 
   const rejectMutation = useMutation({
-    mutationFn: (petId: string) => adminApi.rejectPendingAdoptionByTutor(petId),
+    mutationFn: ({ petId, rejectionReason }: { petId: string; rejectionReason?: string }) =>
+      adminApi.rejectPendingAdoptionByTutor(petId, rejectionReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'pending-adoptions-by-tutor'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
@@ -62,7 +63,13 @@ export function PendingAdoptionsByTutor() {
                       </a>
                       <button
                         type="button"
-                        onClick={() => rejectMutation.mutate(item.petId)}
+                        onClick={() => {
+                          const reason = window.prompt('Motivo da rejeição (opcional):');
+                          rejectMutation.mutate({
+                            petId: item.petId,
+                            rejectionReason: reason?.trim() || undefined,
+                          });
+                        }}
                         disabled={rejectMutation.isPending}
                         className="text-adopet-accent font-medium hover:underline"
                       >

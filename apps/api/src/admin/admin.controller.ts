@@ -16,6 +16,15 @@ import { UserSearchItemDto } from './dto/user-search-item.dto';
 import type { AdminUserListResponseDto } from './dto/admin-user-list-item.dto';
 import { PetAvailableItemDto } from './dto/pet-available-item.dto';
 import { PendingAdoptionByTutorDto } from './dto/pending-adoption-by-tutor.dto';
+import type { PendingKycItemDto } from './dto/pending-kyc-item.dto';
+import type { TopTutorPfItemDto } from './dto/top-tutor-pf.dto';
+import type {
+  PetsReportAggregatesDto,
+  UsersReportAggregatesDto,
+  AdoptionsReportAggregatesDto,
+} from './dto/reports-aggregates.dto';
+import type { SatisfactionStatsDto, SatisfactionResponseItemDto } from '../satisfaction/satisfaction.service';
+import { SatisfactionService } from '../satisfaction/satisfaction.service';
 import type { BugReportResponseDto } from '../bug-reports/dto/bug-report-response.dto';
 import type { PartnerAdminDto } from '../partners/dto/partner-response.dto';
 import type { PartnerRecommendationResponseDto } from '../partner-recommendations/dto/partner-recommendation-response.dto';
@@ -33,6 +42,7 @@ export class AdminController {
     private readonly partnerRecommendationsService: PartnerRecommendationsService,
     private readonly partnersService: PartnersService,
     private readonly partnershipRequestsService: PartnershipRequestsService,
+    private readonly satisfactionService: SatisfactionService,
   ) {}
 
   @Get('stats')
@@ -92,6 +102,28 @@ export class AdminController {
     return this.adminService.banUser(userId, user.id, body?.reason);
   }
 
+  @Get('top-tutors-pf')
+  @ApiOperation({ summary: '[Admin] Tutores PF com mais adoções nos últimos 12 meses (possível red flag)' })
+  async getTopTutorsPf(@Query('limit') limit?: string): Promise<TopTutorPfItemDto[]> {
+    const limitNum = limit ? Math.min(100, Math.max(1, parseInt(limit, 10) || 50)) : 50;
+    return this.adminService.getTopTutorsPfByAdoptions(limitNum);
+  }
+
+  @Get('pending-kyc')
+  @ApiOperation({ summary: '[Admin] Listar usuários com KYC pendente (verificação de identidade)' })
+  async getPendingKyc(): Promise<PendingKycItemDto[]> {
+    return this.adminService.getPendingKyc();
+  }
+
+  @Patch('users/:userId/kyc')
+  @ApiOperation({ summary: '[Admin] Aprovar ou rejeitar KYC do usuário (status PENDING)' })
+  async updateUserKyc(
+    @Param('userId') userId: string,
+    @Body() body: { status: 'VERIFIED' | 'REJECTED'; rejectionReason?: string },
+  ): Promise<{ message: string }> {
+    return this.adminService.updateUserKyc(userId, body.status, body.rejectionReason);
+  }
+
   @Get('users')
   @ApiOperation({ summary: '[Admin] Buscar usuários por nome ou email (para selecionar adotante)' })
   async searchUsers(@Query('search') search?: string): Promise<UserSearchItemDto[]> {
@@ -118,6 +150,23 @@ export class AdminController {
   ): Promise<{ message: string }> {
     await this.adminService.rejectPendingAdoptionByTutor(petId, body?.rejectionReason);
     return { message: 'OK' };
+  }
+
+  @Get('satisfaction/stats')
+  @ApiOperation({ summary: '[Admin] Dashboard de satisfação: médias por pilar (confiança, facilidade, comunicação, geral)' })
+  async getSatisfactionStats(): Promise<SatisfactionStatsDto> {
+    return this.satisfactionService.getStats();
+  }
+
+  @Get('satisfaction/responses')
+  @ApiOperation({ summary: '[Admin] Lista de respostas da pesquisa de satisfação (paginação)' })
+  async getSatisfactionResponses(
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ): Promise<{ items: SatisfactionResponseItemDto[]; total: number }> {
+    const pageNum = page ? Math.max(1, parseInt(page, 10) || 1) : 1;
+    const limitNum = limit ? Math.min(100, Math.max(1, parseInt(limit, 10) || 50)) : 50;
+    return this.satisfactionService.getResponses(pageNum, limitNum);
   }
 
   @Get('bug-reports')
@@ -199,17 +248,60 @@ export class AdminController {
   }
 
   @Get('feature-flags')
-  @ApiOperation({ summary: '[Admin] Listar feature flags (habilitar/desabilitar funcionalidades)' })
-  async getFeatureFlags(): Promise<{ key: string; enabled: boolean; description: string | null }[]> {
-    return this.adminService.getFeatureFlags();
+  @ApiOperation({ summary: '[Admin] Listar feature flags (com scope, cityId, partnerId, rollout)' })
+  async listFeatureFlags() {
+    return this.adminService.listFeatureFlags();
   }
 
-  @Patch('feature-flags/:key')
-  @ApiOperation({ summary: '[Admin] Habilitar ou desabilitar uma feature flag' })
-  async setFeatureFlag(
-    @Param('key') key: string,
-    @Body() body: { enabled: boolean },
-  ): Promise<{ key: string; enabled: boolean }> {
-    return this.adminService.setFeatureFlag(key, body.enabled);
+  @Post('feature-flags')
+  @ApiOperation({ summary: '[Admin] Criar feature flag' })
+  async createFeatureFlag(
+    @Body()
+    body: {
+      key: string;
+      enabled?: boolean;
+      description?: string | null;
+      scope?: string;
+      cityId?: string | null;
+      partnerId?: string | null;
+      rolloutPercent?: number | null;
+    },
+  ) {
+    return this.adminService.createFeatureFlag(body);
+  }
+
+  @Get('reports/pets-aggregates')
+  @ApiOperation({ summary: '[Admin] Agregados para relatórios de pets/anúncios (raça, idade, sexo, cidade, espécie, etc.)' })
+  async getPetsReportAggregates(): Promise<PetsReportAggregatesDto> {
+    return this.adminService.getPetsReportAggregates();
+  }
+
+  @Get('reports/users-aggregates')
+  @ApiOperation({ summary: '[Admin] Agregados para relatórios de usuários (cidade, mês, KYC, com/sem anúncio)' })
+  async getUsersReportAggregates(): Promise<UsersReportAggregatesDto> {
+    return this.adminService.getUsersReportAggregates();
+  }
+
+  @Get('reports/adoptions-aggregates')
+  @ApiOperation({ summary: '[Admin] Agregados para relatório de adoções (por mês, espécie, confirmadas Adopet)' })
+  async getAdoptionsReportAggregates(): Promise<AdoptionsReportAggregatesDto> {
+    return this.adminService.getAdoptionsReportAggregates();
+  }
+
+  @Patch('feature-flags/:id')
+  @ApiOperation({ summary: '[Admin] Atualizar feature flag por id' })
+  async updateFeatureFlag(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      enabled?: boolean;
+      description?: string | null;
+      scope?: string;
+      cityId?: string | null;
+      partnerId?: string | null;
+      rolloutPercent?: number | null;
+    },
+  ) {
+    return this.adminService.updateFeatureFlag(id, body);
   }
 }

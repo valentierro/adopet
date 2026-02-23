@@ -9,6 +9,7 @@ export function PendingPets() {
   const toast = useToast();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [action, setAction] = useState<'APPROVED' | 'REJECTED' | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
 
   const { data: pets = [], isLoading, error } = useQuery({
     queryKey: ['admin', 'pending-pets'],
@@ -16,13 +17,18 @@ export function PendingPets() {
   });
 
   const mutation = useMutation({
-    mutationFn: async ({ petId, status }: { petId: string; status: 'APPROVED' | 'REJECTED' }) =>
-      adminApi.setPetPublication(petId, status),
+    mutationFn: async ({
+      petId,
+      status,
+      reason,
+    }: { petId: string; status: 'APPROVED' | 'REJECTED'; reason?: string }) =>
+      adminApi.setPetPublication(petId, status, reason),
     onSuccess: (_, { status }) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'pending-pets'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
       setSelected(new Set());
       setAction(null);
+      setRejectionReason('');
       toast.addToast('success', status === 'APPROVED' ? 'Anúncio aprovado.' : 'Anúncio rejeitado.');
     },
     onError: () => toast.addToast('error', 'Não foi possível atualizar o anúncio.'),
@@ -46,12 +52,14 @@ export function PendingPets() {
     if (!action || selected.size === 0) return;
     const list = Array.from(selected);
     const label = action === 'APPROVED' ? 'aprovados' : 'rejeitados';
+    const reason = action === 'REJECTED' ? rejectionReason.trim() || undefined : undefined;
     try {
-      await Promise.all(list.map((petId) => adminApi.setPetPublication(petId, action)));
+      await Promise.all(list.map((petId) => adminApi.setPetPublication(petId, action, reason)));
       queryClient.invalidateQueries({ queryKey: ['admin', 'pending-pets'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
       setSelected(new Set());
       setAction(null);
+      setRejectionReason('');
       toast.addToast('success', `${list.length} anúncio(s) ${label}.`);
     } catch {
       toast.addToast('error', 'Alguns anúncios não puderam ser atualizados.');
@@ -89,6 +97,15 @@ export function PendingPets() {
                 >
                   Rejeitar ({selected.size})
                 </button>
+                {action === 'REJECTED' && (
+                  <input
+                    type="text"
+                    placeholder="Motivo da rejeição (opcional)"
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    className="px-3 py-1.5 rounded-lg border border-adopet-primary/30 text-sm max-w-xs"
+                  />
+                )}
                 {action && (
                   <button
                     type="button"
@@ -140,7 +157,13 @@ export function PendingPets() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => mutation.mutate({ petId: pet.id, status: 'REJECTED' })}
+                            onClick={() =>
+                              mutation.mutate({
+                                petId: pet.id,
+                                status: 'REJECTED',
+                                reason: rejectionReason.trim() || undefined,
+                              })
+                            }
                             disabled={mutation.isPending}
                             className="text-adopet-accent font-medium hover:underline disabled:opacity-50"
                           >
