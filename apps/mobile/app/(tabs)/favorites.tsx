@@ -1,12 +1,12 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, useWindowDimensions, FlatList, RefreshControl } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, useWindowDimensions, FlatList, RefreshControl, Modal, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { ScreenContainer, PetCard, EmptyState, LoadingLogo, PageIntro, StatusBadge } from '../../src/components';
+import { ScreenContainer, PetCard, EmptyState, LoadingLogo, PageIntro, StatusBadge, PrimaryButton } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useListViewMode } from '../../src/hooks/useListViewMode';
 import { getMe } from '../../src/api/me';
@@ -254,14 +254,12 @@ export default function FavoritesScreen() {
     },
   });
 
+  const [showCompleteProfileModal, setShowCompleteProfileModal] = useState(false);
+
   const startChat = useCallback(
     async (item: FavoriteItem) => {
       if (!profileComplete) {
-        Alert.alert(
-          'Complete seu perfil',
-          'Para conversar com o tutor é preciso ter foto e telefone no perfil. Assim o tutor sabe com quem está falando. Você será levado à página de edição para completar.',
-          [{ text: 'Completar perfil', onPress: () => router.push('/profile-edit') }],
-        );
+        setShowCompleteProfileModal(true);
         return;
       }
       try {
@@ -437,6 +435,31 @@ export default function FavoritesScreen() {
           renderItem={renderItem}
         />
       )}
+      <Modal visible={showCompleteProfileModal} transparent animationType="fade">
+        <Pressable style={styles.completeProfileModalOverlay} onPress={() => setShowCompleteProfileModal(false)}>
+          <Pressable style={[styles.completeProfileModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.completeProfileModalTitle, { color: colors.textPrimary }]}>Complete seu perfil</Text>
+            <Text style={[styles.completeProfileModalMessage, { color: colors.textSecondary }]}>
+              Para conversar com o tutor é preciso ter foto e telefone no perfil. Assim o tutor sabe com quem está falando. Você será levado à página de edição para completar.
+            </Text>
+            <TouchableOpacity
+              onPress={() => setShowCompleteProfileModal(false)}
+              activeOpacity={0.8}
+              style={styles.completeProfileModalLinkWrap}
+            >
+              <Text style={[styles.completeProfileModalLink, { color: colors.primary }]}>Completar depois</Text>
+            </TouchableOpacity>
+            <PrimaryButton
+              title="Completar perfil"
+              onPress={() => {
+                setShowCompleteProfileModal(false);
+                router.push('/profile-edit');
+              }}
+              style={styles.completeProfileModalBtn}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -519,4 +542,23 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   emptyCtaText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  completeProfileModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  completeProfileModalCard: {
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: 16,
+    padding: spacing.xl,
+    alignItems: 'center',
+  },
+  completeProfileModalTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.lg },
+  completeProfileModalMessage: { fontSize: 15, lineHeight: 22, textAlign: 'center', marginBottom: spacing.md },
+  completeProfileModalLinkWrap: { marginBottom: spacing.lg },
+  completeProfileModalLink: { fontSize: 15, fontWeight: '600', textDecorationLine: 'underline' },
+  completeProfileModalBtn: { alignSelf: 'stretch' },
 });

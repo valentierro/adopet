@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, Res, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, Res, HttpCode, HttpStatus, UseGuards, BadRequestException } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
@@ -22,6 +22,24 @@ export class AuthController {
     private readonly authService: AuthService,
     private readonly config: ConfigService,
   ) {}
+
+  @Get('check-email')
+  @ApiOperation({ summary: 'Verificar se o e-mail está disponível para cadastro (não existe na base)' })
+  async checkEmail(@Query('email') email: string): Promise<{ available: boolean }> {
+    if (typeof email !== 'string' || !email.trim()) {
+      throw new BadRequestException('Informe o e-mail.');
+    }
+    return this.authService.checkEmailAvailable(email);
+  }
+
+  @Get('check-document')
+  @ApiOperation({ summary: 'Verificar se o CPF/CNPJ está disponível para cadastro (não existe na base)' })
+  async checkDocument(@Query('document') document: string): Promise<{ available: boolean }> {
+    if (typeof document !== 'string' || !document.trim()) {
+      throw new BadRequestException('Informe o documento (CPF ou CNPJ).');
+    }
+    return this.authService.checkDocumentAvailable(document);
+  }
 
   @Post('signup')
   @ApiOperation({ summary: 'Cadastrar novo usuário. Com REQUIRE_EMAIL_VERIFICATION=true, exige confirmação de e-mail antes do login.' })

@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, Pressable, 
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { ScreenContainer, LoadingLogo, TutorLevelBadge, PrimaryButton, SecondaryButton, VerifiedBadge } from '../src/components';
+import { ScreenContainer, LoadingLogo, TutorLevelBadge, PrimaryButton, SecondaryButton, VerifiedBadge, UsuarioVerificadoModal } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { useAuthStore } from '../src/stores/authStore';
 import { getMe } from '../src/api/me';
@@ -34,6 +34,7 @@ export default function TutorProfileScreen() {
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [reportReason, setReportReason] = useState<string | null>(null);
   const [reportDescription, setReportDescription] = useState('');
+  const [showVerifiedModal, setShowVerifiedModal] = useState(false);
 
   const navigation = useNavigation();
   useLayoutEffect(() => {
@@ -128,7 +129,13 @@ export default function TutorProfileScreen() {
         <View style={styles.nameRow}>
           <Text style={[styles.name, { color: colors.textPrimary }]}>{profile.name}</Text>
           {profile.verified && (
-            <VerifiedBadge size={20} iconBackgroundColor={colors.primary} accessibilityLabel="Tutor verificado pela equipe Adopet" />
+            <TouchableOpacity
+              onPress={() => setShowVerifiedModal(true)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              activeOpacity={0.8}
+            >
+              <VerifiedBadge size={20} iconBackgroundColor={colors.primary} accessibilityLabel="Tutor verificado pela equipe Adopet" />
+            </TouchableOpacity>
           )}
         </View>
         <Text style={[styles.petsCount, { color: colors.textSecondary }]}>
@@ -283,6 +290,7 @@ export default function TutorProfileScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      <UsuarioVerificadoModal visible={showVerifiedModal} onClose={() => setShowVerifiedModal(false)} />
     </ScreenContainer>
   );
 }

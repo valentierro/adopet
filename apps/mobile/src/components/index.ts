@@ -12,6 +12,7 @@ export { LoadingLogo } from './LoadingLogo';
 export { HeaderLogo } from './HeaderLogo';
 export { PageIntro } from './PageIntro';
 export { VerifiedBadge } from './VerifiedBadge';
+export { UsuarioVerificadoModal } from './UsuarioVerificadoModal';
 export { TutorLevelBadge } from './TutorLevelBadge';
 export { Skeleton, FeedSkeleton, ListRowSkeleton } from './Skeleton';
 export { PartnerPanelLayout } from './PartnerPanelLayout';

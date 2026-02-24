@@ -9,6 +9,8 @@ import {
   Image,
   ScrollView,
   Linking,
+  Modal,
+  Pressable,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -25,12 +27,19 @@ import { SUPPORT_EMAIL } from '../src/constants/support';
 const CONSENT_TEXT =
   'Li e aceito que minhas fotos serão usadas apenas para verificação de identidade e serão excluídas após a análise (aprovado ou rejeitado).';
 
+const WHY_VERIFICATION_MODAL_TEXT = `A verificação de identidade é uma forma de o Adopet tentar tornar o processo de adoção mais eficiente e mais seguro para todos — quem anuncia o pet e quem deseja adotar.
+
+Ela não garante 100% de segurança: nenhum processo online substitui o cuidado e o bom senso no encontro e na entrega do pet. Mesmo assim, acreditamos que conferir a identidade de quem vai confirmar a adoção no app ajuda a reduzir riscos e a dar mais tranquilidade a tutores e adotantes.
+
+Ao solicitar documento e selfie, nosso objetivo é contribuir para que as adoções feitas pela plataforma sejam mais transparentes e confiáveis.`;
+
 export default function KycScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { colors } = useTheme();
   const [selfieUri, setSelfieUri] = useState<string | null>(null);
   const [consentGiven, setConsentGiven] = useState(false);
+  const [showWhyModal, setShowWhyModal] = useState(false);
 
   const { data: kycStatus, isLoading } = useQuery({
     queryKey: ['me', 'kyc-status'],
@@ -133,7 +142,18 @@ export default function KycScreen() {
         {isRejected && (
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
             <Ionicons name="alert-circle-outline" size={48} color={colors.textSecondary} style={styles.cardIcon} />
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Verificação não aprovada</Text>
+            <View style={styles.titleRow}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Verificação não aprovada</Text>
+              <TouchableOpacity
+                style={styles.whyTooltipWrap}
+                onPress={() => setShowWhyModal(true)}
+                activeOpacity={0.8}
+                accessibilityLabel="Por que precisa da verificação?"
+              >
+                <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+                <Text style={[styles.whyTooltipText, { color: colors.primary }]}>Por que precisa da verificação?</Text>
+              </TouchableOpacity>
+            </View>
             {kycStatus?.kycRejectionReason ? (
               <Text style={[styles.cardText, { color: colors.textSecondary }]}>{kycStatus.kycRejectionReason}</Text>
             ) : (
@@ -194,7 +214,18 @@ export default function KycScreen() {
         {(!status || (status !== 'VERIFIED' && status !== 'PENDING' && status !== 'REJECTED')) && (
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
             <Ionicons name="shield-checkmark-outline" size={48} color={colors.primary} style={styles.cardIcon} />
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Solicitar verificação (KYC)</Text>
+            <View style={styles.titleRow}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Solicitar verificação (KYC)</Text>
+              <TouchableOpacity
+                style={styles.whyTooltipWrap}
+                onPress={() => setShowWhyModal(true)}
+                activeOpacity={0.8}
+                accessibilityLabel="Por que precisa da verificação?"
+              >
+                <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+                <Text style={[styles.whyTooltipText, { color: colors.primary }]}>Por que precisa da verificação?</Text>
+              </TouchableOpacity>
+            </View>
             <Text style={[styles.cardText, { color: colors.textSecondary }]}>
               A verificação de identidade é usada exclusivamente para habilitar a confirmação de adoções no app. A análise é feita por nossa equipe (decisão humana).
             </Text>
@@ -256,6 +287,29 @@ export default function KycScreen() {
           </View>
         )}
       </ScrollView>
+
+      <Modal
+        visible={showWhyModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowWhyModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowWhyModal(false)}>
+          <Pressable style={[styles.modalBox, { backgroundColor: colors.background }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Por que pedimos a verificação?</Text>
+            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.modalBody, { color: colors.textSecondary }]}>{WHY_VERIFICATION_MODAL_TEXT}</Text>
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.modalCloseBtn, { backgroundColor: colors.primary }]}
+              onPress={() => setShowWhyModal(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalCloseText}>Entendi</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -270,7 +324,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardIcon: { marginBottom: spacing.md },
-  cardTitle: { fontSize: 20, fontWeight: '700', marginBottom: spacing.sm, textAlign: 'center' },
+  titleRow: { alignItems: 'center', marginBottom: spacing.sm, width: '100%' },
+  cardTitle: { fontSize: 20, fontWeight: '700', marginBottom: spacing.xs, textAlign: 'center' },
+  whyTooltipWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: spacing.xs },
+  whyTooltipText: { fontSize: 14, fontWeight: '600' },
   cardText: { fontSize: 15, textAlign: 'center', marginBottom: spacing.md, lineHeight: 22 },
   disclaimerWrap: { marginBottom: spacing.md, paddingHorizontal: spacing.sm },
   disclaimerText: { fontSize: 12, textAlign: 'center', lineHeight: 18, fontStyle: 'italic' },
@@ -308,4 +365,23 @@ const styles = StyleSheet.create({
   btn: { alignSelf: 'stretch', marginTop: spacing.sm },
   backLink: { marginTop: spacing.lg },
   backLinkText: { fontSize: 15 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  modalBox: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: spacing.xl,
+    maxHeight: '80%',
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.md, textAlign: 'center' },
+  modalScroll: { maxHeight: 280, marginBottom: spacing.md },
+  modalBody: { fontSize: 15, lineHeight: 24, textAlign: 'center' },
+  modalCloseBtn: { paddingVertical: spacing.md, borderRadius: 12, alignItems: 'center' },
+  modalCloseText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

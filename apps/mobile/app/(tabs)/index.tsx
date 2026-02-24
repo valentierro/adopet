@@ -21,7 +21,7 @@ import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ScreenContainer, LoadingLogo, VerifiedBadge, PrimaryButton, SecondaryButton } from '../../src/components';
+import { ScreenContainer, LoadingLogo, VerifiedBadge, PrimaryButton, SecondaryButton, UsuarioVerificadoModal } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useClientConfig } from '../../src/hooks/useClientConfig';
 import { useAuthStore } from '../../src/stores/authStore';
@@ -265,6 +265,7 @@ export default function DashboardScreen() {
     }, [refetchAll, isAdmin, queryClient]),
   );
   const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [showVerifiedInfoModal, setShowVerifiedInfoModal] = useState(false);
   const firstName = user?.name?.trim().split(/\s+/)[0] || '';
   const isNonPartner = !user?.partner && !(user?.partnerMemberships && user.partnerMemberships.length > 0);
   const isKycVerified = user?.kycStatus === 'VERIFIED';
@@ -549,15 +550,29 @@ export default function DashboardScreen() {
           <View style={styles.heroInner}>
             <Text style={[styles.hello, { color: colors.textSecondary }]}>Olá,</Text>
             <View style={styles.heroNameRow}>
-              <View style={styles.heroNameWithBadge}>
+              <View style={styles.heroNameWrap}>
+                <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
+                  {firstName || 'Visitante'}
+                </Text>
+              </View>
+              <View style={styles.heroLogoBlock}>
+                <Image
+                  source={isDark ? LogoDark : LogoLight}
+                  style={styles.heroLogo}
+                  resizeMode="contain"
+                />
+              </View>
+            </View>
+            <View style={styles.heroStatusRow}>
+              <View style={styles.heroStatusLeft}>
                 {isNonPartner &&
                   (isKycVerified ? (
                     <TouchableOpacity
-                      onPress={() => setShowVerificationModal(true)}
+                      onPress={() => setShowVerifiedInfoModal(true)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       activeOpacity={0.7}
                     >
-                      <VerifiedBadge size={26} iconBackgroundColor={colors.primary} />
+                      <VerifiedBadge size={18} showLabel backgroundColor={colors.primary} textColor="#fff" />
                     </TouchableOpacity>
                   ) : isKycPending ? (
                     <TouchableOpacity
@@ -580,23 +595,13 @@ export default function DashboardScreen() {
                       <Text style={[styles.verificationChipText, { color: colors.primary }]}>Solicitar verificação</Text>
                     </TouchableOpacity>
                   ))}
-                <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
-                  {firstName || 'Visitante'}
-                </Text>
               </View>
-              <View style={styles.heroLogoBlock}>
-                <Image
-                  source={isDark ? LogoDark : LogoLight}
-                  style={styles.heroLogo}
-                  resizeMode="contain"
-                />
-                {user ? (
-                  <View style={[styles.roleBadgeWrap, { backgroundColor: roleBadgeColor + '22' }]}>
-                    <Ionicons name={roleBadgeIcon} size={14} color={roleBadgeColor} />
-                    <Text style={[styles.roleBadgeText, { color: roleBadgeColor }]}>{roleBadgeLabel}</Text>
-                  </View>
-                ) : null}
-              </View>
+              {user ? (
+                <View style={[styles.roleBadgeWrap, { backgroundColor: roleBadgeColor + '22' }]}>
+                  <Ionicons name={roleBadgeIcon} size={14} color={roleBadgeColor} />
+                  <Text style={[styles.roleBadgeText, { color: roleBadgeColor }]}>{roleBadgeLabel}</Text>
+                </View>
+              ) : null}
             </View>
             <Text style={[styles.heroTagline, { color: colors.textSecondary }]}>
               Encontre seu próximo companheiro
@@ -1036,6 +1041,11 @@ export default function DashboardScreen() {
         </View>
       </Modal>
 
+      <UsuarioVerificadoModal
+        visible={showVerifiedInfoModal}
+        onClose={() => setShowVerifiedInfoModal(false)}
+      />
+
       <Modal
         visible={showKycPendingModal}
         transparent
@@ -1098,7 +1108,9 @@ const styles = StyleSheet.create({
   },
   heroInner: {},
   heroNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, minHeight: 32 },
-  heroNameWithBadge: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, marginRight: spacing.sm, gap: 6 },
+  heroNameWrap: { flex: 1, minWidth: 0, marginRight: spacing.sm },
+  heroStatusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, width: '100%' },
+  heroStatusLeft: { flexDirection: 'row', alignItems: 'center' },
   verificationChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1117,7 +1129,6 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 10,
     borderRadius: 12,
-    marginTop: 6,
   },
   roleBadgeText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
   hello: { fontSize: 14, marginBottom: 2 },

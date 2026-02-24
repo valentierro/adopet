@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   Pressable,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
@@ -25,11 +26,13 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { getApiUrlConfigIssue } from '../../src/api/client';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { isSignup409Conflict } from '../../src/utils/signupError';
+import { isValidCpfOrCnpj } from '../../src/utils/cpfCnpj';
 import { setShouldShowOnboardingAfterSignup } from '../../src/storage/onboarding';
 import { formatPhoneInput, getPhoneDigits } from '../../src/utils/phoneMask';
 import { spacing } from '../../src/theme';
 import { presign } from '../../src/api/uploads';
 import { submitKyc } from '../../src/api/me';
+import { checkEmailAvailable, checkDocumentAvailable } from '../../src/api/auth';
 
 const LogoSplash = require('../../assets/brand/logo/logo_splash.png');
 const APP_VERSION = Constants.expoConfig?.version ?? '1.1.0';
@@ -40,6 +43,12 @@ const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d).{6,}$/;
 const USERNAME_RULE = /^[a-z0-9._]{2,30}$/;
 /** Formato básico de e-mail */
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const WHY_VERIFICATION_MODAL_TEXT = `A verificação de identidade é uma forma de o Adopet tentar tornar o processo de adoção mais eficiente e mais seguro para todos — quem anuncia o pet e quem deseja adotar.
+
+Ela não garante 100% de segurança: nenhum processo online substitui o cuidado e o bom senso no encontro e na entrega do pet. Mesmo assim, acreditamos que conferir a identidade de quem vai confirmar a adoção no app ajuda a reduzir riscos e a dar mais tranquilidade a tutores e adotantes.
+
+Ao solicitar documento e selfie, nosso objetivo é contribuir para que as adoções feitas pela plataforma sejam mais transparentes e confiáveis.`;
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -63,6 +72,7 @@ export default function SignupScreen() {
   const [wantKycNow, setWantKycNow] = useState(false);
   const [selfieWithDocUri, setSelfieWithDocUri] = useState<string | null>(null);
   const [isUploadingKyc, setIsUploadingKyc] = useState(false);
+  const [showWhyKycModal, setShowWhyKycModal] = useState(false);
 
   /** Envia uma imagem já escolhida (URI local) para o servidor; retorna a key. Requer estar logado. */
   const uploadImageFromUri = useCallback(async (uri: string, label: string): Promise<string> => {
@@ -135,6 +145,10 @@ export default function SignupScreen() {
       Alert.alert('Erro', 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos).');
       return;
     }
+    if (!isValidCpfOrCnpj(documentDigits)) {
+      Alert.alert('Documento inválido', 'CPF ou CNPJ inválido. Verifique os dígitos.');
+      return;
+    }
     const phoneDigits = getPhoneDigits(phone);
     if (phoneDigits.length < 10 || phoneDigits.length > 11) {
       Alert.alert('Erro', 'Informe um telefone válido com DDD (10 ou 11 dígitos).');
@@ -155,6 +169,38 @@ export default function SignupScreen() {
     if (!acceptedTerms) {
       Alert.alert('Aceite os termos', 'Para criar sua conta, você precisa aceitar os Termos de Uso e a Política de Privacidade.');
       return;
+    }
+    if (wantKycNow && !selfieWithDocUri) {
+      Alert.alert(
+        'Verificação de identidade',
+        'Selecione a foto (selfie com documento) para enviar a verificação agora ou desmarque a opção para fazer depois.'
+      );
+      return;
+    }
+    try {
+      const [emailCheck, documentCheck] = await Promise.all([
+        checkEmailAvailable(email.trim()),
+        checkDocumentAvailable(documentDigits),
+      ]);
+      if (!emailCheck.available) {
+        Alert.alert('E-mail já cadastrado', 'Este e-mail já possui uma conta. Use outro e-mail ou faça login.');
+        return;
+      }
+      if (!documentCheck.available) {
+        Alert.alert('Documento já cadastrado', 'Este CPF ou CNPJ já possui uma conta. Use outro documento ou faça login.');
+        return;
+      }
+    } catch (preCheckErr: unknown) {
+      const preMsg = preCheckErr instanceof Error ? preCheckErr.message : String(preCheckErr ?? '');
+      if (/^API\s+400/i.test(preMsg)) {
+        const friendly = getFriendlyErrorMessage(preCheckErr, 'Dados inválidos. Verifique e-mail e documento.');
+        Alert.alert('Dados inválidos', friendly);
+        return;
+      }
+      // Se a verificação falhou (404, 500, rede), segue para o signup; o servidor retornará 409 se e-mail/documento já existir
+      if (__DEV__) {
+        console.warn('[Signup] Verificação de e-mail/documento falhou, tentando signup mesmo assim:', preMsg.slice(0, 120));
+      }
     }
     try {
       const res = await signup(email.trim(), password, name.trim(), phoneDigits, documentDigits, userInput);
@@ -184,7 +230,7 @@ export default function SignupScreen() {
           setIsUploadingKyc(true);
           try {
             const key = await uploadImageFromUri(selfieWithDocUri, 'selfie-with-doc');
-            await submitKyc(key);
+            await submitKyc(key, true);
             queryClient.invalidateQueries({ queryKey: ['me'] });
             queryClient.invalidateQueries({ queryKey: ['me', 'kyc-status'] });
             Alert.alert(
@@ -370,6 +416,15 @@ export default function SignupScreen() {
                 Deseja fazer a verificação de identidade (KYC) agora?
               </Text>
             </Pressable>
+            <TouchableOpacity
+              style={styles.kycWhyTooltipWrap}
+              onPress={() => setShowWhyKycModal(true)}
+              activeOpacity={0.8}
+              accessibilityLabel="Por que precisa da verificação?"
+            >
+              <Ionicons name="information-circle-outline" size={20} color={colors.primary} />
+              <Text style={[styles.kycWhyTooltipText, { color: colors.primary }]}>Por que precisa da verificação?</Text>
+            </TouchableOpacity>
             <Text style={[styles.kycCheckHint, { color: colors.textSecondary }]}>
               Se preferir, você pode fazer depois em Perfil {'>'} Solicitar verificação.
             </Text>
@@ -439,6 +494,28 @@ export default function SignupScreen() {
           Versão {APP_VERSION}
         </Text>
       </ScrollView>
+      <Modal
+        visible={showWhyKycModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowWhyKycModal(false)}
+      >
+        <Pressable style={styles.whyModalOverlay} onPress={() => setShowWhyKycModal(false)}>
+          <Pressable style={[styles.whyModalBox, { backgroundColor: colors.background }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.whyModalTitle, { color: colors.textPrimary }]}>Por que pedimos a verificação?</Text>
+            <ScrollView style={styles.whyModalScroll} showsVerticalScrollIndicator={false}>
+              <Text style={[styles.whyModalBody, { color: colors.textSecondary }]}>{WHY_VERIFICATION_MODAL_TEXT}</Text>
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.whyModalCloseBtn, { backgroundColor: colors.primary }]}
+              onPress={() => setShowWhyKycModal(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.whyModalCloseText}>Entendi</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -493,6 +570,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
+  kycWhyTooltipWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: spacing.xs },
+  kycWhyTooltipText: { fontSize: 14, fontWeight: '600' },
   kycCheckHint: { fontSize: 12, marginTop: spacing.xs, paddingLeft: 30 },
   kycFields: { marginTop: spacing.md, gap: spacing.sm },
   kycLabel: { fontSize: 13, marginBottom: spacing.xs },
@@ -510,6 +589,25 @@ const styles = StyleSheet.create({
   kycUploadHint: { fontSize: 13, marginTop: spacing.xs },
   kycRemoveWrap: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: spacing.sm },
   kycRemoveText: { fontSize: 14, fontWeight: '600' },
+  whyModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  whyModalBox: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: spacing.xl,
+    maxHeight: '80%',
+  },
+  whyModalTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.md, textAlign: 'center' },
+  whyModalScroll: { maxHeight: 280, marginBottom: spacing.md },
+  whyModalBody: { fontSize: 15, lineHeight: 24, textAlign: 'center' },
+  whyModalCloseBtn: { paddingVertical: spacing.md, borderRadius: 12, alignItems: 'center' },
+  whyModalCloseText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   passwordWrap: { position: 'relative' },
   passwordInput: { paddingRight: 48 },
   eyeBtn: { position: 'absolute', right: 12, top: 0, bottom: 0, justifyContent: 'center' },

@@ -53,7 +53,8 @@ export function consumeShouldShowOnboardingAfterSignup(): boolean {
 
 /**
  * Retorna se o onboarding já foi visto por este usuário.
- * Chave por usuário (userId); migra do valor legado (chave global) se existir.
+ * Chave por usuário (userId). Se existir valor legado (chave global), apenas removemos
+ * e retornamos false para este usuário — assim novas contas no mesmo aparelho veem o tour.
  */
 export async function getOnboardingSeen(userId: string | null): Promise<boolean> {
   if (!userId) return false;
@@ -62,21 +63,13 @@ export async function getOnboardingSeen(userId: string | null): Promise<boolean>
     const value = await AsyncStorage.getItem(key);
     if (value !== null) return value === 'true';
     const legacy = await AsyncStorage.getItem(KEY_LEGACY);
-    if (legacy === 'true') {
-      await AsyncStorage.setItem(key, 'true');
-      await AsyncStorage.removeItem(KEY_LEGACY);
-      return true;
-    }
+    if (legacy === 'true') await AsyncStorage.removeItem(KEY_LEGACY);
     return false;
   }
   const value = await SecureStore.getItemAsync(key);
   if (value !== null) return value === 'true';
   const legacy = await SecureStore.getItemAsync(KEY_LEGACY);
-  if (legacy === 'true') {
-    await SecureStore.setItemAsync(key, 'true');
-    await SecureStore.deleteItemAsync(KEY_LEGACY);
-    return true;
-  }
+  if (legacy === 'true') await SecureStore.deleteItemAsync(KEY_LEGACY);
   return false;
 }
 

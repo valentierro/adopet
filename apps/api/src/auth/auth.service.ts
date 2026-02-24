@@ -54,6 +54,43 @@ export class AuthService {
     private readonly featureFlagService: FeatureFlagService,
   ) {}
 
+  /**
+   * Verifica se o e-mail está disponível para cadastro (não existe na base).
+   * Retorna { available: true } se pode usar; { available: false } se já cadastrado.
+   * Lança BadRequestException se o formato do e-mail for inválido.
+   */
+  async checkEmailAvailable(email: string): Promise<{ available: boolean }> {
+    const emailLower = String(email ?? '').trim().toLowerCase();
+    if (!emailLower || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower)) {
+      throw new BadRequestException('Informe um e-mail válido.');
+    }
+    const existing = await this.prisma.user.findUnique({
+      where: { email: emailLower },
+      select: { id: true },
+    });
+    return { available: !existing };
+  }
+
+  /**
+   * Verifica se o documento (CPF/CNPJ) está disponível para cadastro (não existe na base).
+   * Retorna { available: true } se pode usar; { available: false } se já cadastrado.
+   * Lança BadRequestException se o documento for inválido (formato ou dígitos).
+   */
+  async checkDocumentAvailable(document: string): Promise<{ available: boolean }> {
+    const documentNormalized = String(document ?? '').replace(/\D/g, '').slice(0, 14);
+    if (documentNormalized.length !== 11 && documentNormalized.length !== 14) {
+      throw new BadRequestException('Informe um CPF (11 dígitos) ou CNPJ (14 dígitos).');
+    }
+    if (!isValidCpfOrCnpj(documentNormalized)) {
+      throw new BadRequestException('CPF ou CNPJ inválido. Verifique os dígitos.');
+    }
+    const existing = await this.prisma.user.findUnique({
+      where: { document: documentNormalized },
+      select: { id: true },
+    });
+    return { available: !existing };
+  }
+
   /** Lê FeatureFlag (GLOBAL) primeiro; se não existir linha, usa env REQUIRE_EMAIL_VERIFICATION. */
   private async getRequireEmailVerification(): Promise<boolean> {
     const fromDb = await this.featureFlagService.isEnabled('REQUIRE_EMAIL_VERIFICATION', {});

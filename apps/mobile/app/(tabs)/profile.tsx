@@ -129,7 +129,11 @@ export default function ProfileScreen() {
   const userVerificationRequest = verificationStatus?.requests?.find(
     (r) => r.type === 'USER_VERIFIED',
   );
-  const canRequestUserVerification = !user?.verified && !userVerificationRequest && user?.kycStatus !== 'VERIFIED';
+  const canRequestUserVerification =
+    !user?.verified &&
+    !userVerificationRequest &&
+    user?.kycStatus !== 'VERIFIED' &&
+    user?.kycStatus !== 'PENDING';
   const verificationFeedback =
     userVerificationRequest?.status === 'PENDING'
       ? 'Solicitação de verificação de perfil em Análise'

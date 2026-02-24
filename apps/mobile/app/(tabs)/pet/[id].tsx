@@ -298,14 +298,11 @@ export default function PetDetailsScreen() {
   };
 
   const [tutorModalVisible, setTutorModalVisible] = useState(false);
+  const [showCompleteProfileModal, setShowCompleteProfileModal] = useState(false);
 
   const handleConversar = async () => {
     if (!profileComplete) {
-      Alert.alert(
-        'Complete seu perfil',
-        'Para conversar com o tutor é preciso ter foto e telefone no perfil. Assim o tutor sabe com quem está falando. Você será levado à página de edição para completar.',
-        [{ text: 'Completar perfil', onPress: () => router.push('/profile-edit') }],
-      );
+      setShowCompleteProfileModal(true);
       return;
     }
     if (!isFavorited) {
@@ -979,6 +976,32 @@ export default function PetDetailsScreen() {
         )}
       </View>
 
+      <Modal visible={showCompleteProfileModal} transparent animationType="fade">
+        <Pressable style={styles.modalOverlay} onPress={() => setShowCompleteProfileModal(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Complete seu perfil</Text>
+            <Text style={[styles.completeProfileModalMessage, { color: colors.textSecondary }]}>
+              Para conversar com o tutor é preciso ter foto e telefone no perfil. Assim o tutor sabe com quem está falando. Você será levado à página de edição para completar.
+            </Text>
+            <TouchableOpacity
+              onPress={() => setShowCompleteProfileModal(false)}
+              activeOpacity={0.8}
+              style={styles.completeProfileModalLinkWrap}
+            >
+              <Text style={[styles.completeProfileModalLink, { color: colors.primary }]}>Completar depois</Text>
+            </TouchableOpacity>
+            <PrimaryButton
+              title="Completar perfil"
+              onPress={() => {
+                setShowCompleteProfileModal(false);
+                router.push('/profile-edit');
+              }}
+              style={styles.completeProfileModalBtn}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <Modal visible={reportModalVisible} transparent animationType="fade">
         <Pressable style={styles.modalOverlay} onPress={() => setReportModalVisible(false)}>
           <Pressable style={[styles.modalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
@@ -1285,6 +1308,15 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: spacing.lg,
   },
+  completeProfileModalMessage: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  completeProfileModalLinkWrap: { marginBottom: spacing.lg },
+  completeProfileModalLink: { fontSize: 15, fontWeight: '600', textDecorationLine: 'underline' },
+  completeProfileModalBtn: { alignSelf: 'stretch' },
   reportModalInput: {
     borderWidth: 1,
     borderRadius: 8,

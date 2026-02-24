@@ -118,6 +118,9 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string): strin
     if (/documento.*cadastrado|cadastrado.*documento|CPF.*cadastrado|cadastrado.*CPF|CNPJ.*cadastrado|cadastrado.*CNPJ/i.test(msg)) {
       return 'Este CPF ou CNPJ já está cadastrado. Tente fazer login ou use outro documento.';
     }
+    if (/(CPF|CNPJ).*conta|conta.*documento|documento.*já possui|já possui.*documento/i.test(msg)) {
+      return 'Este CPF ou CNPJ já possui uma conta. Use outro documento ou faça login.';
+    }
     return 'Este email já está em uso. Tente fazer login ou use outro email.';
   }
   if (/pendingAdopterId.*UUID|UUID.*pendingAdopterId|ID do adotante.*inválido/i.test(msg)) {
@@ -131,6 +134,9 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string): strin
   }
   if (/Usuário @.*não encontrado|não encontrado.*nome de usuário/i.test(msg)) {
     return msg.length < 120 ? msg : 'Usuário não encontrado. Peça para a pessoa criar conta e definir um nome de usuário no perfil.';
+  }
+  if (/CPF ou CNPJ inválido|invalid.*CPF|invalid.*CNPJ|verifique os dígitos/i.test(msg)) {
+    return 'CPF ou CNPJ inválido. Verifique os dígitos.';
   }
   if (/bad request|informe.*nome de usuário|nome de usuário.*mínimo|use apenas letras/i.test(msg)) {
     return 'Nome de usuário inválido. Use 2 a 30 caracteres: letras minúsculas, números, ponto ou underscore.';
