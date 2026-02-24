@@ -3,7 +3,7 @@
 const baseExpo = {
   name: 'Adopet',
   slug: 'adopet',
-  version: '1.0.34',
+  version: '1.1.0',
   orientation: 'portrait',
   icon: './assets/brand/icon/app_icon_light.png',
   userInterfaceStyle: 'automatic',
@@ -16,6 +16,7 @@ const baseExpo = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'br.com.adopet.app',
+    associatedDomains: ['applinks:appadopet.com.br'],
     infoPlist: { UIBackgroundModes: [] },
     ...((process.env.GOOGLE_MAPS_API_KEY_IOS || process.env.GOOGLE_MAPS_API_KEY) && {
       config: {
@@ -29,8 +30,18 @@ const baseExpo = {
       backgroundColor: '#FFFFFF',
     },
     package: 'br.com.adopet.app',
-    // Último publicado na Play Store: 41. Cada novo upload precisa de versionCode maior.
-    versionCode: 41,
+    // Último publicado na Play Store: 50. Cada novo upload precisa de versionCode maior.
+    versionCode: 50,
+    intentFilters: [
+      {
+        action: 'VIEW',
+        autoVerify: true,
+        data: [
+          { scheme: 'https', host: 'appadopet.com.br', pathPrefix: '/pet' },
+        ],
+        category: ['BROWSABLE', 'DEFAULT'],
+      },
+    ],
   },
   plugins: [
     'expo-router',

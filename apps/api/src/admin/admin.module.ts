@@ -13,9 +13,10 @@ import { PartnershipRequestsModule } from '../partnership-requests/partnership-r
 import { NotificationsModule } from '../notifications/notifications.module';
 import { UploadsModule } from '../uploads/uploads.module';
 import { SatisfactionModule } from '../satisfaction/satisfaction.module';
+import { FeatureFlagModule } from '../feature-flag/feature-flag.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, BugReportsModule, PartnerRecommendationsModule, PartnersModule, PartnershipRequestsModule, NotificationsModule, UploadsModule, SatisfactionModule],
+  imports: [PrismaModule, AuthModule, BugReportsModule, PartnerRecommendationsModule, PartnersModule, PartnershipRequestsModule, NotificationsModule, UploadsModule, SatisfactionModule, FeatureFlagModule],
   controllers: [AdminController, AdminBulkController],
   providers: [AdminService, AdminBulkService, AdoptionAutoApproveScheduler],
   exports: [AdminService],

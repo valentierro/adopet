@@ -7,6 +7,7 @@ import { BlocksService } from '../moderation/blocks.service';
 import { VerificationService } from '../verification/verification.service';
 import { MatchEngineService } from '../match-engine/match-engine.service';
 import { PetViewService } from '../pets/pet-view.service';
+import { PetPartnershipService } from '../pet-partnership/pet-partnership.service';
 import { computeMatchScore } from '../match-engine/compute-match-score';
 import type { AdopterProfile } from '../match-engine/match-engine.types';
 import type { FeedQueryDto } from './dto/feed-query.dto';
@@ -40,6 +41,7 @@ export class FeedService {
     private readonly verificationService: VerificationService,
     private readonly matchEngine: MatchEngineService,
     private readonly petViewService: PetViewService,
+    private readonly petPartnershipService: PetPartnershipService,
   ) {}
 
   private mapToDto(
@@ -122,15 +124,7 @@ export class FeedService {
     // Distância = do usuário que pediu o feed (userLat/userLng) até as coordenadas do pet.
     if (pet.city != null) dto.city = pet.city;
     else if (pet.owner?.city != null) dto.city = pet.owner.city;
-    if (pet.partner != null) {
-      dto.partner = {
-        id: pet.partner.id,
-        name: pet.partner.name,
-        slug: pet.partner.slug,
-        logoUrl: pet.partner.logoUrl ?? undefined,
-        isPaidPartner: pet.partner.isPaidPartner,
-      };
-    }
+    // partner/partners só são preenchidos pelos callers com parcerias CONFIRMADAS (getConfirmedPartnersByPetIds)
     return dto;
   }
 
@@ -219,8 +213,9 @@ export class FeedService {
       isDocile: queryIsDocile,
       isTrained: queryIsTrained,
       ownerId: queryOwnerId,
+      limit,
     } = query;
-    const pageSize = DEFAULT_PAGE_SIZE;
+    const pageSize = Math.min(limit ?? DEFAULT_PAGE_SIZE, 500);
 
     // Listagem por dono (ex.: "Ver anúncios" no perfil do tutor): sem geo, ordenação por data
     if (queryOwnerId) {
@@ -330,25 +325,17 @@ export class FeedService {
     }
 
     const petIds = candidates.map((p) => p.id);
-    const favCounts =
+    const [favCounts, confirmedPartnersByPetId] = await Promise.all([
       petIds.length > 0
-        ? await this.prisma.favorite.groupBy({
+        ? this.prisma.favorite.groupBy({
             by: ['petId'],
             where: { petId: { in: petIds } },
             _count: { id: true },
           })
-        : [];
+        : [],
+      this.petPartnershipService.getConfirmedPartnersByPetIds(petIds),
+    ]);
     const favByPetId = Object.fromEntries(favCounts.map((f) => [f.petId, f._count.id]));
-
-    const ownerIdsForPartnerCheck = [...new Set(candidates.filter((p) => !(p as { partner?: unknown }).partner).map((p) => p.ownerId))];
-    const ownerPartnersForScore =
-      ownerIdsForPartnerCheck.length > 0
-        ? await this.prisma.partner.findMany({
-            where: { userId: { in: ownerIdsForPartnerCheck } },
-            select: { userId: true, isPaidPartner: true },
-          })
-        : [];
-    const isPaidPartnerByOwnerId = Object.fromEntries(ownerPartnersForScore.map((p) => [p.userId, p.isPaidPartner]));
 
     const profileForMatch =
       adopterProfile && prefs
@@ -393,10 +380,10 @@ export class FeedService {
         similarToFavorites,
         matchScoreNorm,
       );
+      const hasConfirmedPartners = (confirmedPartnersByPetId.get(pet.id)?.length ?? 0) > 0;
       const isPaidPartner =
-        (pet as { partner?: { isPaidPartner?: boolean } }).partner?.isPaidPartner || isPaidPartnerByOwnerId[pet.ownerId];
-      const hasPartner =
-        (pet as { partner?: unknown }).partner != null || pet.ownerId in isPaidPartnerByOwnerId;
+        hasConfirmedPartners && (confirmedPartnersByPetId.get(pet.id)?.some((p) => p.isPaidPartner) ?? false);
+      const hasPartner = hasConfirmedPartners;
       if (isPaidPartner) {
         score = Math.min(1, score + BOOST_PAID_PARTNER);
       }
@@ -462,23 +449,27 @@ export class FeedService {
       this.petViewService.getViewCountsLast24h(itemPetIds),
     ]);
 
-    const itemPets = items.map(({ pet }) => pet);
-    const ownerIdsNeedingPartner = [...new Set(itemPets.filter((p) => !(p as { partner?: unknown }).partner).map((p) => p.ownerId))];
-    const ownerPartners =
-      ownerIdsNeedingPartner.length > 0
-        ? await this.prisma.partner.findMany({
-            where: { userId: { in: ownerIdsNeedingPartner } },
-            select: { userId: true, id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true },
-          })
-        : [];
-    const partnerByOwnerId = Object.fromEntries(ownerPartners.map((p) => [p.userId, p]));
-
     return {
       items: items.map(({ pet }) => {
         const dto = this.mapToDto(pet, lat, lng, verifiedIds.has(pet.id));
-        if (!dto.partner && partnerByOwnerId[pet.ownerId]) {
-          const op = partnerByOwnerId[pet.ownerId];
-          dto.partner = { id: op.id, name: op.name, slug: op.slug, logoUrl: op.logoUrl ?? undefined, isPaidPartner: op.isPaidPartner };
+        const confirmedPartners = confirmedPartnersByPetId.get(pet.id);
+        if (confirmedPartners?.length) {
+          dto.partner = {
+            id: confirmedPartners[0].id,
+            name: confirmedPartners[0].name,
+            slug: confirmedPartners[0].slug,
+            logoUrl: confirmedPartners[0].logoUrl ?? undefined,
+            isPaidPartner: confirmedPartners[0].isPaidPartner,
+            type: confirmedPartners[0].type,
+          };
+          dto.partners = confirmedPartners.map((p) => ({
+            id: p.id,
+            name: p.name,
+            slug: p.slug,
+            logoUrl: p.logoUrl ?? undefined,
+            isPaidPartner: p.isPaidPartner,
+            type: p.type,
+          }));
         }
         if (adopterProfile) {
           const profileForMatch = { ...adopterProfile, sizePref: prefs?.sizePref ?? undefined, speciesPref: prefs?.species ?? undefined, sexPref: prefs?.sexPref ?? undefined } as AdopterProfile;
@@ -551,25 +542,32 @@ export class FeedService {
     const hasMore = pets.length > pageSize;
     const items = pets.slice(0, pageSize);
     const itemPetIds = items.map((p) => p.id);
-    const [verifiedIds, viewCounts] = await Promise.all([
+    const [verifiedIds, viewCounts, confirmedPartnersByPetId] = await Promise.all([
       this.verificationService.getVerifiedPetIds(itemPetIds),
       this.petViewService.getViewCountsLast24h(itemPetIds),
+      this.petPartnershipService.getConfirmedPartnersByPetIds(itemPetIds),
     ]);
-    const ownerIdsNeedingPartner = [...new Set(items.filter((p) => !(p as { partner?: unknown }).partner).map((p) => p.ownerId))];
-    const ownerPartners =
-      ownerIdsNeedingPartner.length > 0
-        ? await this.prisma.partner.findMany({
-            where: { userId: { in: ownerIdsNeedingPartner } },
-            select: { userId: true, id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true },
-          })
-        : [];
-    const partnerByOwnerId = Object.fromEntries(ownerPartners.map((p) => [p.userId, p]));
     return {
       items: items.map((pet) => {
         const dto = this.mapToDto(pet, undefined, undefined, verifiedIds.has(pet.id));
-        if (!dto.partner && partnerByOwnerId[pet.ownerId]) {
-          const op = partnerByOwnerId[pet.ownerId];
-          dto.partner = { id: op.id, name: op.name, slug: op.slug, logoUrl: op.logoUrl ?? undefined, isPaidPartner: op.isPaidPartner };
+        const confirmedPartners = confirmedPartnersByPetId.get(pet.id);
+        if (confirmedPartners?.length) {
+          dto.partner = {
+            id: confirmedPartners[0].id,
+            name: confirmedPartners[0].name,
+            slug: confirmedPartners[0].slug,
+            logoUrl: confirmedPartners[0].logoUrl ?? undefined,
+            isPaidPartner: confirmedPartners[0].isPaidPartner,
+            type: confirmedPartners[0].type,
+          };
+          dto.partners = confirmedPartners.map((p) => ({
+            id: p.id,
+            name: p.name,
+            slug: p.slug,
+            logoUrl: p.logoUrl ?? undefined,
+            isPaidPartner: p.isPaidPartner,
+            type: p.type,
+          }));
         }
         if (adopterProfile) {
           const profileForMatch = { ...adopterProfile, sizePref: prefs?.sizePref ?? undefined, speciesPref: prefs?.species ?? undefined, sexPref: prefs?.sexPref ?? undefined } as AdopterProfile;
@@ -656,30 +654,17 @@ export class FeedService {
       }
     }
     const petIds = withinRadius.map(({ p }) => p.id);
-    const verifiedIds = petIds.length > 0 ? await this.verificationService.getVerifiedPetIds(petIds) : new Set<string>();
-    const ownerIdsNeedingPartner = [
-      ...new Set(
-        withinRadius
-          .filter(({ p }) => !(p as { partner?: unknown }).partner)
-          .map(({ p }) => p.ownerId),
-      ),
-    ];
-    const ownerPartners =
-      ownerIdsNeedingPartner.length > 0
-        ? await this.prisma.partner.findMany({
-            where: { userId: { in: ownerIdsNeedingPartner } },
-            select: { userId: true, isPaidPartner: true },
-          })
-        : [];
-    const partnerByOwnerId = Object.fromEntries(ownerPartners.map((op) => [op.userId, { isPaidPartner: op.isPaidPartner }]));
+    const [verifiedIds, confirmedPartnersByPetId] = await Promise.all([
+      petIds.length > 0 ? this.verificationService.getVerifiedPetIds(petIds) : Promise.resolve(new Set<string>()),
+      this.petPartnershipService.getConfirmedPartnersByPetIds(petIds),
+    ]);
     const matchScores =
       userId && petIds.length > 0
         ? await this.matchEngine.getMatchScoresForAdopter(petIds, userId)
         : ({} as Record<string, number | null>);
     const items = withinRadius.map(({ p, distanceKm }) => {
-      const partnerFromPet = (p as { partner?: { isPaidPartner: boolean } | null }).partner;
-      const partnerFromOwner = partnerByOwnerId[p.ownerId];
-      const partner = partnerFromPet ?? partnerFromOwner;
+      const confirmedPartners = confirmedPartnersByPetId.get(p.id) ?? [];
+      const firstPartner = confirmedPartners[0];
       const score = matchScores[p.id];
       return {
         id: p.id,
@@ -694,7 +679,7 @@ export class FeedService {
         photoUrl: p.media[0]?.url ?? '',
         distanceKm,
         verified: verifiedIds.has(p.id),
-        ...(partner != null && { partner: { isPaidPartner: partner.isPaidPartner } }),
+        ...(firstPartner != null && { partner: { isPaidPartner: firstPartner.isPaidPartner } }),
         ...(score != null && { matchScore: score }),
       };
     });

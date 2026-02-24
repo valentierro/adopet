@@ -5,10 +5,13 @@ import {
   IsBoolean,
   IsOptional,
   IsIn,
+  IsArray,
   Min,
   Max,
   MaxLength,
   MinLength,
+  ArrayMinSize,
+  ArrayMaxSize,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -152,10 +155,18 @@ export class CreatePetDto {
   @IsString()
   initialPhotoUrl?: string;
 
-  @ApiPropertyOptional({ description: 'ID do parceiro (ONG) quando o anúncio é em parceria' })
+  @ApiPropertyOptional({ description: 'ID do parceiro (ONG) quando o anúncio é em parceria (legado; preferir partnerIds)' })
   @IsOptional()
   @IsString()
   partnerId?: string;
+
+  @ApiPropertyOptional({ description: 'IDs dos parceiros (ONG) para anúncio em parceria; badge só aparece após confirmação do parceiro (membro da ONG é auto-confirmado)' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMinSize(0)
+  @ArrayMaxSize(5)
+  partnerIds?: string[];
 
   @ApiPropertyOptional({ enum: ['CASA', 'APARTAMENTO', 'INDIFERENTE'], description: 'Preferência de moradia do tutor (match); INDIFERENTE dá match com casa ou apartamento' })
   @IsOptional()

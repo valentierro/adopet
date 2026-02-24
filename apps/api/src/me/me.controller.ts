@@ -20,6 +20,9 @@ import { UpdatePartnerMemberDto } from '../partners/dto/update-partner-member.dt
 import { CreateCheckoutSessionDto } from './dto/checkout-session.dto';
 import { CreateBillingPortalSessionDto } from './dto/billing-portal.dto';
 import { BecomePartnerDto } from './dto/become-partner.dto';
+import { SubmitKycDto } from './dto/submit-kyc.dto';
+import { SubmitSatisfactionDto } from '../satisfaction/dto/submit-satisfaction.dto';
+import { SatisfactionService } from '../satisfaction/satisfaction.service';
 import type { MeResponseDto } from './dto/me-response.dto';
 import type { PreferencesResponseDto } from './dto/preferences-response.dto';
 import type { MyAdoptionsResponseDto } from './dto/my-adoption-item.dto';
@@ -30,6 +33,8 @@ import type { PartnerMemberDto } from '../partners/partners.service';
 import { TutorStatsResponseDto } from './dto/tutor-stats-response.dto';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import type { InAppNotificationItem } from '../notifications/in-app-notifications.service';
+import { PetPartnershipService } from '../pet-partnership/pet-partnership.service';
+import type { PetPartnershipRequestItem, PetPartnershipItem } from '../pet-partnership/pet-partnership.service';
 
 @ApiTags('me')
 @ApiBearerAuth()
@@ -42,6 +47,8 @@ export class MeController {
     private readonly partnersService: PartnersService,
     private readonly stripeService: StripeService,
     private readonly inAppNotificationsService: InAppNotificationsService,
+    private readonly petPartnershipService: PetPartnershipService,
+    private readonly satisfactionService: SatisfactionService,
   ) {}
 
   @Get('tutor-stats')
@@ -56,13 +63,37 @@ export class MeController {
     return this.meService.getMe(user.id);
   }
 
+  @Get('kyc-status')
+  @ApiOperation({ summary: 'Status da verificação de identidade (KYC) do usuário' })
+  async getKycStatus(@CurrentUser() user: { id: string }) {
+    return this.meService.getKycStatus(user.id);
+  }
+
+  @Post('kyc')
+  @ApiOperation({ summary: 'Enviar documento e selfie para verificação KYC (obrigatório para adotante confirmar adoção)' })
+  async submitKyc(@CurrentUser() user: { id: string }, @Body() dto: SubmitKycDto) {
+    return this.meService.submitKyc(user.id, dto.selfieWithDocKey, dto.consentGiven);
+  }
+
+  @Post('satisfaction-survey')
+  @ApiOperation({ summary: 'Enviar pesquisa de satisfação (confiança, facilidade, comunicação, geral)' })
+  async submitSatisfactionSurvey(@CurrentUser() user: { id: string }, @Body() dto: SubmitSatisfactionDto) {
+    return this.satisfactionService.submit(user.id, dto);
+  }
+
   @Get('notifications')
-  @ApiOperation({ summary: 'Lista notificações in-app (ex.: parceria encerrada)' })
+  @ApiOperation({ summary: 'Lista notificações in-app (ex.: parceria encerrada). archived=true para arquivadas.' })
   async getMyNotifications(
     @CurrentUser() user: { id: string },
     @Query('limit') limit?: string,
+    @Query('archived') archived?: string,
   ): Promise<InAppNotificationItem[]> {
-    return this.inAppNotificationsService.listByUser(user.id, limit ? Math.min(Number(limit), 100) : 50);
+    const archivedFilter = archived === 'true';
+    return this.inAppNotificationsService.listByUser(
+      user.id,
+      limit ? Math.min(Number(limit), 100) : 50,
+      archivedFilter,
+    );
   }
 
   @Get('notifications/unread-count')
@@ -86,6 +117,52 @@ export class MeController {
   ): Promise<{ ok: true }> {
     await this.inAppNotificationsService.markAsRead(user.id, id);
     return { ok: true };
+  }
+
+  @Patch('notifications/archive')
+  @ApiOperation({ summary: 'Arquivar várias notificações' })
+  async archiveNotifications(
+    @CurrentUser() user: { id: string },
+    @Body('ids') ids: unknown,
+  ): Promise<{ archived: number }> {
+    const idList = Array.isArray(ids)
+      ? ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : [];
+    if (idList.length === 0) return { archived: 0 };
+    return this.inAppNotificationsService.archiveMany(user.id, idList);
+  }
+
+  @Patch('notifications/:id/archive')
+  @ApiOperation({ summary: 'Arquivar uma notificação' })
+  async archiveNotification(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+  ): Promise<{ ok: true }> {
+    await this.inAppNotificationsService.archive(user.id, id);
+    return { ok: true };
+  }
+
+  @Delete('notifications/:id')
+  @ApiOperation({ summary: 'Excluir uma notificação' })
+  async deleteNotification(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+  ): Promise<{ ok: true }> {
+    await this.inAppNotificationsService.delete(user.id, id);
+    return { ok: true };
+  }
+
+  @Post('notifications/delete-bulk')
+  @ApiOperation({ summary: 'Excluir várias notificações' })
+  async deleteNotifications(
+    @CurrentUser() user: { id: string },
+    @Body('ids') ids: unknown,
+  ): Promise<{ deleted: number }> {
+    const idList = Array.isArray(ids)
+      ? ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : [];
+    if (idList.length === 0) return { deleted: 0 };
+    return this.inAppNotificationsService.deleteMany(user.id, idList);
   }
 
   @Get('pending-adoption-confirmations')
@@ -187,6 +264,51 @@ export class MeController {
     @Body() dto: UpdateMyPartnerDto,
   ): Promise<PartnerMeDto> {
     return this.partnersService.updateByUserId(user.id, dto);
+  }
+
+  @Get('partner/pet-partnership-requests')
+  @ApiOperation({ summary: 'Solicitações de parceria pendentes (portal do parceiro)' })
+  async getMyPartnerPetPartnershipRequests(@CurrentUser() user: { id: string }): Promise<PetPartnershipRequestItem[]> {
+    const partnerId = await this.petPartnershipService.getPartnerIdForUser(user.id);
+    if (!partnerId) return [];
+    return this.petPartnershipService.listPendingRequestsForPartner(partnerId);
+  }
+
+  @Post('partner/pet-partnership-requests/:id/confirm')
+  @ApiOperation({ summary: 'Aprovar solicitação de parceria no anúncio' })
+  async confirmPetPartnershipRequest(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+  ): Promise<PetPartnershipItem> {
+    return this.petPartnershipService.confirmRequest(id, user.id);
+  }
+
+  @Post('partner/pet-partnership-requests/:id/reject')
+  @ApiOperation({ summary: 'Rejeitar solicitação de parceria no anúncio' })
+  async rejectPetPartnershipRequest(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+  ): Promise<{ message: string }> {
+    await this.petPartnershipService.rejectRequest(id, user.id);
+    return { message: 'OK' };
+  }
+
+  @Get('partner/pet-partnerships')
+  @ApiOperation({ summary: 'Anúncios em parceria confirmada (portal do parceiro)' })
+  async getMyPartnerPetPartnerships(@CurrentUser() user: { id: string }): Promise<PetPartnershipItem[]> {
+    const partnerId = await this.petPartnershipService.getPartnerIdForUser(user.id);
+    if (!partnerId) return [];
+    return this.petPartnershipService.listConfirmedForPartner(partnerId);
+  }
+
+  @Post('partner/pet-partnerships/:id/cancel')
+  @ApiOperation({ summary: 'Encerrar parceria no anúncio (remove badge)' })
+  async cancelPetPartnership(
+    @CurrentUser() user: { id: string },
+    @Param('id') id: string,
+  ): Promise<{ message: string }> {
+    await this.petPartnershipService.cancelPartnership(id, user.id);
+    return { message: 'OK' };
   }
 
   @Post('partner/leave')
@@ -354,12 +476,14 @@ export class MeController {
   }
 
   @Get('adoptions')
-  @ApiOperation({ summary: 'Listar pets que o usuário adotou (como adotante)' })
+  @ApiOperation({ summary: 'Listar adoções: role=ADOPTER (pets que adotou) ou role=TUTOR (anúncios que viraram adoção)' })
   async getMyAdoptions(
     @CurrentUser() user: { id: string },
     @Query('species') species?: 'BOTH' | 'DOG' | 'CAT',
+    @Query('role') role?: 'ADOPTER' | 'TUTOR',
   ): Promise<MyAdoptionsResponseDto> {
-    return this.meService.getMyAdoptions(user.id, species);
+    const roleParam = role === 'TUTOR' ? 'TUTOR' : 'ADOPTER';
+    return this.meService.getMyAdoptions(user.id, species, roleParam);
   }
 
   @Get('lookup-username/:username')

@@ -1,4 +1,45 @@
 /**
+ * Verifica se o erro é 403 com code KYC_REQUIRED (API exige verificação de identidade para confirmar adoção).
+ */
+export function isKycRequiredError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  const match = msg.match(/^API\s+403\s*:\s*(.+)/s);
+  if (!match) return false;
+  try {
+    const body = JSON.parse(match[1].trim());
+    return body?.code === 'KYC_REQUIRED';
+  } catch {
+    return false;
+  }
+}
+
+/** Erro quando o tutor tenta marcar como adotante alguém que ainda não completou KYC (400). */
+export function isKycNotCompleteError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  const match = msg.match(/^API\s+400\s*:\s*(.+)/s);
+  if (!match) return false;
+  try {
+    const body = JSON.parse(match[1].trim());
+    return body?.code === 'KYC_NOT_COMPLETE';
+  } catch {
+    return false;
+  }
+}
+
+/** Mensagem do corpo do erro (ex.: message de KYC_NOT_COMPLETE). */
+export function getApiErrorBodyMessage(error: unknown): string | null {
+  const msg = error instanceof Error ? error.message : String(error);
+  const match = msg.match(/^API\s+\d{3}\s*:\s*(.+)/s);
+  if (!match) return null;
+  try {
+    const body = JSON.parse(match[1].trim());
+    return typeof body?.message === 'string' ? body.message : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Converte erros de API/rede em mensagens amigáveis para o usuário.
  * Evita expor códigos de status, stack traces ou detalhes técnicos.
  */
@@ -9,6 +50,13 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string): strin
   // Erro no formato "API 401: body" ou "API 500: ..." — nunca mostrar cru
   if (/^API\s+\d{3}/i.test(msg)) {
     const body = msg.replace(/^API\s+\d{3}\s*:\s*/i, '').trim();
+    const status = msg.match(/^API\s+(\d{3})/i)?.[1];
+    const isHtmlBody = body.length > 100 && (/<\s*!?DOCTYPE|<\s*html\b|<\s*script\b/i.test(body) || (body.includes('<') && body.includes('>')));
+    if (status && isHtmlBody) {
+      return status === '404'
+        ? 'A URL da API pode estar errada (rota não encontrada). Em desenvolvimento no celular, use o IP do seu computador em EXPO_PUBLIC_API_URL (ex: http://192.168.1.10:3000).'
+        : 'O servidor respondeu com erro. Tente novamente ou faça login (a conta pode ter sido criada).';
+    }
     try {
       const parsed = JSON.parse(body);
       const m = parsed?.message ?? parsed?.error;
@@ -35,6 +83,23 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string): strin
   if (/confirme seu e-mail|confirm.*email|email.*não confirmado/i.test(msg)) {
     return 'Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada e clique no link que enviamos.';
   }
+  // Sessão expirada (token JWT ou refresh): não confundir com login com senha errada
+  if (/jwt expired|token expired|refresh token inválido|refresh token.*expirado|sessão expirada/i.test(msg)) {
+    return 'Sua sessão expirou. Faça login novamente.';
+  }
+  if (/^API\s+401/i.test(msg)) {
+    const body = msg.replace(/^API\s+401\s*:\s*/i, '').trim();
+    try {
+      const parsed = JSON.parse(body);
+      const m = (parsed?.message ?? parsed?.error ?? '');
+      const strMsg = typeof m === 'string' ? m : Array.isArray(m) && m[0] ? String(m[0]) : '';
+      if (/jwt expired|unauthorized/i.test(strMsg) && !/email ou senha inválidos|senha inválidos/i.test(strMsg)) {
+        return 'Sua sessão expirou. Faça login novamente.';
+      }
+    } catch {
+      // não é JSON
+    }
+  }
   // E-mail inválido ou não encontrado (login)
   if (/invalid.*email|email.*invalid|user not found|usuário não encontrado/i.test(msg) && /login|auth|credencial/i.test(msg)) {
     return 'E-mail inválido ou não cadastrado. Tente novamente.';
@@ -49,6 +114,9 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string): strin
     }
     if (/telefone.*cadastrado|cadastrado.*telefone|phone.*already/i.test(msg)) {
       return 'Este telefone já está em uso. Tente fazer login ou use outro número.';
+    }
+    if (/documento.*cadastrado|cadastrado.*documento|CPF.*cadastrado|cadastrado.*CPF|CNPJ.*cadastrado|cadastrado.*CNPJ/i.test(msg)) {
+      return 'Este CPF ou CNPJ já está cadastrado. Tente fazer login ou use outro documento.';
     }
     return 'Este email já está em uso. Tente fazer login ou use outro email.';
   }
@@ -74,7 +142,9 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string): strin
     // 404 em login/cadastro costuma ser rota inexistente (URL da API errada); em outros casos é recurso não encontrado
     return 'Serviço temporariamente indisponível. Tente novamente em instantes.';
   }
-  if (/HMRClient\.registerBundle|registerBundle is not a function/i.test(msg)) {
+  // Só tratar como erro de Metro/bundler se NÃO for resposta da API (evitar confundir 404/500 com HTML que contenha "registerBundle")
+  const isApiError = /^API\s+\d{3}\s*:/i.test(msg);
+  if (!isApiError && /HMRClient\.registerBundle|registerBundle is not a function/i.test(msg)) {
     return 'Erro do ambiente de desenvolvimento. Pare o servidor (Ctrl+C). Na raiz do projeto (pasta adopet) execute: pnpm dev:mobile:clear. Ou, dentro de apps/mobile, execute: pnpm dev:clear. Depois abra o app de novo.';
   }
   if (/request timeout|timeout|timed out|abort|the operation was aborted/i.test(msg) && !/connection|network|fetch/i.test(msg)) {

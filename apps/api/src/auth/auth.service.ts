@@ -16,10 +16,12 @@ import type { AuthResponseDto } from './dto/auth-response.dto';
 import { PartnersService } from '../partners/partners.service';
 import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
+import { FeatureFlagService } from '../feature-flag/feature-flag.service';
 import { getTempPasswordEmailHtml, getTempPasswordEmailText } from '../email/templates/temp-password.email';
 import { getConfirmResetEmailHtml, getConfirmResetEmailText } from '../email/templates/confirm-reset.email';
 import { getConfirmEmailHtml, getConfirmEmailText } from '../email/templates/confirm-email.email';
 import { getSetPasswordEmailHtml, getSetPasswordEmailText } from '../email/templates/set-password.email';
+import { isValidCpfOrCnpj } from '../common/cpf-cnpj';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import type { ChangePasswordDto } from './dto/change-password.dto';
 import * as crypto from 'crypto';
@@ -49,46 +51,59 @@ export class AuthService {
     private readonly partnersService: PartnersService,
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
+    private readonly featureFlagService: FeatureFlagService,
   ) {}
 
-  /** Lê do banco (FeatureFlag) primeiro; se não existir, usa env REQUIRE_EMAIL_VERIFICATION. Assim o painel admin pode ligar/desligar. */
+  /** Lê FeatureFlag (GLOBAL) primeiro; se não existir linha, usa env REQUIRE_EMAIL_VERIFICATION. */
   private async getRequireEmailVerification(): Promise<boolean> {
-    const flag = await this.prisma.featureFlag.findUnique({
+    const fromDb = await this.featureFlagService.isEnabled('REQUIRE_EMAIL_VERIFICATION', {});
+    if (fromDb) return true;
+    const anyRow = await this.prisma.featureFlag.findFirst({
       where: { key: 'REQUIRE_EMAIL_VERIFICATION' },
-      select: { enabled: true },
+      select: { id: true },
     });
-    if (flag !== null) return flag.enabled;
-    return isRequireEmailVerificationFromEnv(this.config);
+    return anyRow ? false : isRequireEmailVerificationFromEnv(this.config);
   }
 
   async signup(dto: SignupDto): Promise<AuthResponseDto | { message: string; requiresEmailVerification: true; userId: string }> {
     const requireVerification = await this.getRequireEmailVerification();
     const emailLower = dto.email.trim().toLowerCase();
     const phoneNormalized = String(dto.phone).replace(/\D/g, '').slice(-11);
+    const documentNormalized = String(dto.document ?? '').replace(/\D/g, '').slice(0, 14);
     const usernameNormalized = dto.username?.trim().toLowerCase().replace(/^@/, '') ?? '';
     if (usernameNormalized.length < 2) {
       throw new BadRequestException('Informe um nome de usuário com pelo menos 2 caracteres (letras minúsculas, números, ponto ou underscore).');
+    }
+    if (documentNormalized.length !== 11 && documentNormalized.length !== 14) {
+      throw new BadRequestException('Informe um CPF (11 dígitos) ou CNPJ (14 dígitos).');
+    }
+    if (!isValidCpfOrCnpj(documentNormalized)) {
+      throw new BadRequestException('CPF ou CNPJ inválido. Verifique os dígitos.');
     }
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
     const phoneToStore = phoneNormalized.length >= 10 ? phoneNormalized : dto.phone;
     let user: { id: string; email: string; emailVerificationToken?: string | null };
     try {
       user = await this.prisma.$transaction(async (tx) => {
-        const [existingByUsername, existingByEmail, existingByPhone] = await Promise.all([
+        const [existingByUsername, existingByEmail, existingByPhone, existingByDocument] = await Promise.all([
           tx.user.findUnique({ where: { username: usernameNormalized }, select: { id: true } }),
           tx.user.findUnique({ where: { email: emailLower }, select: { id: true } }),
           phoneNormalized.length >= 10
             ? tx.user.findFirst({ where: { phone: phoneNormalized }, select: { id: true } })
             : Promise.resolve(null),
+          tx.user.findUnique({ where: { document: documentNormalized }, select: { id: true } }),
         ]);
         if (existingByUsername) {
           throw new ConflictException('Este nome de usuário já está em uso. Escolha outro.');
         }
         if (existingByEmail) {
-          throw new ConflictException('Email já cadastrado');
+          throw new ConflictException('Este e-mail já possui uma conta. Use outro e-mail ou faça login.');
         }
         if (existingByPhone) {
-          throw new ConflictException('Telefone já cadastrado');
+          throw new ConflictException('Este telefone já está cadastrado.');
+        }
+        if (existingByDocument) {
+          throw new ConflictException('Este CPF/CNPJ já possui uma conta. Só é permitida uma conta por documento.');
         }
         if (requireVerification) {
           const emailVerificationToken = crypto.randomBytes(32).toString('hex');
@@ -98,6 +113,7 @@ export class AuthService {
               passwordHash,
               name: dto.name.trim(),
               phone: phoneToStore,
+              document: documentNormalized,
               username: usernameNormalized,
               emailVerificationToken,
             },
@@ -109,6 +125,7 @@ export class AuthService {
             passwordHash,
             name: dto.name.trim(),
             phone: phoneToStore,
+            document: documentNormalized,
             username: usernameNormalized,
           },
         });
@@ -121,7 +138,8 @@ export class AuthService {
         if (prismaTarget.includes('email')) throw new ConflictException('Email já cadastrado');
         if (prismaTarget.includes('username')) throw new ConflictException('Este nome de usuário já está em uso. Escolha outro.');
         if (prismaTarget.includes('phone')) throw new ConflictException('Telefone já cadastrado');
-        throw new ConflictException('Dados já cadastrados. Use outro e-mail, nome de usuário ou telefone.');
+        if (prismaTarget.includes('document')) throw new ConflictException('Documento (CPF ou CNPJ) já cadastrado');
+        throw new ConflictException('Dados já cadastrados. Use outro e-mail, documento, nome de usuário ou telefone.');
       }
       throw e;
     }
@@ -187,11 +205,13 @@ export class AuthService {
       documentType = 'CNPJ';
       document = digits;
     }
+    if (!document) throw new BadRequestException('Informe CPF ou CNPJ.');
     const signupData: SignupDto = {
       email: dto.email,
       password: dto.password,
       name: dto.name,
       phone: dto.phone,
+      document,
       username: dto.username,
     };
     const signupResult = await this.signup(signupData);

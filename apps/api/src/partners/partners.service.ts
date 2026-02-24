@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, ForbiddenException, NotFoundException, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { Prisma } from '../../api/prisma-generated';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 import { EmailService } from '../email/email.service';
@@ -36,7 +37,6 @@ import type { CreatePartnerServiceDto } from './dto/create-partner-service.dto';
 import type { UpdatePartnerServiceDto } from './dto/update-partner-service.dto';
 import type { PartnerServiceResponseDto } from './dto/partner-service-response.dto';
 import { PARTNER_MEMBER_ROLES } from './dto/add-partner-member.dto';
-
 function slugify(name: string): string {
   return name
     .trim()
@@ -84,12 +84,17 @@ export class PartnersService {
     private readonly inAppNotificationsService: InAppNotificationsService,
   ) {}
 
-  /** Retorna o parceiro do usuário (portal do parceiro). Null se não for parceiro. Sempre permitido para renovar assinatura. */
+  /** Retorna o parceiro do usuário (portal do parceiro). Admin pelo Partner.userId; membro de ONG pelo PartnerMember. Null se não for parceiro. */
   async getByUserId(userId: string): Promise<PartnerMeDto | null> {
-    const partner = await this.prisma.partner.findUnique({
+    const partnerAsAdmin = await this.prisma.partner.findUnique({
       where: { userId },
     });
-    return partner ? this.toMeDto(partner) : null;
+    if (partnerAsAdmin) return this.toMeDto(partnerAsAdmin);
+    const membership = await this.prisma.partnerMember.findFirst({
+      where: { userId },
+      include: { partner: true },
+    });
+    return membership?.partner ? this.toMeDto(membership.partner) : null;
   }
 
   private ensurePaidPartner<T extends { isPaidPartner: boolean }>(partner: T | null): asserts partner is T {
@@ -306,15 +311,28 @@ export class PartnersService {
     return this.toMeDto(updated);
   }
 
-  /** Lista parceiros ativos e aprovados (público – app). Parceiros pagos aparecem mesmo sem approvedAt. */
-  async findActivePublic(type?: string): Promise<PartnerPublicDto[]> {
+  /** Lista parceiros ativos e aprovados (público – app). Parceiros pagos aparecem mesmo sem approvedAt. q = busca por nome ou slug (autocomplete). */
+  async findActivePublic(type?: string, q?: string): Promise<PartnerPublicDto[]> {
+    const where: Prisma.PartnerWhereInput = {
+      active: true,
+      OR: [{ approvedAt: { not: null } }, { isPaidPartner: true }],
+      ...(type ? { type } : {}),
+    };
+    if (q?.trim()) {
+      const term = q.trim();
+      where.AND = [
+        {
+          OR: [
+            { name: { contains: term, mode: 'insensitive' } },
+            { slug: { contains: term, mode: 'insensitive' } },
+          ],
+        },
+      ];
+    }
     const list = await this.prisma.partner.findMany({
-      where: {
-        active: true,
-        OR: [{ approvedAt: { not: null } }, { isPaidPartner: true }],
-        ...(type ? { type } : {}),
-      },
+      where,
       orderBy: [{ isPaidPartner: 'desc' }, { name: 'asc' }],
+      take: q?.trim() ? 20 : undefined,
     });
     return list.map((p) => this.toPublicDto(p));
   }

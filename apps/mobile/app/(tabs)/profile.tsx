@@ -1,5 +1,6 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Share, Linking } from 'react-native';
 import { Image } from 'expo-image';
@@ -8,8 +9,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PrimaryButton, SecondaryButton, LoadingLogo, PageIntro, VerifiedBadge, TutorLevelBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useClientConfig } from '../../src/hooks/useClientConfig';
 import { useAuthStore } from '../../src/stores/authStore';
-import { getMe, getTutorStats, getPendingAdoptionConfirmations, deactivateAccount, exportMyData } from '../../src/api/me';
+import { getMe, getTutorStats, getPendingAdoptionConfirmations, getPreferences, getMyNotificationsUnreadCount, deactivateAccount, exportMyData } from '../../src/api/me';
 import { getAdminStats } from '../../src/api/admin';
 import { getVerificationStatus } from '../../src/api/verification';
 import { presign, confirmAvatarUpload } from '../../src/api/uploads';
@@ -19,13 +21,56 @@ import { spacing } from '../../src/theme';
 /** URL para doação/apoio ao app (pode usar deep link de volta ao app no futuro). */
 const DONATION_URL = 'https://appadopet.com.br/#apoie';
 
-const APP_VERSION = Constants.expoConfig?.version ?? '1.0.25';
+const APP_VERSION = Constants.expoConfig?.version ?? '1.1.0';
+
+const HOUSING_LABEL: Record<string, string> = { CASA: 'Casa', APARTAMENTO: 'Apartamento' };
+const TIME_AT_HOME_LABEL: Record<string, string> = { MOST_DAY: 'Maior parte do dia', HALF_DAY: 'Metade do dia', LITTLE: 'Pouco tempo' };
+const PETS_ALLOWED_LABEL: Record<string, string> = { YES: 'Sim', NO: 'Não', UNSURE: 'Não sei' };
+const EXPERIENCE_LABEL: Record<string, string> = { NEVER: 'Nunca tive', HAD_BEFORE: 'Já tive', HAVE_NOW: 'Tenho atualmente' };
+const HOUSEHOLD_AGREES_LABEL: Record<string, string> = { YES: 'Sim, todos concordam', DISCUSSING: 'Ainda conversando' };
+const ACTIVITY_LEVEL_LABEL: Record<string, string> = { LOW: 'Calmo', MEDIUM: 'Moderado', HIGH: 'Ativo' };
+const PREFERRED_PET_AGE_LABEL: Record<string, string> = { PUPPY: 'Filhote', ADULT: 'Adulto', SENIOR: 'Idoso', ANY: 'Qualquer' };
+const COMMITS_TO_VET_CARE_LABEL: Record<string, string> = { YES: 'Sim', NO: 'Não' };
+const WALK_FREQUENCY_LABEL: Record<string, string> = { DAILY: 'Diariamente', FEW_TIMES_WEEK: 'Algumas vezes por semana', RARELY: 'Raramente', NOT_APPLICABLE: 'Não se aplica' };
+const MONTHLY_BUDGET_LABEL: Record<string, string> = { LOW: 'Até ~R$ 100/mês', MEDIUM: '~R$ 100–300/mês', HIGH: 'Acima de ~R$ 300/mês' };
+const SPECIES_LABEL: Record<string, string> = { DOG: 'Cachorro', CAT: 'Gato', BOTH: 'Ambos' };
+const SIZE_PREF_LABEL: Record<string, string> = { small: 'Pequeno', medium: 'Médio', large: 'Grande', xlarge: 'Muito grande', both: 'Qualquer' };
+const SEX_PREF_LABEL: Record<string, string> = { male: 'Macho', female: 'Fêmea', both: 'Qualquer' };
 
 export default function ProfileScreen() {
   const router = useRouter();
   const { colors } = useTheme();
+  const { config: clientConfig } = useClientConfig();
+  const userId = useAuthStore((s) => s.user?.id);
   const logout = useAuthStore((s) => s.logout);
+  const setShowLogoutToast = useAuthStore((s) => s.setShowLogoutToast);
   const setUser = useAuthStore((s) => s.setUser);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) router.replace('/(auth)/welcome');
+    }, [userId, router]),
+  );
+
+  const [menuContaExpanded, setMenuContaExpanded] = useState(false);
+  const [menuAdocaoExpanded, setMenuAdocaoExpanded] = useState(false);
+  const [menuParceiroExpanded, setMenuParceiroExpanded] = useState(false);
+  const [menuSuporteExpanded, setMenuSuporteExpanded] = useState(false);
+  const [menuLegalExpanded, setMenuLegalExpanded] = useState(false);
+  const [menuApoioExpanded, setMenuApoioExpanded] = useState(false);
+  const [menuAdminExpanded, setMenuAdminExpanded] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      setMenuContaExpanded(false);
+      setMenuAdocaoExpanded(false);
+      setMenuParceiroExpanded(false);
+      setMenuSuporteExpanded(false);
+      setMenuLegalExpanded(false);
+      setMenuApoioExpanded(false);
+      setMenuAdminExpanded(false);
+    }, []),
+  );
 
   const queryClient = useQueryClient();
   const { data: user, isLoading, refetch: refetchMe } = useQuery({
@@ -55,11 +100,25 @@ export default function ProfileScreen() {
     enabled: user?.isAdmin === true,
     staleTime: 60_000,
   });
+  const { data: preferences } = useQuery({
+    queryKey: ['me', 'preferences'],
+    queryFn: getPreferences,
+    enabled: !!user,
+    staleTime: 60_000,
+  });
+  const { data: notificationsUnread } = useQuery({
+    queryKey: ['me', 'notifications-unread-count'],
+    queryFn: getMyNotificationsUnreadCount,
+    enabled: !!user,
+    staleTime: 60_000,
+  });
+  const notificationsUnreadCount = notificationsUnread?.count ?? 0;
   const adminPendingTotal =
     user?.isAdmin && adminStats
       ? (adminStats.pendingPetsCount ?? 0) +
         (adminStats.pendingReportsCount ?? 0) +
         (adminStats.pendingAdoptionsByTutorCount ?? 0) +
+        (adminStats.adoptionsPendingAdopetConfirmationCount ?? 0) +
         (adminStats.pendingVerificationsCount ?? 0)
       : 0;
 
@@ -70,10 +129,10 @@ export default function ProfileScreen() {
   const userVerificationRequest = verificationStatus?.requests?.find(
     (r) => r.type === 'USER_VERIFIED',
   );
-  const canRequestUserVerification = !user?.verified && !userVerificationRequest;
+  const canRequestUserVerification = !user?.verified && !userVerificationRequest && user?.kycStatus !== 'VERIFIED';
   const verificationFeedback =
     userVerificationRequest?.status === 'PENDING'
-      ? 'Solicitação em análise'
+      ? 'Solicitação de verificação de perfil em Análise'
       : userVerificationRequest?.status === 'REJECTED'
         ? userVerificationRequest.rejectionReason
           ? `Solicitação não aprovada: ${userVerificationRequest.rejectionReason}. Você pode solicitar novamente após ajustes.`
@@ -82,6 +141,8 @@ export default function ProfileScreen() {
 
   const profileComplete = !!(user?.avatarUrl && user?.phone);
   const showCompleteProfileBanner = !profileComplete && !!user;
+  const [infoAdocaoExpanded, setInfoAdocaoExpanded] = useState(false);
+  const [preferenciasBuscaExpanded, setPreferenciasBuscaExpanded] = useState(false);
 
   const uploadAvatarMutation = useMutation({
     mutationFn: async (uri: string) => {
@@ -123,7 +184,8 @@ export default function ProfileScreen() {
 
   const handleLogout = async () => {
     await logout();
-    router.replace('/(auth)/welcome');
+    setShowLogoutToast(true);
+    router.replace('/(tabs)/feed');
   };
 
   const handleExportData = useCallback(async () => {
@@ -189,13 +251,37 @@ export default function ProfileScreen() {
       </TouchableOpacity>
       <View style={styles.nameRow}>
         <Text style={[styles.name, { color: colors.textPrimary }]}>{user?.name ?? 'Carregando...'}</Text>
-        {user?.verified && (
+        {(user?.verified || user?.kycStatus === 'VERIFIED') && (
           <VerifiedBadge size={18} showLabel backgroundColor={colors.primary} />
         )}
       </View>
       <Text style={[styles.email, { color: colors.textSecondary }]}>{user?.email ?? ''}</Text>
       {user?.username ? (
         <Text style={[styles.username, { color: colors.textSecondary }]}>@{user.username}</Text>
+      ) : null}
+      {user?.kycStatus === 'VERIFIED' && !user?.partner ? (
+        <View style={[styles.kycBlockWrap, { backgroundColor: colors.primary + '18' }]}>
+          <View style={[styles.kycPendingRow, { marginBottom: 0, backgroundColor: 'transparent' }]}>
+            <Ionicons name="shield-checkmark" size={18} color={colors.primary} style={styles.kycPendingIcon} />
+            <Text style={[styles.kycPendingText, { color: colors.primary }]}>Identidade verificada</Text>
+            <Text style={[styles.kycPendingSubtext, { color: colors.textSecondary }]}>Documento e selfie aprovados</Text>
+          </View>
+          <Text style={[styles.verificationHint, styles.kycBlockDisclaimer, { color: colors.textSecondary }]}>
+            O selo "Verificado" indica que o perfil ou anúncio passou por análise da equipe Adopet (fotos e dados). O Adopet não garante identidade, posse do animal ou sucesso da adoção. O encontro responsável com o tutor continua essencial.
+          </Text>
+        </View>
+      ) : null}
+      {user?.kycStatus === 'PENDING' && !user?.partner ? (
+        <View style={[styles.kycBlockWrap, { backgroundColor: (colors.warning || '#d97706') + '18' }]}>
+          <View style={[styles.kycPendingRow, { marginBottom: 0, backgroundColor: 'transparent' }]}>
+            <Ionicons name="time-outline" size={18} color={colors.warning || '#d97706'} style={styles.kycPendingIcon} />
+            <Text style={[styles.kycPendingText, { color: colors.warning || '#d97706' }]}>Verificação em análise</Text>
+            <Text style={[styles.kycPendingSubtext, { color: colors.textSecondary }]}>O resultado pode levar até 48 horas</Text>
+          </View>
+          <Text style={[styles.verificationHint, styles.kycBlockDisclaimer, { color: colors.textSecondary }]}>
+            O selo "Verificado" indica que o perfil ou anúncio passou por análise da equipe Adopet (fotos e dados). O Adopet não garante identidade, posse do animal ou sucesso da adoção. O encontro responsável com o tutor continua essencial.
+          </Text>
+        </View>
       ) : null}
       {user?.partnerMemberships && user.partnerMemberships.length > 0 ? (
         <View style={[styles.badgeRow, { backgroundColor: colors.primary + '18' }]}>
@@ -205,37 +291,149 @@ export default function ProfileScreen() {
           </Text>
         </View>
       ) : null}
-      {user?.city ? (
-        <Text style={[styles.city, { color: colors.textSecondary }]}>{user.city}</Text>
-      ) : null}
-      {user?.bio ? (
-        <Text style={[styles.bio, { color: colors.textSecondary }]}>{user.bio}</Text>
-      ) : null}
-      {(user?.housingType || user?.hasYard !== undefined || user?.hasOtherPets !== undefined || user?.hasChildren !== undefined || user?.timeAtHome) ? (
-        <View style={[styles.housingWrap, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.housingTitle, { color: colors.textPrimary }]}>Informações para adoção</Text>
-          <Text style={[styles.housingText, { color: colors.textSecondary }]}>
-            {[
-              user.housingType === 'CASA' ? 'Casa' : user.housingType === 'APARTAMENTO' ? 'Apartamento' : null,
-              user.hasYard === true ? 'Tem quintal' : user.hasYard === false ? 'Sem quintal' : null,
-              user.hasOtherPets === true ? 'Tem outros pets' : user.hasOtherPets === false ? 'Sem outros pets' : null,
-              user.hasChildren === true ? 'Tem crianças' : user.hasChildren === false ? 'Sem crianças' : null,
-              user.timeAtHome === 'MOST_DAY' ? 'Em casa a maior parte do dia' : user.timeAtHome === 'HALF_DAY' ? 'Em casa metade do dia' : user.timeAtHome === 'LITTLE' ? 'Pouco tempo em casa' : null,
-            ].filter(Boolean).join(' • ')}
-          </Text>
+      <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
+        <View style={styles.sectionTitleRow}>
+          <Ionicons name="document-text-outline" size={20} color={colors.primary} />
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Sobre mim</Text>
         </View>
-      ) : null}
+        {user?.city ? (
+          <View style={styles.profileFieldRow}>
+            <Ionicons name="location-outline" size={18} color={colors.textSecondary} />
+            <Text style={[styles.profileFieldValue, { color: colors.textSecondary }]}>{user.city}</Text>
+          </View>
+        ) : null}
+        {!user?.city && (
+          <View style={styles.profileFieldRow}>
+            <Ionicons name="location-outline" size={18} color={colors.textSecondary} />
+            <Text style={[styles.profileFieldValue, { color: colors.textSecondary, fontStyle: 'italic' }]}>Não informado</Text>
+          </View>
+        )}
+        {user?.bio ? (
+          <Text style={[styles.profileBio, { color: colors.textSecondary }]}>{user.bio}</Text>
+        ) : (
+          <Text style={[styles.profileBio, { color: colors.textSecondary, fontStyle: 'italic' }]}>Não informado</Text>
+        )}
+      </View>
+
+      <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
+        <TouchableOpacity
+          style={styles.sectionTitleRow}
+          onPress={() => setInfoAdocaoExpanded((e) => !e)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="paw-outline" size={20} color={colors.primary} />
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary, flex: 1 }]}>Informações para adoção</Text>
+          <Ionicons name={infoAdocaoExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
+        </TouchableOpacity>
+        {infoAdocaoExpanded && (
+          <>
+        <Text style={[styles.profileBio, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+          Usadas no cálculo de compatibilidade (match) com os pets.
+        </Text>
+        <View style={styles.triageGrid}>
+          <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+            <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Moradia</Text>
+            <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{user?.housingType ? (HOUSING_LABEL[user.housingType] ?? user.housingType) : 'Não informado'}</Text>
+          </View>
+          <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+            <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Quintal</Text>
+            <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{user?.hasYard === true ? 'Sim' : user?.hasYard === false ? 'Não' : 'Não informado'}</Text>
+          </View>
+          <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+            <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Outros pets</Text>
+            <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{user?.hasOtherPets === true ? 'Sim' : user?.hasOtherPets === false ? 'Não' : 'Não informado'}</Text>
+          </View>
+          <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+            <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Crianças em casa</Text>
+            <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{user?.hasChildren === true ? 'Sim' : user?.hasChildren === false ? 'Não' : 'Não informado'}</Text>
+          </View>
+          <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+            <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Tempo em casa</Text>
+            <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{user?.timeAtHome ? (TIME_AT_HOME_LABEL[user.timeAtHome] ?? user.timeAtHome) : 'Não informado'}</Text>
+          </View>
+          <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+            <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Pets permitidos no local</Text>
+            <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{user?.petsAllowedAtHome ? (PETS_ALLOWED_LABEL[user.petsAllowedAtHome] ?? user.petsAllowedAtHome) : 'Não informado'}</Text>
+          </View>
+          <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+            <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Experiência com cachorro</Text>
+            <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{user?.dogExperience ? (EXPERIENCE_LABEL[user.dogExperience] ?? user.dogExperience) : 'Não informado'}</Text>
+          </View>
+          <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+            <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Experiência com gato</Text>
+            <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{user?.catExperience ? (EXPERIENCE_LABEL[user.catExperience] ?? user.catExperience) : 'Não informado'}</Text>
+          </View>
+          <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+            <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Concordância em casa</Text>
+            <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{user?.householdAgreesToAdoption ? (HOUSEHOLD_AGREES_LABEL[user.householdAgreesToAdoption] ?? user.householdAgreesToAdoption) : 'Não informado'}</Text>
+          </View>
+          <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+            <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Nível de atividade</Text>
+            <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{user?.activityLevel ? (ACTIVITY_LEVEL_LABEL[user.activityLevel] ?? user.activityLevel) : 'Não informado'}</Text>
+          </View>
+          <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+            <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Idade preferida do pet</Text>
+            <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{user?.preferredPetAge ? (PREFERRED_PET_AGE_LABEL[user.preferredPetAge] ?? user.preferredPetAge) : 'Não informado'}</Text>
+          </View>
+          <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+            <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Cuidados veterinários</Text>
+            <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{user?.commitsToVetCare ? (COMMITS_TO_VET_CARE_LABEL[user.commitsToVetCare] ?? user.commitsToVetCare) : 'Não informado'}</Text>
+          </View>
+          <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+            <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Frequência de passeios</Text>
+            <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{user?.walkFrequency ? (WALK_FREQUENCY_LABEL[user.walkFrequency] ?? user.walkFrequency) : 'Não informado'}</Text>
+          </View>
+          <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+            <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Orçamento mensal para o pet</Text>
+            <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{user?.monthlyBudgetForPet ? (MONTHLY_BUDGET_LABEL[user.monthlyBudgetForPet] ?? user.monthlyBudgetForPet) : 'Não informado'}</Text>
+          </View>
+        </View>
+        <View style={[styles.whyAdoptBlock, { borderTopColor: colors.border ?? colors.textSecondary + '25' }]}>
+          <Text style={[styles.triageItemLabel, { color: colors.textSecondary, marginBottom: 4 }]}>Por que quer adotar</Text>
+          <Text style={[styles.profileBio, { color: colors.textPrimary }]}>{user?.whyAdopt || 'Não informado'}</Text>
+        </View>
+          </>
+        )}
+      </View>
+
+      {preferences && (
+        <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
+          <TouchableOpacity
+            style={styles.sectionTitleRow}
+            onPress={() => setPreferenciasBuscaExpanded((e) => !e)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="search-outline" size={20} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary, flex: 1 }]}>Preferências de busca</Text>
+            <Ionicons name={preferenciasBuscaExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
+          </TouchableOpacity>
+          {preferenciasBuscaExpanded && (
+          <>
+          <Text style={[styles.profileBio, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+            Filtros e preferências usados no feed e no match.
+          </Text>
+          <View style={styles.triageGrid}>
+            <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+              <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Espécie</Text>
+              <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{SPECIES_LABEL[preferences.species] ?? preferences.species}</Text>
+            </View>
+            <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+              <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Porte preferido</Text>
+              <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{preferences.sizePref ? (SIZE_PREF_LABEL[preferences.sizePref] ?? preferences.sizePref) : 'Não informado'}</Text>
+            </View>
+            <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+              <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Sexo preferido do pet</Text>
+              <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{preferences.sexPref ? (SEX_PREF_LABEL[preferences.sexPref] ?? preferences.sexPref) : 'Não informado'}</Text>
+            </View>
+          </View>
+          </>
+          )}
+        </View>
+      )}
       {verificationFeedback && (
         <Text style={[styles.verificationFeedback, { color: colors.textSecondary }]}>
           {verificationFeedback}
         </Text>
-      )}
-      {(verificationFeedback || canRequestUserVerification || user?.verified) && (
-        <View style={[styles.verificationDisclaimer, { backgroundColor: colors.surface, borderColor: colors.textSecondary + '40' }]}>
-          <Text style={[styles.verificationHint, { color: colors.textSecondary }]}>
-            O selo "Verificado" indica que o perfil ou anúncio passou por análise da equipe Adopet (fotos e dados). O Adopet não garante identidade, posse do animal ou sucesso da adoção. O encontro responsável com o tutor continua essencial.
-          </Text>
-        </View>
       )}
       {canRequestUserVerification && (
         <View style={styles.verificationCta}>
@@ -260,176 +458,345 @@ export default function ProfileScreen() {
           <TutorLevelBadge tutorStats={tutorStats} showDetails compact={false} />
         </View>
       )}
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/profile-edit')}
-      >
-        <View style={styles.menuItemLeft}>
-          <Ionicons name="person-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Editar perfil</Text>
-        </View>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/change-password')}
-      >
-        <View style={styles.menuItemLeft}>
-          <Ionicons name="lock-closed-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Segurança (alterar senha)</Text>
-        </View>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/preferences')}
-      >
-        <View style={styles.menuItemLeft}>
-          <Ionicons name="settings-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Preferências</Text>
-        </View>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/bug-report-suggestion')}
-      >
-        <View style={styles.menuItemLeft}>
-          <Ionicons name="bug-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Bug report / Sugestões</Text>
-        </View>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/saved-searches')}
-      >
-        <View style={styles.menuItemLeft}>
-          <Ionicons name="search-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Buscas salvas</Text>
-        </View>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      {pendingConfirmCount > 0 && (
+      {/* Conta */}
+      <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
         <TouchableOpacity
-          style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-          onPress={() => router.push('/adoption-confirm')}
+          style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
+          onPress={() => setMenuContaExpanded((e) => !e)}
+          activeOpacity={0.7}
         >
-          <View style={styles.menuItemLeft}>
-            <Ionicons name="checkmark-done-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-            <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Confirmar adoção</Text>
-            <View style={[styles.pendingBadge, { backgroundColor: colors.primary }]}>
-              <Text style={styles.pendingBadgeText}>{pendingConfirmCount}</Text>
-            </View>
-          </View>
-          <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+          <Ionicons name="person-circle-outline" size={22} color={colors.primary} />
+          <Text style={[styles.menuSectionHeaderText, { color: colors.textPrimary }]}>Conta</Text>
+          <Ionicons name={menuContaExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
         </TouchableOpacity>
-      )}
-      {user?.partner && (user.partner.isPaidPartner || user.partner.type === 'ONG') && (
-        <TouchableOpacity
-          style={[
-            styles.menuItem,
-            styles.menuItemPartner,
-            { borderBottomColor: colors.surface, borderLeftColor: colors.primary },
-          ]}
-          onPress={() => router.push('/partner-portal')}
-        >
-          <View style={styles.menuItemLeft}>
-            <Ionicons name="business-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-            <Text style={[styles.menuLabel, { color: colors.primary }]}>Portal do parceiro</Text>
-          </View>
-          <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-        </TouchableOpacity>
-      )}
-      {user?.partner && !user.partner.isPaidPartner && user.partner.type !== 'ONG' && (
-        <TouchableOpacity
-          style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-          onPress={() => router.push('/partner-subscription')}
-        >
-          <View style={styles.menuItemLeft}>
-            <Ionicons name="card-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-            <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Renovar assinatura do parceiro</Text>
-          </View>
-          <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-        </TouchableOpacity>
-      )}
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/partners')}
-      >
-        <View style={styles.menuItemLeft}>
-          <Ionicons name="people-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Parceiros Adopet</Text>
-        </View>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => {
-          Linking.canOpenURL(DONATION_URL).then((supported) => {
-            if (supported) Linking.openURL(DONATION_URL);
-            else Alert.alert('Abrir link', 'Não foi possível abrir a página. Tente acessar pelo navegador: ' + DONATION_URL);
-          });
-        }}
-      >
-        <View style={styles.menuItemLeft}>
-          <Ionicons name="heart" size={22} color={colors.primary} style={styles.menuIcon} />
-          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Apoiar o Adopet</Text>
-        </View>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/terms')}
-      >
-        <View style={styles.menuItemLeft}>
-          <Ionicons name="document-text-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Termos de Uso</Text>
-        </View>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={() => router.push('/privacy')}
-      >
-        <View style={styles.menuItemLeft}>
-          <Ionicons name="shield-checkmark-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Política de Privacidade</Text>
-        </View>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-        onPress={handleExportData}
-      >
-        <View style={styles.menuItemLeft}>
-          <Ionicons name="download-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-          <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Exportar meus dados (LGPD)</Text>
-        </View>
-        <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-      </TouchableOpacity>
-      {user?.isAdmin && (
-        <TouchableOpacity
-          style={[
-            styles.menuItem,
-            styles.menuItemAdmin,
-            { borderBottomColor: colors.surface, borderLeftColor: colors.primary },
-          ]}
-          onPress={() => router.push('/admin')}
-        >
-          <View style={styles.menuItemLeft}>
-            <Ionicons name="shield-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-            <Text style={[styles.menuLabel, { color: colors.primary }]}>Administração</Text>
-            {adminPendingTotal > 0 && (
-              <View style={[styles.pendingBadge, { backgroundColor: colors.primary, marginLeft: spacing.sm }]}>
-                <Text style={styles.pendingBadgeText}>
-                  {adminPendingTotal > 99 ? '99+' : adminPendingTotal}
-                </Text>
+        {menuContaExpanded && (
+          <>
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+              onPress={() => router.push('/profile-edit')}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="person-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Editar perfil</Text>
               </View>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+              onPress={() => router.push('/change-password')}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="lock-closed-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Segurança (alterar senha)</Text>
+              </View>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+            {user?.kycStatus === 'PENDING' ? null : user?.kycStatus === 'VERIFIED' ? (
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                onPress={() => router.push('/kyc')}
+              >
+                <View style={styles.menuItemLeft}>
+                  <Ionicons name="shield-checkmark" size={22} color={colors.primary} style={styles.menuIcon} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Verificação concluída</Text>
+                    <Text style={[styles.menuItemSubtext, { color: colors.textSecondary }]}>Documento e selfie aprovados</Text>
+                  </View>
+                </View>
+                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                onPress={() => router.push('/kyc')}
+              >
+                <View style={styles.menuItemLeft}>
+                  <Ionicons name="shield-checkmark-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Solicitar verificação (KYC)</Text>
+                    <Text style={[styles.menuItemSubtext, { color: colors.textSecondary }]}>Documento e selfie para adoções</Text>
+                  </View>
+                </View>
+                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
             )}
-          </View>
-          <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+              onPress={() => router.push('/notifications')}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="notifications-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Notificações</Text>
+                {notificationsUnreadCount > 0 && (
+                  <View style={[styles.pendingBadge, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.pendingBadgeText}>{notificationsUnreadCount > 99 ? '99+' : notificationsUnreadCount}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+              onPress={() => router.push('/preferences')}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="settings-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Preferências</Text>
+              </View>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+              onPress={() => router.push('/saved-searches')}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="search-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Buscas salvas</Text>
+              </View>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+
+      {/* Adoção */}
+      {pendingConfirmCount > 0 && (
+        <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
+          <TouchableOpacity
+            style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
+            onPress={() => setMenuAdocaoExpanded((e) => !e)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="heart-outline" size={22} color={colors.primary} />
+            <Text style={[styles.menuSectionHeaderText, { color: colors.textPrimary }]}>Adoção</Text>
+            <Ionicons name={menuAdocaoExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
+          </TouchableOpacity>
+          {menuAdocaoExpanded && (
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+              onPress={() => router.push('/adoption-confirm')}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="checkmark-done-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Confirmar adoção</Text>
+                <View style={[styles.pendingBadge, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.pendingBadgeText}>{pendingConfirmCount}</Text>
+                </View>
+              </View>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* Parceiro */}
+      <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
+        <TouchableOpacity
+          style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
+          onPress={() => setMenuParceiroExpanded((e) => !e)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="people-outline" size={22} color={colors.primary} />
+          <Text style={[styles.menuSectionHeaderText, { color: colors.textPrimary }]}>Parceiro</Text>
+          <Ionicons name={menuParceiroExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
         </TouchableOpacity>
+        {menuParceiroExpanded && (
+          <>
+            {user?.partner && (user.partner.isPaidPartner || user.partner.type === 'ONG') && (
+              <TouchableOpacity
+                style={[
+                  styles.menuItem,
+                  styles.menuItemPartner,
+                  { borderBottomColor: colors.surface, borderLeftColor: colors.primary },
+                ]}
+                onPress={() => router.push('/partner-portal')}
+              >
+                <View style={styles.menuItemLeft}>
+                  <Ionicons name="business-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                  <Text style={[styles.menuLabel, { color: colors.primary }]}>Portal do parceiro</Text>
+                </View>
+                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+            )}
+            {user?.partner && !user.partner.isPaidPartner && user.partner.type !== 'ONG' && (
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                onPress={() => router.push('/partner-subscription')}
+              >
+                <View style={styles.menuItemLeft}>
+                  <Ionicons name="card-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                  <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Renovar assinatura do parceiro</Text>
+                </View>
+                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+              onPress={() => router.push('/partners')}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="people-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Parceiros Adopet</Text>
+              </View>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+
+      {/* Suporte */}
+      <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
+        <TouchableOpacity
+          style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
+          onPress={() => setMenuSuporteExpanded((e) => !e)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.primary} />
+          <Text style={[styles.menuSectionHeaderText, { color: colors.textPrimary }]}>Suporte</Text>
+          <Ionicons name={menuSuporteExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
+        </TouchableOpacity>
+        {menuSuporteExpanded && (
+          <>
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+              onPress={() => router.push('/bug-report-suggestion')}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="bug-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Bug report / Sugestões</Text>
+              </View>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+              onPress={() => router.push('/survey')}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="stats-chart-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Avaliar o app</Text>
+                <Text style={[styles.menuItemSubtext, { color: colors.textSecondary }]}>Pesquisa de satisfação</Text>
+              </View>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+
+      {/* Legal e privacidade */}
+      <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
+        <TouchableOpacity
+          style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
+          onPress={() => setMenuLegalExpanded((e) => !e)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="document-text-outline" size={22} color={colors.primary} />
+          <Text style={[styles.menuSectionHeaderText, { color: colors.textPrimary }]}>Legal e privacidade</Text>
+          <Ionicons name={menuLegalExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
+        </TouchableOpacity>
+        {menuLegalExpanded && (
+          <>
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+              onPress={() => router.push('/terms')}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="document-text-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Termos de Uso</Text>
+              </View>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+              onPress={() => router.push('/privacy')}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="shield-checkmark-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Política de Privacidade</Text>
+              </View>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+              onPress={handleExportData}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="download-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Exportar meus dados (LGPD)</Text>
+              </View>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+
+      {/* Apoio (visível apenas com flag DONATIONS_UI_ENABLED) */}
+      {clientConfig.donationsUiEnabled && (
+        <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
+          <TouchableOpacity
+            style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
+            onPress={() => setMenuApoioExpanded((e) => !e)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="heart" size={22} color={colors.primary} />
+            <Text style={[styles.menuSectionHeaderText, { color: colors.textPrimary }]}>Apoio</Text>
+            <Ionicons name={menuApoioExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
+          </TouchableOpacity>
+          {menuApoioExpanded && (
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+              onPress={() => {
+                Linking.canOpenURL(DONATION_URL).then((supported) => {
+                  if (supported) Linking.openURL(DONATION_URL);
+                  else Alert.alert('Abrir link', 'Não foi possível abrir a página. Tente acessar pelo navegador: ' + DONATION_URL);
+                });
+              }}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="heart" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Apoiar o Adopet</Text>
+              </View>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {/* Administração */}
+      {user?.isAdmin && (
+        <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
+          <TouchableOpacity
+            style={[styles.menuSectionHeader, styles.menuItemPartner, { borderBottomColor: colors.surface, borderLeftColor: colors.primary }]}
+            onPress={() => setMenuAdminExpanded((e) => !e)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="shield-outline" size={22} color={colors.primary} />
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <Text style={[styles.menuSectionHeaderText, { color: colors.primary }]}>Administração</Text>
+              {adminPendingTotal > 0 && (
+                <View style={[styles.pendingBadge, { backgroundColor: colors.primary }]}>
+                  <Text style={styles.pendingBadgeText}>{adminPendingTotal > 99 ? '99+' : adminPendingTotal}</Text>
+                </View>
+              )}
+            </View>
+            <Ionicons name={menuAdminExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
+          </TouchableOpacity>
+          {menuAdminExpanded && (
+            <TouchableOpacity
+              style={[
+                styles.menuItem,
+                styles.menuItemAdmin,
+                { borderBottomColor: colors.surface, borderLeftColor: colors.primary },
+              ]}
+              onPress={() => router.push('/admin')}
+            >
+              <View style={styles.menuItemLeft}>
+                <Ionicons name="shield-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.primary }]}>Painel de administração</Text>
+              </View>
+              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       )}
       <Text style={[styles.versionText, { color: colors.textSecondary }]}>
         Adopet v{APP_VERSION}
@@ -441,36 +808,48 @@ export default function ProfileScreen() {
           accessibilityLabel="Sair da conta"
           accessibilityHint="Toque duas vezes para encerrar sua sessão"
         />
-        <TouchableOpacity
-          style={[styles.deactivateBtn, { marginTop: spacing.lg }]}
-          onPress={() => {
-            Alert.alert(
-              'Desativar conta e excluir dados',
-              'Sua conta será desativada e seus dados pessoais serão excluídos ou anonimizados (nome, e-mail, telefone, favoritos, preferências etc.). Você não poderá fazer login novamente. Esta ação não pode ser desfeita. Deseja continuar?',
-              [
-                { text: 'Cancelar', style: 'cancel' },
-                {
-                  text: 'Sim, desativar e excluir',
-                  style: 'destructive',
-                  onPress: async () => {
-                    try {
-                      await deactivateAccount();
-                      await logout();
-                      router.replace('/(auth)/welcome');
-                    } catch (e: unknown) {
-                      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível desativar a conta.'));
-                    }
+        {user?.partner ? (
+          <View style={[styles.deactivateBtn, { marginTop: spacing.lg }]}>
+            <Text style={[styles.deactivateText, { color: colors.textSecondary, textAlign: 'center' }]}>
+              Desativar conta e excluir meus dados
+            </Text>
+            <Text style={[styles.deactivateHint, { color: colors.textSecondary, marginTop: spacing.xs }]}>
+              Você é responsável por uma conta parceira (ONG). Transfira a administração no portal do parceiro ou entre em contato com o suporte antes de desativar sua conta.
+            </Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.deactivateBtn, { marginTop: spacing.lg }]}
+            onPress={() => {
+              Alert.alert(
+                'Desativar conta e excluir dados',
+                'Sua conta será desativada e seus dados pessoais serão excluídos ou anonimizados (nome, e-mail, telefone, favoritos, preferências etc.). Você não poderá fazer login novamente. Esta ação não pode ser desfeita. Deseja continuar?',
+                [
+                  { text: 'Cancelar', style: 'cancel' },
+                  {
+                    text: 'Sim, desativar e excluir',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try {
+                        await deactivateAccount();
+                        await logout();
+                        setShowLogoutToast(true);
+                        router.replace('/(tabs)/feed');
+                      } catch (e: unknown) {
+                        Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível desativar a conta.'));
+                      }
+                    },
                   },
-                },
-              ],
-            );
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Desativar conta e excluir meus dados"
-          accessibilityHint="Toque duas vezes para desativar sua conta permanentemente. Esta ação não pode ser desfeita."
-        >
-          <Text style={[styles.deactivateText, { color: colors.textSecondary }]}>Desativar conta e excluir meus dados</Text>
-        </TouchableOpacity>
+                ],
+              );
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Desativar conta e excluir meus dados"
+            accessibilityHint="Toque duas vezes para desativar sua conta permanentemente. Esta ação não pode ser desfeita."
+          >
+            <Text style={[styles.deactivateText, { color: colors.textSecondary }]}>Desativar conta e excluir meus dados</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </ScreenContainer>
   );
@@ -582,6 +961,33 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: spacing.xs,
   },
+  kycBlockWrap: {
+    borderRadius: 10,
+    marginBottom: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  kycBlockDisclaimer: {
+    marginTop: spacing.xs,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.06)',
+  },
+  kycPendingRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 10,
+    marginBottom: spacing.sm,
+    gap: 6,
+  },
+  kycPendingIcon: { marginRight: 2 },
+  kycPendingText: { fontSize: 14, fontWeight: '600' },
+  kycPendingSubtext: { fontSize: 12, width: '100%', textAlign: 'center' },
   city: {
     fontSize: 14,
     textAlign: 'center',
@@ -593,20 +999,77 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
     paddingHorizontal: spacing.lg,
   },
-  housingWrap: {
+  sectionCard: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
     padding: spacing.md,
     borderRadius: 12,
-    marginBottom: spacing.lg,
-    marginHorizontal: spacing.lg,
   },
-  housingTitle: {
-    fontSize: 13,
-    fontWeight: '600',
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  profileFieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     marginBottom: spacing.xs,
   },
-  housingText: {
+  profileFieldValue: {
+    fontSize: 14,
+  },
+  profileBio: {
     fontSize: 14,
     lineHeight: 20,
+    marginTop: spacing.xs,
+  },
+  triageGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  triageItem: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 10,
+    minWidth: '45%',
+    maxWidth: '100%',
+  },
+  triageItemLabel: {
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  triageItemValue: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  whyAdoptBlock: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+  },
+  menuSection: {
+    marginBottom: spacing.sm,
+  },
+  menuSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    paddingRight: spacing.xs,
+    borderBottomWidth: 1,
+    gap: spacing.sm,
+  },
+  menuSectionHeaderText: {
+    fontSize: 16,
+    fontWeight: '700',
+    flex: 1,
   },
   menuItem: {
     flexDirection: 'row',
@@ -614,6 +1077,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.md,
     borderBottomWidth: 1,
+  },
+  menuItemStatic: {
   },
   menuItemLeft: {
     flexDirection: 'row',
@@ -625,6 +1090,10 @@ const styles = StyleSheet.create({
   },
   menuLabel: {
     fontSize: 16,
+  },
+  menuItemSubtext: {
+    fontSize: 12,
+    marginTop: 2,
   },
   pendingBadge: {
     marginLeft: 8,
@@ -667,5 +1136,11 @@ const styles = StyleSheet.create({
   },
   deactivateText: {
     fontSize: 14,
+  },
+  deactivateHint: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    paddingHorizontal: spacing.md,
   },
 });

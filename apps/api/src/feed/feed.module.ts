@@ -6,9 +6,10 @@ import { ModerationModule } from '../moderation/moderation.module';
 import { VerificationModule } from '../verification/verification.module';
 import { MatchEngineModule } from '../match-engine/match-engine.module';
 import { PetsModule } from '../pets/pets.module';
+import { PetPartnershipModule } from '../pet-partnership/pet-partnership.module';
 
 @Module({
-  imports: [AuthModule, ModerationModule, VerificationModule, MatchEngineModule, PetsModule],
+  imports: [AuthModule, ModerationModule, VerificationModule, MatchEngineModule, PetsModule, PetPartnershipModule],
   controllers: [FeedController],
   providers: [FeedService],
   exports: [FeedService],

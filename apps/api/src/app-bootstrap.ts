@@ -5,6 +5,14 @@ import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as express from 'express';
 import { AppModule } from './app.module';
+import { validateRequiredEnv } from './env-validation';
+import { StructuredLogger, patchConsoleToStructuredLogger } from './logger/structured-logger';
+
+validateRequiredEnv();
+
+const structuredLogger = new StructuredLogger();
+StructuredLogger.setInstance(structuredLogger);
+patchConsoleToStructuredLogger();
 
 // compression é opcional: na Vercel o módulo pode não estar no bundle
 let compressionMiddleware: express.RequestHandler | null = null;
@@ -15,10 +23,23 @@ try {
   // ignora em ambiente serverless onde compression não está disponível
 }
 
+// Helmet: headers de segurança (X-Content-Type-Options, X-Frame-Options, etc.)
+let helmetMiddleware: express.RequestHandler | null = null;
+try {
+  const helmet = require('helmet') as () => express.RequestHandler;
+  helmetMiddleware = helmet(); // headers de segurança; CSP ativo (se quebrar Swagger, desative via helmet({ contentSecurityPolicy: false })
+} catch {
+  // ignora se helmet não estiver no bundle
+}
+
 /** Cria a aplicação Nest (sem listen). Usado por main.ts e pelo handler serverless da Vercel. */
 export async function createApp(): Promise<NestExpressApplication> {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+    logger: structuredLogger,
+  });
   if (compressionMiddleware) app.use(compressionMiddleware);
+  if (helmetMiddleware) app.use(helmetMiddleware);
   // CORS é aplicado no handler da Vercel (api/index.ts) e em vercel.json
   app.setGlobalPrefix('v1');
   app.use('/v1/payments/stripe-webhook', express.raw({ type: 'application/json' }));

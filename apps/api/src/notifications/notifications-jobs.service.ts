@@ -2,8 +2,10 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PushService } from './push.service';
 import { FeedService } from '../feed/feed.service';
+import { UploadsService } from '../uploads/uploads.service';
 
 const NEW_PETS_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6h
+const KYC_ORPHAN_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 1x/dia
 const REMINDERS_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12h
 const LISTING_REMINDER_INTERVAL_MS = 24 * 60 * 60 * 1000; // job 1x/dia
 const LISTING_REMINDER_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // não enviar de novo por 30 dias
@@ -24,6 +26,7 @@ export class NotificationsJobsService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly push: PushService,
     private readonly feedService: FeedService,
+    private readonly uploadsService: UploadsService,
   ) {}
 
   onModuleInit() {
@@ -35,6 +38,7 @@ export class NotificationsJobsService implements OnModuleInit {
     this.runExpiryRemindersJob();
     this.runExpireListingsJob();
     this.runPostAdoptionFeedbackJob();
+    this.runKycOrphanCleanupJob();
     setInterval(() => this.runNewPetsJob(), NEW_PETS_INTERVAL_MS);
     setInterval(() => this.runRemindersJob(), REMINDERS_INTERVAL_MS);
     setInterval(() => this.runSavedSearchAlertsJob(), NEW_PETS_INTERVAL_MS);
@@ -43,6 +47,36 @@ export class NotificationsJobsService implements OnModuleInit {
     setInterval(() => this.runExpiryRemindersJob(), LISTING_EXPIRY_INTERVAL_MS);
     setInterval(() => this.runExpireListingsJob(), LISTING_EXPIRY_INTERVAL_MS);
     setInterval(() => this.runPostAdoptionFeedbackJob(), POST_ADOPTION_FEEDBACK_INTERVAL_MS);
+    setInterval(() => this.runKycOrphanCleanupJob(), KYC_ORPHAN_CLEANUP_INTERVAL_MS);
+  }
+
+  /**
+   * Remove referências e arquivos órfãos de KYC: usuários já VERIFIED ou REJECTED que ainda tenham kycDocumentKey/kycSelfieKey.
+   * Garante que nenhuma foto fique retida em caso de falha pontual no delete ao aprovar/rejeitar.
+   */
+  private async runKycOrphanCleanupJob(): Promise<void> {
+    try {
+      const users = await this.prisma.user.findMany({
+        where: {
+          kycStatus: { in: ['VERIFIED', 'REJECTED'] },
+          OR: [{ kycDocumentKey: { not: null } }, { kycSelfieKey: { not: null } }],
+        },
+        select: { id: true, kycDocumentKey: true, kycSelfieKey: true },
+      });
+      for (const u of users) {
+        await this.uploadsService.deleteByKey(u.kycDocumentKey);
+        await this.uploadsService.deleteByKey(u.kycSelfieKey);
+        await this.prisma.user.update({
+          where: { id: u.id },
+          data: { kycDocumentKey: null, kycSelfieKey: null },
+        });
+      }
+      if (users.length > 0) {
+        console.log(`[NotificationsJobs] runKycOrphanCleanupJob: cleaned ${users.length} orphan KYC key(s).`);
+      }
+    } catch (e) {
+      console.warn('[NotificationsJobs] runKycOrphanCleanupJob failed', e);
+    }
   }
 
   /** Push "Como foi a adoção?" alguns dias após a confirmação (tutor e adotante), uma vez por pet. */

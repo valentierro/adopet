@@ -6,7 +6,7 @@ export type ConversationListItem = {
   createdAt: string;
   updatedAt: string;
   pet: { id: string; name: string; photos: string[]; adoptionFinalized?: boolean };
-  otherUser: { id: string; name: string; avatarUrl?: string };
+  otherUser: { id: string; name: string; avatarUrl?: string; kycVerified?: boolean };
   lastMessage?: { content: string; createdAt: string; senderId: string };
   unreadCount: number;
 };
@@ -15,8 +15,8 @@ export async function getConversations(): Promise<ConversationListItem[]> {
   return api.get<ConversationListItem[]>('/conversations');
 }
 
-export async function createConversation(petId: string): Promise<{ id: string }> {
-  return api.post<{ id: string }>('/conversations', { petId });
+export async function createConversation(petId: string, adopterId?: string): Promise<{ id: string }> {
+  return api.post<{ id: string }>('/conversations', adopterId != null ? { petId, adopterId } : { petId });
 }
 
 export type ConversationDetail = {
@@ -33,9 +33,12 @@ export type ConversationDetail = {
     hasOtherPets?: boolean;
     hasChildren?: boolean;
     timeAtHome?: string;
+    kycVerified?: boolean;
   };
   pet?: { name: string; photoUrl?: string; species?: string; size?: string; age?: number; adoptionFinalized?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string };
   otherUserTyping?: boolean;
+  /** Quando true, o outro participante saiu/foi desativado; chat bloqueado para novas mensagens. */
+  otherUserDeactivated?: boolean;
 };
 
 export async function getConversation(conversationId: string): Promise<ConversationDetail> {

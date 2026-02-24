@@ -29,8 +29,12 @@ config.resolver.nodeModulesPaths = [
 const websocketModuleShimPath = path.resolve(projectRoot, 'websocket-module-shim.js');
 const getDevServerShimPath = path.resolve(projectRoot, 'getDevServerShim.js');
 const originalResolveRequest = config.resolver.resolveRequest;
+const reactNativeMapsWebShim = path.resolve(projectRoot, 'shims/react-native-maps.web.js');
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   const name = typeof moduleName === 'string' ? moduleName : '';
+  if (platform === 'web' && (name === 'react-native-maps' || name.startsWith('react-native-maps/'))) {
+    return { filePath: reactNativeMapsWebShim, type: 'sourceFile' };
+  }
   const isGetDevServer =
     name === 'getDevServerShim' ||
     name === 'react-native/Libraries/Core/Devtools/getDevServer' ||

@@ -1,5 +1,6 @@
 import { Controller, Post, Req, Headers, RawBodyRequest, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiExcludeEndpoint } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { StripeService } from './stripe.service';
 
@@ -8,6 +9,7 @@ import { StripeService } from './stripe.service';
 export class PaymentsController {
   constructor(private readonly stripeService: StripeService) {}
 
+  @SkipThrottle()
   @Post('stripe-webhook')
   @ApiExcludeEndpoint()
   @ApiOperation({ summary: 'Webhook Stripe (assinaturas). Chamado pelo Stripe, não pelo app.' })

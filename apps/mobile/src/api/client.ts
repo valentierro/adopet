@@ -24,27 +24,60 @@ type RequestConfig = RequestInit & {
   skipAuth?: boolean;
   /** Timeout em ms; padrão REQUEST_TIMEOUT_MS */
   timeoutMs?: number;
+  /** Se true, fetch com cache: 'no-store' (evita resposta em cache, ex.: app-config) */
+  noCache?: boolean;
 };
 
 let tokenGetter: (() => string | null) | null = null;
-let refreshAndRetry: (() => Promise<boolean>) | null = null;
+let refreshAndRetry: (() => Promise<boolean | 'network'>) | null = null;
+let onSessionExpired: (() => void) | null = null;
+/** Chamado quando a API retorna 403 com code FEATURE_DISABLED (recurso desabilitado por feature flag). */
+let onFeatureDisabled: (() => void) | null = null;
+
+/** Uma única tentativa de refresh em voo: várias requisições 401 aguardam o mesmo refresh. */
+let refreshPromise: Promise<boolean | 'network'> | null = null;
+/** Evita chamar onSessionExpired várias vezes quando múltiplas requisições falham. */
+let sessionExpiredFired = false;
 
 export function setAuthProvider(
   getToken: () => string | null,
   onRefresh: () => Promise<boolean>,
+  onExpired?: () => void,
 ) {
   tokenGetter = getToken;
   refreshAndRetry = onRefresh;
+  onSessionExpired = onExpired ?? null;
+  refreshPromise = null;
+  sessionExpiredFired = false;
+}
+
+export function setOnFeatureDisabled(callback: (() => void) | null) {
+  onFeatureDisabled = callback;
 }
 
 const REQUEST_TIMEOUT_MS = 20000;
+const REQUEST_RETRY_MAX = 2; // 1 tentativa inicial + 1 retry só para erros de rede
+const REQUEST_RETRY_DELAY_MS = 500;
+
+function isNetworkError(e: unknown): boolean {
+  if (e instanceof Error) {
+    if (e.name === 'AbortError') return true;
+    const msg = (e.message || '').toLowerCase();
+    return /network|fetch|connection|timeout|econnrefused|enotfound|failed to fetch|could not connect/i.test(msg);
+  }
+  return false;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function request<T>(
   endpoint: string,
   config: RequestConfig = {},
   isRetry = false,
 ): Promise<T> {
-  const { params, skipAuth, timeoutMs, ...init } = config;
+  const { params, skipAuth, timeoutMs, noCache, ...init } = config;
   const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const url = new URL(BASE_URL.replace(/\/$/, '') + path);
   if (params) {
@@ -62,33 +95,65 @@ async function request<T>(
     headers['Authorization'] = `Bearer ${tokenGetter()}`;
   }
 
-  const controller = new AbortController();
   const timeout = timeoutMs ?? REQUEST_TIMEOUT_MS;
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
-  let res: Response;
-  try {
-    res = await fetch(url.toString(), {
-      ...init,
-      headers,
-      signal: init.signal ?? controller.signal,
-    });
-  } catch (e) {
-    clearTimeout(timeoutId);
-    const err = e instanceof Error ? e : new Error(String(e));
-    if (err.name === 'AbortError') {
-      throw new Error('request timeout');
+  let res!: Response;
+  for (let attempt = 1; attempt <= REQUEST_RETRY_MAX; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    try {
+      res = await fetch(url.toString(), {
+        ...init,
+        headers,
+        signal: init.signal ?? controller.signal,
+        ...(noCache && { cache: 'no-store' as RequestCache }),
+      });
+      clearTimeout(timeoutId);
+      break;
+    } catch (e) {
+      clearTimeout(timeoutId);
+      if (attempt < REQUEST_RETRY_MAX && isNetworkError(e)) {
+        await delay(REQUEST_RETRY_DELAY_MS);
+        continue;
+      }
+      const err = e instanceof Error ? e : new Error(String(e));
+      if (err.name === 'AbortError') {
+        throw new Error('request timeout');
+      }
+      throw err;
     }
-    throw err;
   }
-  clearTimeout(timeoutId);
 
-  if (res.status === 401 && !isRetry && refreshAndRetry) {
-    const ok = await refreshAndRetry();
-    if (ok) return request<T>(endpoint, config, true);
+  // 401 em rota sem auth (login/signup) = credenciais erradas; não tratar como sessão expirada
+  if (res.status === 401 && !isRetry && !skipAuth && refreshAndRetry) {
+    if (!refreshPromise) {
+      refreshPromise = refreshAndRetry().finally(() => {
+        refreshPromise = null;
+      });
+    }
+    const result = await refreshPromise;
+    if (result === true) return request<T>(endpoint, config, true);
+    if (result === 'network') {
+      const body = await res.text();
+      throw new Error(`API ${res.status}: ${body || res.statusText}`);
+    }
+    if (!sessionExpiredFired) {
+      sessionExpiredFired = true;
+      onSessionExpired?.();
+    }
   }
 
   if (!res.ok) {
     const text = await res.text();
+    if (res.status === 403 && text) {
+      try {
+        const body = JSON.parse(text) as { code?: string };
+        if (body?.code === 'FEATURE_DISABLED') {
+          onFeatureDisabled?.();
+        }
+      } catch {
+        // ignore parse error
+      }
+    }
     throw new Error(`API ${res.status}: ${text || res.statusText}`);
   }
   const text = await res.text();
@@ -100,7 +165,7 @@ export const api = {
   get: <T>(
     path: string,
     params?: Record<string, string | number | undefined>,
-    options?: { skipAuth?: boolean; timeoutMs?: number },
+    options?: { skipAuth?: boolean; timeoutMs?: number; noCache?: boolean },
   ) => request<T>(path, { method: 'GET', params, ...options }),
 
   post: <T>(

@@ -17,25 +17,37 @@ export default function TermsScreen() {
         </Text>
       </View>
       <View style={styles.section}>
-        <Text style={[styles.heading, { color: colors.textPrimary }]}>2. Uso da plataforma</Text>
+        <Text style={[styles.heading, { color: colors.textPrimary }]}>2. Adoção voluntária e sem custos</Text>
+        <Text style={[styles.body, { color: colors.textSecondary }]}>
+          O Adopet não incentiva a comercialização de animais. Todas as adoções divulgadas no app são voluntárias e gratuitas: não há cobrança pela doação ou pela adoção de pets. O app existe para facilitar o encontro entre quem quer doar e quem quer adotar, de forma responsável e sem fins comerciais.
+        </Text>
+      </View>
+      <View style={styles.section}>
+        <Text style={[styles.heading, { color: colors.textPrimary }]}>3. Uso da plataforma</Text>
         <Text style={[styles.body, { color: colors.textSecondary }]}>
           Você se compromete a publicar apenas informações verdadeiras sobre os pets, a tratar outros usuários com respeito nas conversas e a não usar o app para fins ilegais ou que violem direitos de terceiros. Anúncios com conteúdo inadequado podem ser removidos e a conta suspensa.
         </Text>
       </View>
       <View style={styles.section}>
-        <Text style={[styles.heading, { color: colors.textPrimary }]}>3. Responsabilidade</Text>
+        <Text style={[styles.heading, { color: colors.textPrimary }]}>4. Responsabilidade</Text>
         <Text style={[styles.body, { color: colors.textSecondary }]}>
           O Adopet facilita o contato entre usuários, mas não realiza a adoção. A decisão de doar ou adotar é de total responsabilidade dos envolvidos. Recomendamos encontros em locais seguros e a verificação das condições do pet antes da entrega.
         </Text>
       </View>
       <View style={styles.section}>
-        <Text style={[styles.heading, { color: colors.textPrimary }]}>4. Conta e dados (LGPD)</Text>
+        <Text style={[styles.heading, { color: colors.textPrimary }]}>5. Conta e dados (LGPD)</Text>
         <Text style={[styles.body, { color: colors.textSecondary }]}>
           Você é responsável por manter a confidencialidade da sua senha. Ao criar conta, você declara ter lido a Política de Privacidade e concorda com o tratamento dos seus dados pessoais nos termos da Lei Geral de Proteção de Dados (LGPD). O tratamento tem como finalidades a prestação do serviço, a melhoria da experiência e o cumprimento de obrigações legais. Você pode exercer seus direitos (acesso, correção, portabilidade, exclusão, etc.) conforme descrito na Política de Privacidade e entrando em contato pelo canal indicado no app.
         </Text>
       </View>
       <View style={styles.section}>
-        <Text style={[styles.heading, { color: colors.textPrimary }]}>5. Alterações</Text>
+        <Text style={[styles.heading, { color: colors.textPrimary }]}>5.1. Verificação de identidade (KYC)</Text>
+        <Text style={[styles.body, { color: colors.textSecondary }]}>
+          Para habilitar a confirmação de adoções no app, podemos solicitar verificação de identidade (envio de selfie com documento com foto). A finalidade é exclusivamente verificar a identidade do usuário; não utilizamos decisão automatizada — a análise é feita por nossa equipe. As imagens enviadas são usadas apenas para essa análise e são excluídas automaticamente assim que o processo for finalizado (aprovado ou rejeitado). Não armazenamos nem compartilhamos essas fotos com terceiros. O tratamento se baseia no consentimento que você manifesta ao aceitar os termos na tela de verificação antes do envio.
+        </Text>
+      </View>
+      <View style={styles.section}>
+        <Text style={[styles.heading, { color: colors.textPrimary }]}>6. Alterações</Text>
         <Text style={[styles.body, { color: colors.textSecondary }]}>
           Podemos atualizar estes termos periodicamente. O uso continuado do app após alterações constitui aceitação da nova versão. Em caso de dúvidas, entre em contato pelo email de suporte disponível no app.
         </Text>

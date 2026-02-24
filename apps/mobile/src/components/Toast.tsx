@@ -25,7 +25,7 @@ export function Toast({ message, onHide, duration = 2000 }: Props) {
         duration: 200,
         useNativeDriver: true,
       }),
-    ]).start(() => onHide());
+    ]).start(() => { if (typeof onHide === 'function') onHide(); });
   }, [message, duration, onHide, opacity]);
 
   if (!visible) return null;

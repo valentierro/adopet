@@ -79,6 +79,21 @@ export class MeResponseDto {
   @ApiPropertyOptional({ description: 'Indica se o usuário é administrador (pode acessar painel admin)' })
   isAdmin?: boolean;
 
+  @ApiPropertyOptional({ enum: ['PENDING', 'VERIFIED', 'REJECTED'], description: 'KYC: null = nunca enviou, PENDING = em análise, VERIFIED = aprovado, REJECTED = rejeitado' })
+  kycStatus?: string | null;
+
+  @ApiPropertyOptional({ description: 'Data em que o KYC foi enviado para análise' })
+  kycSubmittedAt?: string | null;
+
+  @ApiPropertyOptional({ description: 'Data em que o KYC foi aprovado' })
+  kycVerifiedAt?: string | null;
+
+  @ApiPropertyOptional({ description: 'Data em que o KYC foi rejeitado' })
+  kycRejectedAt?: string | null;
+
+  @ApiPropertyOptional({ description: 'Motivo da rejeição do KYC (quando rejeitado)' })
+  kycRejectionReason?: string | null;
+
   @ApiPropertyOptional({ description: 'Dados do parceiro vinculado (ONG ou comercial)' })
   partner?: {
     id: string;

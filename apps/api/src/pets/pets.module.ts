@@ -10,9 +10,10 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { AdminModule } from '../admin/admin.module';
 import { MatchEngineModule } from '../match-engine/match-engine.module';
 import { SimilarPetsEngineModule } from '../similar-pets-engine/similar-pets-engine.module';
+import { PetPartnershipModule } from '../pet-partnership/pet-partnership.module';
 
 @Module({
-  imports: [AuthModule, VerificationModule, MeModule, NotificationsModule, AdminModule, MatchEngineModule, SimilarPetsEngineModule],
+  imports: [AuthModule, VerificationModule, MeModule, NotificationsModule, AdminModule, MatchEngineModule, SimilarPetsEngineModule, PetPartnershipModule],
   controllers: [PetsController],
   providers: [PetsService, PetViewService, PetOwnerGuard],
   exports: [PetsService, PetViewService],

@@ -10,6 +10,7 @@ import { useTheme } from '../src/hooks/useTheme';
 import { getMe, updateMe } from '../src/api/me';
 import { presign, confirmAvatarUpload } from '../src/api/uploads';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
+import { formatPhoneInput, formatPhoneDisplay, getPhoneDigits } from '../src/utils/phoneMask';
 import { spacing } from '../src/theme';
 
 const HOUSING_OPTIONS = [
@@ -23,6 +24,62 @@ const TIME_AT_HOME_OPTIONS = [
   { value: 'MOST_DAY' as const, label: 'Maior parte do dia' },
   { value: 'HALF_DAY' as const, label: 'Metade do dia' },
   { value: 'LITTLE' as const, label: 'Pouco tempo' },
+];
+
+const PETS_ALLOWED_OPTIONS = [
+  { value: '' as const, label: 'Não informar' },
+  { value: 'YES' as const, label: 'Sim' },
+  { value: 'NO' as const, label: 'Não' },
+  { value: 'UNSURE' as const, label: 'Não sei' },
+];
+
+const EXPERIENCE_OPTIONS = [
+  { value: '' as const, label: 'Não informar' },
+  { value: 'NEVER' as const, label: 'Nunca tive' },
+  { value: 'HAD_BEFORE' as const, label: 'Já tive' },
+  { value: 'HAVE_NOW' as const, label: 'Tenho atualmente' },
+];
+
+const HOUSEHOLD_AGREES_OPTIONS = [
+  { value: '' as const, label: 'Não informar' },
+  { value: 'YES' as const, label: 'Sim, todos concordam' },
+  { value: 'DISCUSSING' as const, label: 'Ainda conversando' },
+];
+
+const ACTIVITY_LEVEL_OPTIONS = [
+  { value: '' as const, label: 'Não informar' },
+  { value: 'LOW' as const, label: 'Sedentário' },
+  { value: 'MEDIUM' as const, label: 'Moderado' },
+  { value: 'HIGH' as const, label: 'Ativo' },
+];
+
+const PREFERRED_PET_AGE_OPTIONS = [
+  { value: '' as const, label: 'Não informar' },
+  { value: 'ANY' as const, label: 'Qualquer' },
+  { value: 'PUPPY' as const, label: 'Filhote' },
+  { value: 'ADULT' as const, label: 'Adulto' },
+  { value: 'SENIOR' as const, label: 'Idoso' },
+];
+
+const COMMITS_TO_VET_OPTIONS = [
+  { value: '' as const, label: 'Não informar' },
+  { value: 'YES' as const, label: 'Sim' },
+  { value: 'NO' as const, label: 'Não' },
+];
+
+const WALK_FREQUENCY_OPTIONS = [
+  { value: '' as const, label: 'Não informar' },
+  { value: 'DAILY' as const, label: 'Diariamente' },
+  { value: 'FEW_TIMES_WEEK' as const, label: 'Algumas vezes por semana' },
+  { value: 'RARELY' as const, label: 'Raramente' },
+  { value: 'NOT_APPLICABLE' as const, label: 'Não se aplica' },
+];
+
+const BUDGET_OPTIONS = [
+  { value: '' as const, label: 'Não informar' },
+  { value: 'LOW' as const, label: 'Até ~R$ 100/mês' },
+  { value: 'MEDIUM' as const, label: '~R$ 100–300/mês' },
+  { value: 'HIGH' as const, label: 'Acima de ~R$ 300/mês' },
 ];
 
 export default function ProfileEditScreen() {
@@ -40,12 +97,22 @@ export default function ProfileEditScreen() {
   const [hasOtherPets, setHasOtherPets] = useState<boolean | undefined>(undefined);
   const [hasChildren, setHasChildren] = useState<boolean | undefined>(undefined);
   const [timeAtHome, setTimeAtHome] = useState<string>('');
+  const [petsAllowedAtHome, setPetsAllowedAtHome] = useState<string>('');
+  const [dogExperience, setDogExperience] = useState<string>('');
+  const [catExperience, setCatExperience] = useState<string>('');
+  const [householdAgreesToAdoption, setHouseholdAgreesToAdoption] = useState<string>('');
+  const [whyAdopt, setWhyAdopt] = useState('');
+  const [activityLevel, setActivityLevel] = useState<string>('');
+  const [preferredPetAge, setPreferredPetAge] = useState<string>('');
+  const [commitsToVetCare, setCommitsToVetCare] = useState<string>('');
+  const [walkFrequency, setWalkFrequency] = useState<string>('');
+  const [monthlyBudgetForPet, setMonthlyBudgetForPet] = useState<string>('');
 
   useEffect(() => {
     if (user) {
       setName(user.name ?? '');
       setUsername((user as { username?: string }).username ?? '');
-      setPhone(user.phone ?? '');
+      setPhone(formatPhoneDisplay(user.phone ?? ''));
       setCity(user.city ?? '');
       setBio(user.bio ?? '');
       setHousingType((user.housingType as 'CASA' | 'APARTAMENTO') || '');
@@ -53,6 +120,16 @@ export default function ProfileEditScreen() {
       setHasOtherPets(user.hasOtherPets);
       setHasChildren(user.hasChildren);
       setTimeAtHome(user.timeAtHome ?? '');
+      setPetsAllowedAtHome(user.petsAllowedAtHome ?? '');
+      setDogExperience(user.dogExperience ?? '');
+      setCatExperience(user.catExperience ?? '');
+      setHouseholdAgreesToAdoption(user.householdAgreesToAdoption ?? '');
+      setWhyAdopt(user.whyAdopt ?? '');
+      setActivityLevel((user as { activityLevel?: string }).activityLevel ?? '');
+      setPreferredPetAge((user as { preferredPetAge?: string }).preferredPetAge ?? '');
+      setCommitsToVetCare((user as { commitsToVetCare?: string }).commitsToVetCare ?? '');
+      setWalkFrequency((user as { walkFrequency?: string }).walkFrequency ?? '');
+      setMonthlyBudgetForPet((user as { monthlyBudgetForPet?: string }).monthlyBudgetForPet ?? '');
     }
   }, [user]);
 
@@ -119,18 +196,50 @@ export default function ProfileEditScreen() {
       Alert.alert('Erro', 'Informe seu nome.');
       return;
     }
+    const missing: string[] = [];
+    if (!housingType || housingType === '') missing.push('Tipo de moradia');
+    if (hasYard === undefined) missing.push('Tem quintal?');
+    if (hasOtherPets === undefined) missing.push('Tem outros pets?');
+    if (hasChildren === undefined) missing.push('Tem crianças em casa?');
+    if (!timeAtHome || timeAtHome === '') missing.push('Tempo em casa');
+    if (!petsAllowedAtHome || petsAllowedAtHome === '') missing.push('Pets permitidos no local');
+    if (!dogExperience || dogExperience === '') missing.push('Experiência com cachorro');
+    if (!catExperience || catExperience === '') missing.push('Experiência com gato');
+    if (!householdAgreesToAdoption || householdAgreesToAdoption === '') missing.push('Concordância em casa');
+    if (!activityLevel || activityLevel === '') missing.push('Nível de atividade');
+    if (!preferredPetAge || preferredPetAge === '') missing.push('Idade preferida do pet');
+    if (!commitsToVetCare || commitsToVetCare === '') missing.push('Cuidados veterinários');
+    if (!walkFrequency || walkFrequency === '') missing.push('Frequência de passeios');
+    if (!monthlyBudgetForPet || monthlyBudgetForPet === '') missing.push('Orçamento mensal para o pet');
+    if (missing.length > 0) {
+      Alert.alert(
+        'Campos obrigatórios',
+        'Para o match score funcionar corretamente, preencha: ' + missing.join(', ') + '.',
+      );
+      return;
+    }
     const userInput = username.trim().toLowerCase().replace(/^@/, '');
     updateMutation.mutate({
       name: name.trim(),
       username: userInput.length >= 2 ? userInput : undefined,
-      phone: phone.trim() || undefined,
+      phone: getPhoneDigits(phone).trim() || undefined,
       city: city.trim() || undefined,
       bio: bio.trim() || undefined,
       housingType: housingType || undefined,
-      hasYard: hasYard,
-      hasOtherPets: hasOtherPets,
-      hasChildren: hasChildren,
+      hasYard,
+      hasOtherPets,
+      hasChildren,
       timeAtHome: timeAtHome || undefined,
+      petsAllowedAtHome: petsAllowedAtHome || undefined,
+      dogExperience: dogExperience || undefined,
+      catExperience: catExperience || undefined,
+      householdAgreesToAdoption: householdAgreesToAdoption || undefined,
+      whyAdopt: whyAdopt.trim() || undefined,
+      activityLevel: activityLevel || undefined,
+      preferredPetAge: preferredPetAge || undefined,
+      commitsToVetCare: commitsToVetCare || undefined,
+      walkFrequency: walkFrequency || undefined,
+      monthlyBudgetForPet: monthlyBudgetForPet || undefined,
     });
   };
 
@@ -181,11 +290,12 @@ export default function ProfileEditScreen() {
         </Text>
         <TextInput
           style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
-          placeholder="Telefone"
+          placeholder="(11) 98765-4321"
           placeholderTextColor={colors.textSecondary}
           value={phone}
-          onChangeText={setPhone}
+          onChangeText={(t) => setPhone(formatPhoneInput(t))}
           keyboardType="phone-pad"
+          maxLength={16}
         />
         <TextInput
           style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
@@ -206,7 +316,10 @@ export default function ProfileEditScreen() {
         />
 
         <Text style={[styles.sectionLabel, { color: colors.textSecondary, marginTop: spacing.lg }]}>
-          Informações para adoção (o anunciante pode ver para avaliar se você combina com o pet)
+          Informações para adoção (obrigatórias para o match score)
+        </Text>
+        <Text style={[styles.hint, { color: colors.textSecondary, marginTop: -4 }]}>
+          O anunciante pode ver estes dados para avaliar se você combina com o pet. Preencha todos para o match score funcionar.
         </Text>
         <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Tipo de moradia</Text>
         <View style={styles.chipRow}>
@@ -280,6 +393,135 @@ export default function ProfileEditScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Pets são permitidos no local (condomínio/locador)?</Text>
+        <View style={styles.chipRow}>
+          {PETS_ALLOWED_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: petsAllowedAtHome === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setPetsAllowedAtHome(opt.value)}
+            >
+              <Text style={[styles.chipText, { color: petsAllowedAtHome === opt.value ? '#fff' : colors.textPrimary }]}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Experiência com cachorro</Text>
+        <View style={styles.chipRowWrap}>
+          {EXPERIENCE_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: dogExperience === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setDogExperience(opt.value)}
+            >
+              <Text style={[styles.chipText, { color: dogExperience === opt.value ? '#fff' : colors.textPrimary }]}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Experiência com gato</Text>
+        <View style={styles.chipRowWrap}>
+          {EXPERIENCE_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: catExperience === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setCatExperience(opt.value)}
+            >
+              <Text style={[styles.chipText, { color: catExperience === opt.value ? '#fff' : colors.textPrimary }]}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Todos em casa concordam com a adoção?</Text>
+        <View style={styles.chipRow}>
+          {HOUSEHOLD_AGREES_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: householdAgreesToAdoption === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setHouseholdAgreesToAdoption(opt.value)}
+            >
+              <Text style={[styles.chipText, { color: householdAgreesToAdoption === opt.value ? '#fff' : colors.textPrimary }]}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Seu nível de atividade (para match com energia do pet)</Text>
+        <View style={styles.chipRowWrap}>
+          {ACTIVITY_LEVEL_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: activityLevel === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setActivityLevel(opt.value)}
+            >
+              <Text style={[styles.chipText, { color: activityLevel === opt.value ? '#fff' : colors.textPrimary }]}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Idade preferida do pet</Text>
+        <View style={styles.chipRowWrap}>
+          {PREFERRED_PET_AGE_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: preferredPetAge === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setPreferredPetAge(opt.value)}
+            >
+              <Text style={[styles.chipText, { color: preferredPetAge === opt.value ? '#fff' : colors.textPrimary }]}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Compromete-se com cuidados veterinários?</Text>
+        <View style={styles.chipRow}>
+          {COMMITS_TO_VET_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: commitsToVetCare === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setCommitsToVetCare(opt.value)}
+            >
+              <Text style={[styles.chipText, { color: commitsToVetCare === opt.value ? '#fff' : colors.textPrimary }]}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Com que frequência pode passear com o pet?</Text>
+        <View style={styles.chipRowWrap}>
+          {WALK_FREQUENCY_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: walkFrequency === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setWalkFrequency(opt.value)}
+            >
+              <Text style={[styles.chipText, { color: walkFrequency === opt.value ? '#fff' : colors.textPrimary }]}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Orçamento mensal para o pet (para match com pets que têm gastos contínuos)</Text>
+        <View style={styles.chipRowWrap}>
+          {BUDGET_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: monthlyBudgetForPet === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setMonthlyBudgetForPet(opt.value)}
+            >
+              <Text style={[styles.chipText, { color: monthlyBudgetForPet === opt.value ? '#fff' : colors.textPrimary }]}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Por que quer adotar? (opcional)</Text>
+        <TextInput
+          style={[styles.input, styles.bioInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+          placeholder="Ex.: quero um companheiro para minha família, perdi meu pet e quero dar um novo lar..."
+          placeholderTextColor={colors.textSecondary}
+          value={whyAdopt}
+          onChangeText={setWhyAdopt}
+          multiline
+          numberOfLines={3}
+          maxLength={500}
+        />
 
         <PrimaryButton
           title={updateMutation.isPending ? 'Salvando...' : 'Salvar'}

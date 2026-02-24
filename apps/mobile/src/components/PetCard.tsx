@@ -4,6 +4,8 @@ import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import { spacing, radius } from '../theme';
+import { getMatchScoreColor } from '../utils/matchScoreColor';
+import { getSpeciesLabel, getSizeLabel, getSexLabel } from '../utils/petLabels';
 import { StatusBadge } from './StatusBadge';
 import { VerifiedBadge } from './VerifiedBadge';
 import type { Pet } from '@adopet/shared';
@@ -15,10 +17,6 @@ type Props = {
   onPass?: () => void;
   showActions?: boolean;
 };
-
-const speciesLabel = { dog: 'Cachorro', cat: 'Gato' };
-const sizeLabel = { small: 'P', medium: 'M', large: 'G', xlarge: 'GG' };
-const sexLabel = { male: 'M', female: 'F' };
 
 function formatListingDate(iso: string | undefined): string {
   if (!iso) return '';
@@ -39,7 +37,7 @@ export const PetCard = React.memo(function PetCard({
 }: Props) {
   const { colors } = useTheme();
   const photos = pet?.photos != null && Array.isArray(pet.photos) ? pet.photos : [];
-  const photo = photos.length > 0 ? photos[0] : 'https://placedog.net/400/400';
+  const photo = photos.length > 0 ? photos[0] : 'https://picsum.photos/seed/pet/400/400';
 
   return (
     <TouchableOpacity
@@ -61,7 +59,13 @@ export const PetCard = React.memo(function PetCard({
           </View>
         )}
         <View style={styles.badges}>
-          {pet.distanceKm != null && (
+          {pet.matchScore != null && (
+            <View style={[styles.matchBadge, { backgroundColor: getMatchScoreColor(pet.matchScore) + 'e6' }]}>
+              <Ionicons name="speedometer-outline" size={14} color="#fff" />
+              <Text style={styles.matchBadgeText}>{pet.matchScore}%</Text>
+            </View>
+          )}
+          {typeof pet.distanceKm === 'number' && Number.isFinite(pet.distanceKm) && (
             <StatusBadge label={`${pet.distanceKm.toFixed(1)} km`} variant="neutral" />
           )}
           {pet.city && pet.distanceKm == null && (
@@ -84,7 +88,7 @@ export const PetCard = React.memo(function PetCard({
           {pet.name}
         </Text>
         <Text style={[styles.meta, { color: colors.textSecondary }]}>
-          {speciesLabel[pet.species]} • {pet.age} ano(s) • {sizeLabel[pet.size]} • {sexLabel[pet.sex]}
+          {getSpeciesLabel(pet.species)} • {pet.age} ano(s) • {getSizeLabel(pet.size)} • {getSexLabel(pet.sex)}
         </Text>
         {(pet.createdAt || pet.city) && (
           <View style={styles.summaryRow}>
@@ -105,6 +109,11 @@ export const PetCard = React.memo(function PetCard({
               </View>
             ) : null}
           </View>
+        )}
+        {pet.viewCountLast24h != null && pet.viewCountLast24h >= 1 && (
+          <Text style={[styles.viewCountText, { color: colors.textSecondary }]}>
+            {pet.viewCountLast24h} {pet.viewCountLast24h === 1 ? 'pessoa viu' : 'pessoas viram'} nas últimas 24h
+          </Text>
         )}
         {pet.description ? (
           <Text
@@ -182,6 +191,19 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     flexWrap: 'wrap',
   },
+  matchBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  matchBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   content: {
     padding: spacing.md,
     borderTopWidth: 1,
@@ -209,6 +231,10 @@ const styles = StyleSheet.create({
   },
   summaryText: {
     fontSize: 12,
+  },
+  viewCountText: {
+    fontSize: 12,
+    marginBottom: spacing.xs,
   },
   description: {
     fontSize: 13,

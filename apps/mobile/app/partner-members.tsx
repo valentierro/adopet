@@ -29,6 +29,7 @@ import {
   PARTNER_MEMBER_ROLE_LABELS,
 } from '../src/api/partner';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
+import { formatPhoneInput, getPhoneDigits } from '../src/utils/phoneMask';
 import { spacing } from '../src/theme';
 
 const ROLE_OPTIONS: PartnerMemberRole[] = ['VOLUNTARIO', 'COORDENADOR', 'CUIDADOR', 'RECEPCIONISTA', 'VETERINARIO', 'ADMINISTRATIVO', 'OUTRO'];
@@ -105,7 +106,7 @@ export default function PartnerMembersScreen() {
       {
         email: e,
         name: n,
-        phone: phone.trim() || undefined,
+        phone: getPhoneDigits(phone).trim() || undefined,
         role: role || undefined,
       },
       {
@@ -167,7 +168,7 @@ export default function PartnerMembersScreen() {
 
   return (
     <ScreenContainer scroll={false}>
-      <PartnerPanelLayout showFooter={false}>
+      <PartnerPanelLayout showHeader={false} showFooter={false}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -209,11 +210,12 @@ export default function PartnerMembersScreen() {
                 />
                 <TextInput
                   style={[styles.input, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
-                  placeholder="Telefone (opcional)"
+                  placeholder="(11) 98765-4321"
                   placeholderTextColor={colors.textSecondary}
                   value={phone}
-                  onChangeText={setPhone}
+                  onChangeText={(t) => setPhone(formatPhoneInput(t))}
                   keyboardType="phone-pad"
+                  maxLength={16}
                 />
                 <Text style={[styles.label, { color: colors.textSecondary }]}>Função na ONG</Text>
                 <TouchableOpacity
@@ -264,13 +266,22 @@ export default function PartnerMembersScreen() {
                 </View>
               </View>
             ) : (
-              <TouchableOpacity
-                style={[styles.addButton, { backgroundColor: colors.primary + '20', borderColor: colors.primary + '50' }]}
-                onPress={() => setShowAdd(true)}
-              >
-                <Ionicons name="person-add-outline" size={22} color={colors.primary} />
-                <Text style={[styles.addButtonText, { color: colors.primary }]}>Cadastrar membro</Text>
-              </TouchableOpacity>
+              <View style={styles.addButtonsRow}>
+                <TouchableOpacity
+                  style={[styles.addButton, { backgroundColor: colors.primary + '20', borderColor: colors.primary + '50' }]}
+                  onPress={() => setShowAdd(true)}
+                >
+                  <Ionicons name="person-add-outline" size={22} color={colors.primary} />
+                  <Text style={[styles.addButtonText, { color: colors.primary }]}>Cadastrar membro</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.addButton, styles.addButtonBulk, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '40' }]}
+                  onPress={() => router.push('/partner-members-bulk')}
+                >
+                  <Ionicons name="document-attach-outline" size={22} color={colors.primary} />
+                  <Text style={[styles.addButtonText, { color: colors.primary }]}>Importar em lote</Text>
+                </TouchableOpacity>
+              </View>
             )}
 
             <FlatList
@@ -497,6 +508,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
   },
+  addButtonsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg, flexWrap: 'wrap' },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -504,8 +516,8 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: 12,
     borderWidth: 1,
-    marginBottom: spacing.lg,
   },
+  addButtonBulk: { flex: 1, minWidth: 140 },
   addButtonText: { fontSize: 16, fontWeight: '600' },
   memberRow: {
     flexDirection: 'row',

@@ -22,11 +22,20 @@ export class MyAdoptionItemDto {
   @ApiProperty({ description: 'Nome do tutor no momento da adoção (ex-tutor do pet)' })
   tutorName: string;
 
+  @ApiPropertyOptional({ description: 'Nome do adotante (quando role=TUTOR, ou seja, listando anúncios que viraram adoção)' })
+  adopterName?: string;
+
   @ApiProperty({ description: 'True quando a adoção foi confirmada pelo Adopet' })
   confirmedByAdopet: boolean;
 
   @ApiPropertyOptional({ description: 'Se presente, a marcação de adoção foi rejeitada pelo Adopet (ISO 8601)' })
   adoptionRejectedAt?: string;
+
+  @ApiPropertyOptional({ description: 'True se o usuário já enviou pesquisa de satisfação para esta adoção' })
+  surveySubmitted?: boolean;
+
+  @ApiPropertyOptional({ description: 'Nota geral (1-5) da pesquisa de satisfação enviada pelo usuário para esta adoção' })
+  surveyOverallScore?: number;
 }
 
 export class MyAdoptionsResponseDto {

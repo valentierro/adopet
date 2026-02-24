@@ -6,13 +6,13 @@ import {
   TextInput,
   ScrollView,
   Alert,
-  Linking,
   KeyboardAvoidingView,
   Platform,
   Image,
   TouchableOpacity,
   ActivityIndicator,
   Pressable,
+  Linking,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,14 +21,19 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ScreenContainer, PrimaryButton } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { useAuthStore } from '../src/stores/authStore';
-import { createPartnerCheckoutSession } from '../src/api/partner';
+import { createPartnerCheckoutSession, registerAsPartner } from '../src/api/partner';
+import { postPartnershipRequest } from '../src/api/partnership';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
+import { formatPhoneInput, getPhoneDigits } from '../src/utils/phoneMask';
 import { spacing } from '../src/theme';
 
 const LogoLight = require('../assets/brand/logo/logo_horizontal_light.png');
 const LogoDark = require('../assets/brand/logo/logo_dark.png');
 
-const EMAIL_PARCEIROS = 'parcerias@adopet.com.br';
+/** Destinatário das solicitações de parceria (ONG e comercial). */
+const EMAIL_PARCEIROS = 'parcerias@appadopet.com.br';
+/** Base da landing; usada como success/cancel URL do Stripe para redirecionar de volta ao app */
+const LANDING_BASE = 'https://appadopet.com.br';
 
 type ViaCepResponse = {
   cep?: string;
@@ -59,9 +64,9 @@ const PLANOS_OPCOES_EMAIL = [
   { value: 'Premium', label: 'Premium (sob consulta)' },
 ];
 
-// Plano único por enquanto: R$ 50/mês com todos os benefícios
+// Plano único por enquanto: R$ 100/mês com todos os benefícios
 const PLANOS_PAGAMENTO: { value: 'BASIC'; label: string }[] = [
-  { value: 'BASIC', label: 'Plano Parceiro - R$ 50/mês' },
+  { value: 'BASIC', label: 'Plano Parceiro - R$ 100/mês' },
 ];
 
 const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d).{6,}$/;
@@ -149,6 +154,8 @@ export default function SolicitarParceriaScreen() {
   const partnerSignup = useAuthStore((s) => s.partnerSignup);
   const isLoading = useAuthStore((s) => s.isLoading);
   const queryClient = useQueryClient();
+  const isLoggedIn = !!useAuthStore((s) => s.accessToken);
+  const user = useAuthStore((s) => s.user);
 
   const buscarCep = useCallback(async () => {
     const digits = cep.replace(/\D/g, '');
@@ -166,7 +173,7 @@ export default function SolicitarParceriaScreen() {
     }
   }, [cep]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const nomeTrim = nome.trim();
     const emailTrim = email.trim();
     const instTrim = instituicao.trim();
@@ -185,9 +192,9 @@ export default function SolicitarParceriaScreen() {
       return;
     }
 
-    const telTrim = telefone.trim();
-    if (!telTrim) {
-      Alert.alert('Campo obrigatório', 'Preencha o telefone de contato.');
+    const telDigitsFirst = getPhoneDigits(telefone);
+    if (telDigitsFirst.length < 10 || telDigitsFirst.length > 11) {
+      Alert.alert('Campo obrigatório', 'Preencha o telefone de contato com DDD (10 ou 11 dígitos).');
       return;
     }
 
@@ -208,49 +215,47 @@ export default function SolicitarParceriaScreen() {
     }
 
     setSubmitting(true);
-
-    let body = `Olá, gostaria de solicitar uma parceria com o Adopet (${tipo === 'ong' ? 'ONG/instituição' : 'comercial'}).\n\n`;
-    body += `Nome: ${nomeTrim}\nE-mail: ${emailTrim}\n`;
-    body += tipo === 'ong' ? `Instituição: ${instTrim}\n` : `Estabelecimento: ${instTrim}\n`;
-    if (tipo === 'ong') {
-      if (cnpj.trim()) body += `CNPJ: ${cnpj.trim()}\n`;
-      body += `Telefone: ${telefone.trim()}\n`;
-      if (anoFundacao.trim()) body += `Ano de fundação: ${anoFundacao.trim()}\n`;
-      const endParts = [rua.trim(), numero.trim(), complemento.trim(), bairro.trim(), cidade.trim(), uf.trim()].filter(Boolean);
-      if (cep.trim()) body += `CEP: ${cep.trim()}\n`;
-      if (endParts.length) body += `Endereço: ${endParts.join(', ')}\n`;
-    } else {
-      body += `Telefone: ${telefone.trim()}\n`;
-      if (personType && documentoComercial.replace(/\D/g, '').length > 0) {
-        body += `${personType === 'PF' ? 'CPF' : 'CNPJ'}: ${documentoComercial.trim()}\n`;
-      }
-      if (planoDesejado) body += `Plano desejado: ${planoDesejado}\n`;
+    const endParts = [rua.trim(), numero.trim(), complemento.trim(), bairro.trim(), cidade.trim(), uf.trim()].filter(Boolean);
+    const payload = {
+      tipo,
+      nome: nomeTrim,
+      email: emailTrim,
+      instituicao: instTrim,
+      telefone: telDigitsFirst,
+      ...(msgTrim ? { mensagem: msgTrim } : {}),
+      ...(tipo === 'ong'
+        ? {
+            ...(cnpj.trim() ? { cnpj: cnpj.trim() } : {}),
+            ...(anoFundacao.trim() ? { anoFundacao: anoFundacao.trim() } : {}),
+            ...(cep.trim() ? { cep: cep.trim() } : {}),
+            ...(endParts.length ? { endereco: endParts.join(', ') } : {}),
+          }
+        : {
+            ...(personType ? { personType } : {}),
+            ...(documentoComercial.replace(/\D/g, '').length > 0 ? { documentoComercial: documentoComercial.trim() } : {}),
+            ...(planoDesejado ? { planoDesejado } : {}),
+          }),
+    };
+    try {
+      await postPartnershipRequest(payload);
+      setSubmitting(false);
+      Alert.alert(
+        'Solicitação enviada',
+        'Sua solicitação de parceria foi enviada. Nossa equipe entrará em contato em breve. Este formulário é apenas para manifestação de interesse, não realiza cadastro no app.',
+        [{ text: 'OK', onPress: () => router.back() }],
+      );
+    } catch (e) {
+      setSubmitting(false);
+      const msg = e instanceof Error ? e.message : 'Não foi possível enviar. Tente novamente.';
+      Alert.alert('Erro', getFriendlyErrorMessage(msg) || 'Não foi possível enviar a solicitação. Tente novamente ou envie para ' + EMAIL_PARCEIROS);
     }
-    body += '\n' + (msgTrim ? `Mensagem:\n${msgTrim}` : '');
-
-    const subject = encodeURIComponent(`Solicitação de parceria ${tipo === 'ong' ? 'ONG' : 'comercial'} - ${instTrim}`);
-    const url = `mailto:${EMAIL_PARCEIROS}?subject=${subject}&body=${encodeURIComponent(body)}`;
-
-    Linking.openURL(url)
-      .then(() => {
-        setSubmitting(false);
-        Alert.alert(
-          'Solicitação enviada',
-          'Um e-mail foi preparado. Envie-o para que nossa equipe entre em contato. Este formulário é apenas para manifestação de interesse, não realiza cadastro no app.',
-          [{ text: 'OK', onPress: () => router.back() }],
-        );
-      })
-      .catch(() => {
-        setSubmitting(false);
-        Alert.alert('Erro', 'Não foi possível abrir o e-mail. Você pode enviar manualmente para ' + EMAIL_PARCEIROS);
-      });
   };
 
   const handleSubmitComercialCadastro = async () => {
     const nomeTrim = nome.trim();
     const emailTrim = email.trim().toLowerCase();
     const instTrim = instituicao.trim();
-    const telDigits = telefone.replace(/\D/g, '');
+    const telDigits = getPhoneDigits(telefone);
     const userInput = username.trim().toLowerCase().replace(/^@/, '');
 
     if (!nomeTrim) {
@@ -326,7 +331,7 @@ export default function SolicitarParceriaScreen() {
     }
 
     try {
-      await partnerSignup({
+      const res = await partnerSignup({
         email: emailTrim,
         password,
         name: nomeTrim,
@@ -340,7 +345,7 @@ export default function SolicitarParceriaScreen() {
         ...(addressStr ? { address: addressStr } : {}),
         planId: planoPagamento,
       });
-      if (res.requiresEmailVerification) {
+      if (res && 'requiresEmailVerification' in res && res.requiresEmailVerification) {
         Alert.alert(
           'Conta criada',
           'Enviamos um e-mail de confirmação. Clique no link para ativar sua conta. Depois faça login e, em Perfil, conclua o pagamento para ativar seu portal de parceiro.',
@@ -350,8 +355,8 @@ export default function SolicitarParceriaScreen() {
         try {
           const { url } = await createPartnerCheckoutSession({
             planId: planoPagamento,
-            successUrl: 'adopet://partner-success',
-            cancelUrl: 'adopet://partner-cancel',
+            successUrl: `${LANDING_BASE}/partner-success`,
+            cancelUrl: `${LANDING_BASE}/partner-cancel`,
           });
           const canOpen = await Linking.canOpenURL(url);
           if (canOpen) {
@@ -374,6 +379,81 @@ export default function SolicitarParceriaScreen() {
       }
     } catch (e: unknown) {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível criar a conta. Tente novamente.'));
+    }
+  };
+
+  /** Usuário já logado: só dados do estabelecimento; depois abre checkout. */
+  const handleSubmitComercialLogado = async () => {
+    const instTrim = instituicao.trim();
+
+    if (!instTrim) {
+      Alert.alert('Campo obrigatório', 'Preencha o nome do estabelecimento.');
+      return;
+    }
+    if (!personType) {
+      Alert.alert('Campo obrigatório', 'Selecione se é Pessoa física (CPF) ou Pessoa jurídica (CNPJ).');
+      return;
+    }
+    const docTrim = documentoComercial.replace(/\D/g, '');
+    const expectedLen = personType === 'PF' ? 11 : 14;
+    if (docTrim.length !== expectedLen) {
+      Alert.alert('Documento obrigatório', personType === 'PF' ? 'Informe um CPF válido (11 dígitos).' : 'Informe um CNPJ válido (14 dígitos).');
+      return;
+    }
+    const docValid = personType === 'PF' ? validarCPF(documentoComercial) : validarCNPJ(documentoComercial);
+    if (!docValid) {
+      Alert.alert('Documento inválido', personType === 'PF' ? 'O CPF informado não é válido.' : 'O CNPJ informado não é válido.');
+      return;
+    }
+    if (personType === 'CNPJ') {
+      if (!razaoSocial.trim()) {
+        Alert.alert('Campo obrigatório', 'Preencha a razão social.');
+        return;
+      }
+      if (!nomeFantasia.trim()) {
+        Alert.alert('Campo obrigatório', 'Preencha o nome fantasia.');
+        return;
+      }
+    }
+    const endParts = [rua.trim(), numero.trim(), complemento.trim(), bairro.trim(), cidade.trim(), uf.trim()].filter(Boolean);
+    const addressStr = endParts.length ? endParts.join(', ') + (cep.trim() ? ` - CEP ${cep.trim().replace(/\D/g, '').replace(/(\d{5})(\d{3})/, '$1-$2')}` : '') : '';
+    if (!addressStr.trim()) {
+      Alert.alert('Campo obrigatório', 'Preencha o endereço completo do estabelecimento (CEP, rua, número, cidade e UF).');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await registerAsPartner({
+        establishmentName: instTrim,
+        personType,
+        ...(personType === 'PF' ? { cpf: docTrim } : { cnpj: docTrim }),
+        ...(personType === 'CNPJ' && razaoSocial.trim() ? { legalName: razaoSocial.trim() } : {}),
+        ...(personType === 'CNPJ' && nomeFantasia.trim() ? { tradeName: nomeFantasia.trim() } : {}),
+        address: addressStr,
+        planId: planoPagamento,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['me'] });
+      const { url } = await createPartnerCheckoutSession({
+        planId: planoPagamento,
+        successUrl: `${LANDING_BASE}/partner-success`,
+        cancelUrl: `${LANDING_BASE}/partner-cancel`,
+      });
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        Linking.openURL(url);
+        Alert.alert(
+          'Próximo passo',
+          'Conclua o pagamento na próxima tela para ativar seu portal de parceiro. Depois volte ao app.',
+          [{ text: 'OK', onPress: () => router.replace('/(tabs)') }],
+        );
+      } else {
+        Alert.alert('Próximo passo', 'Acesse o link de pagamento pelo computador ou copie e cole no navegador.', [{ text: 'OK', onPress: () => router.replace('/(tabs)') }]);
+      }
+    } catch (e: unknown) {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível concluir. Tente novamente.'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -400,8 +480,17 @@ export default function SolicitarParceriaScreen() {
           </View>
 
           <Text style={[styles.intro, { color: colors.textSecondary }]}>
-            {tipo === 'ong' ? 'Preencha os dados abaixo. Nossa equipe entrará em contato.' : 'Preencha os dados e escolha o plano. Após o pagamento você acessa o portal no app.'}
+            {tipo === 'ong'
+              ? 'Preencha os dados abaixo. Nossa equipe entrará em contato.'
+              : tipo === 'comercial' && isLoggedIn
+                ? 'Você está logado. Preencha apenas os dados do estabelecimento e escolha o plano para se tornar parceiro.'
+                : 'Preencha os dados e escolha o plano. Após o pagamento você acessa o portal no app.'}
           </Text>
+          {tipo === 'comercial' && isLoggedIn && user?.email && (
+            <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: spacing.md }]}>
+              Conta: {user.email}
+            </Text>
+          )}
 
           {tipo === 'comercial' && (
             <>
@@ -477,16 +566,19 @@ export default function SolicitarParceriaScreen() {
             </>
           )}
 
-          <Text style={labelStyle}>Seu nome *</Text>
-          <TextInput style={inputStyle} placeholder="Ex: Maria Silva" placeholderTextColor={colors.textSecondary} value={nome} onChangeText={setNome} autoCapitalize="words" />
+          {!(tipo === 'comercial' && isLoggedIn) && (
+            <>
+              <Text style={labelStyle}>Seu nome *</Text>
+              <TextInput style={inputStyle} placeholder="Ex: Maria Silva" placeholderTextColor={colors.textSecondary} value={nome} onChangeText={setNome} autoCapitalize="words" />
+              <Text style={labelStyle}>E-mail *</Text>
+              <TextInput style={inputStyle} placeholder="contato@empresa.com.br" placeholderTextColor={colors.textSecondary} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+            </>
+          )}
 
-          <Text style={labelStyle}>E-mail *</Text>
-          <TextInput style={inputStyle} placeholder="contato@empresa.com.br" placeholderTextColor={colors.textSecondary} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-
-          {tipo === 'comercial' ? (
+          {tipo === 'comercial' && !isLoggedIn ? (
             <>
               <Text style={labelStyle}>Telefone com DDD *</Text>
-              <TextInput style={inputStyle} placeholder="(11) 99999-9999" placeholderTextColor={colors.textSecondary} value={telefone} onChangeText={setTelefone} keyboardType="phone-pad" />
+              <TextInput style={inputStyle} placeholder="(11) 98765-4321" placeholderTextColor={colors.textSecondary} value={telefone} onChangeText={(t) => setTelefone(formatPhoneInput(t))} keyboardType="phone-pad" maxLength={16} />
               <Text style={labelStyle}>Nome de usuário *</Text>
               <TextInput style={inputStyle} placeholder="maria.silva" placeholderTextColor={colors.textSecondary} value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} />
               <Text style={[styles.hint, { color: colors.textSecondary }]}>Outros usuários poderão te encontrar por @nome. Use letras minúsculas, números, ponto ou underscore (2 a 30 caracteres).</Text>
@@ -519,6 +611,11 @@ export default function SolicitarParceriaScreen() {
                   <Text style={[styles.legalLink, { color: colors.primary }]}>Política de Privacidade</Text>
                 </TouchableOpacity>
               </View>
+            </>
+          ) : null}
+
+          {tipo === 'comercial' ? (
+            <>
               <Text style={labelStyle}>Nome do estabelecimento *</Text>
               <TextInput style={inputStyle} placeholder="Ex: Clínica Veterinária Amor de Patas" placeholderTextColor={colors.textSecondary} value={instituicao} onChangeText={setInstituicao} autoCapitalize="words" />
               <Text style={[labelStyle, { marginTop: spacing.md }]}>Endereço completo *</Text>
@@ -574,9 +671,17 @@ export default function SolicitarParceriaScreen() {
                 ))}
               </View>
               <PrimaryButton
-                title={isLoading ? 'Criando conta...' : 'Criar conta e ir para pagamento'}
-                onPress={handleSubmitComercialCadastro}
-                disabled={isLoading || !acceptedTerms}
+                title={
+                  isLoggedIn
+                    ? submitting
+                      ? 'Abrindo pagamento...'
+                      : 'Continuar para pagamento'
+                    : isLoading
+                      ? 'Criando conta...'
+                      : 'Criar conta e ir para pagamento'
+                }
+                onPress={isLoggedIn ? handleSubmitComercialLogado : handleSubmitComercialCadastro}
+                disabled={isLoggedIn ? submitting : isLoading || !acceptedTerms}
                 style={styles.submitBtn}
               />
             </>
@@ -611,11 +716,12 @@ export default function SolicitarParceriaScreen() {
               <Text style={labelStyle}>Telefone de contato *</Text>
               <TextInput
                 style={inputStyle}
-                placeholder="(11) 99999-9999"
+                placeholder="(11) 98765-4321"
                 placeholderTextColor={colors.textSecondary}
                 value={telefone}
-                onChangeText={setTelefone}
+                onChangeText={(t) => setTelefone(formatPhoneInput(t))}
                 keyboardType="phone-pad"
+                maxLength={16}
               />
               <Text style={labelStyle}>Ano de fundação (opcional)</Text>
               <TextInput

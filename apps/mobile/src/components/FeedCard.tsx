@@ -13,6 +13,7 @@ import {
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../hooks/useTheme';
+import { getMatchScoreColor } from '../utils/matchScoreColor';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { VerifiedBadge } from './VerifiedBadge';
@@ -39,7 +40,7 @@ type Props = {
 export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onPass, height: cardHeight, wrapInTouchable = true, showActions = true }: Props) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const photos = pet.photos?.length ? pet.photos : ['https://placedog.net/800/1200'];
+  const photos = pet.photos?.length ? pet.photos : ['https://picsum.photos/seed/feed/800/1200'];
   const [photoIndex, setPhotoIndex] = useState(0);
   const galleryRef = useRef<FlatList<string> | null>(null);
   const h = cardHeight ?? SCREEN_HEIGHT;
@@ -112,12 +113,41 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
           ))}
         </View>
 
-      {photos.length > 1 && (
-        <View style={[styles.galleryBadge, { top: insets.top + 12 }]}>
-          <Ionicons name="images" size={18} color="#fff" />
-          <Text style={styles.galleryBadgeText}>{photos.length}</Text>
-        </View>
-      )}
+      <View style={[styles.topRightBadges, { top: wrapInTouchable ? insets.top + 12 : insets.top + 4 }]}>
+        {photos.length > 1 && (
+          <View style={styles.galleryBadge}>
+            <Ionicons name="images" size={18} color="#fff" />
+            <Text style={styles.galleryBadgeText}>{photos.length}</Text>
+          </View>
+        )}
+        {wrapInTouchable && pet.partner != null && typeof (pet.partner as { isPaidPartner?: boolean }).isPaidPartner === 'boolean' && (
+          <View
+            style={[
+              styles.partnerBadgeTop,
+              {
+                backgroundColor: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner
+                  ? 'rgba(251, 191, 36, 0.92)'
+                  : 'rgba(217, 119, 6, 0.92)',
+              },
+            ]}
+          >
+            <Ionicons
+              name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'}
+              size={14}
+              color="#fff"
+            />
+            <Text style={styles.partnerBadgeTopText}>
+              {(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'Patrocinado' : 'Parceiro'}
+            </Text>
+          </View>
+        )}
+        {pet.matchScore != null && (
+          <View style={[styles.matchBadge, { backgroundColor: getMatchScoreColor(pet.matchScore) + 'e6' }]}>
+            <Ionicons name="speedometer-outline" size={16} color="#fff" />
+            <Text style={styles.matchBadgeText}>{pet.matchScore}%</Text>
+          </View>
+        )}
+      </View>
 
       <View
         style={[
@@ -154,13 +184,31 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
             {speciesLabel[String(pet.species).toLowerCase()] ?? pet.species}
             {pet.breed?.trim() ? ` • ${pet.breed.trim()}` : ''} • {pet.age} ano(s) • {sizeLabel[pet.size] ?? pet.size}
           </Text>
+          {(pet.energyLevel || pet.temperament || pet.goodWithChildren === 'YES' || pet.isDocile || pet.isTrained) && (
+            <Text style={styles.triageMeta}>
+              {[
+                pet.energyLevel && { LOW: 'Calmo', MEDIUM: 'Moderado', HIGH: 'Agitado' }[pet.energyLevel],
+                pet.temperament && { CALM: 'Tranquilo', PLAYFUL: 'Brincalhão', SHY: 'Tímido', SOCIABLE: 'Sociável', INDEPENDENT: 'Independente' }[pet.temperament],
+                pet.goodWithChildren === 'YES' && 'Dá bem com crianças',
+                pet.isDocile && 'Dócil',
+                pet.isTrained && 'Adestrado',
+              ].filter(Boolean).join(' • ')}
+            </Text>
+          )}
           {(pet.distanceKm != null || pet.city) && (
             <View style={styles.distanceRow}>
               <Ionicons name="location" size={14} color="rgba(255,255,255,0.9)" />
               {pet.city ? <Text style={styles.distance}>{pet.city}</Text> : null}
               {pet.city && pet.distanceKm != null ? <Text style={styles.distance}> • </Text> : null}
-              {pet.distanceKm != null && <Text style={styles.distance}>{pet.distanceKm.toFixed(1)} km</Text>}
+              {typeof pet.distanceKm === 'number' && Number.isFinite(pet.distanceKm) && (
+                <Text style={styles.distance}>{pet.distanceKm.toFixed(1)} km</Text>
+              )}
             </View>
+          )}
+          {pet.viewCountLast24h != null && pet.viewCountLast24h >= 1 && (
+            <Text style={styles.viewCountText}>
+              {pet.viewCountLast24h} {pet.viewCountLast24h === 1 ? 'pessoa viu' : 'pessoas viram'} nas últimas 24h
+            </Text>
           )}
         </View>
       </View>
@@ -238,9 +286,15 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
-  galleryBadge: {
+  topRightBadges: {
     position: 'absolute',
     right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    zIndex: 5,
+  },
+  galleryBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -248,11 +302,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
-    zIndex: 5,
   },
   galleryBadgeText: {
     color: '#fff',
     fontSize: 14,
+    fontWeight: '700',
+  },
+  matchBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  matchBadgeText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  partnerBadgeTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  partnerBadgeTopText: {
+    color: '#fff',
+    fontSize: 12,
     fontWeight: '700',
   },
   gradientWrap: {
@@ -303,6 +382,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: 'rgba(255,255,255,0.95)',
   },
+  triageMeta: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 2,
+  },
   distanceRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -312,6 +396,11 @@ const styles = StyleSheet.create({
   distance: {
     fontSize: 14,
     color: 'rgba(255,255,255,0.9)',
+  },
+  viewCountText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
+    marginTop: 4,
   },
   actions: {
     position: 'absolute',

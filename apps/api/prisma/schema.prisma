@@ -17,6 +17,7 @@ model User {
   name         String
   avatarUrl    String?
   phone        String?
+  document     String?   @unique // CPF (11 dígitos) ou CNPJ (14 dígitos); obrigatório no cadastro; único para evitar cadastros duplicados
   city         String?
   bio          String?   // texto curto sobre o usuário (ex: "Amo animais, quero adotar")
   housingType  String?   // CASA | APARTAMENTO — para o anunciante avaliar
@@ -42,6 +43,17 @@ model User {
   bannedById    String?   // id do admin que baniu
   bannedReason  String?   @db.Text // motivo opcional do ban
   lastListingReminderAt DateTime? // último envio de push "atualize seus anúncios" (follow-up tutores)
+  // KYC (verificação de identidade) — obrigatório para adotantes antes de confirmar adoção
+  kycStatus          String?   // PENDING | VERIFIED | REJECTED; null = nunca enviou
+  kycDocumentKey     String?   // chave do documento (upload)
+  kycSelfieKey       String?   // chave da selfie com documento
+  kycSubmittedAt     DateTime? // quando enviou para análise
+  kycVerifiedAt      DateTime? // quando admin aprovou
+  kycRejectedAt      DateTime? // quando admin rejeitou
+  kycRejectionReason String?   @db.Text // motivo opcional da rejeição
+  kycConsentAt       DateTime? // quando o usuário aceitou o uso das fotos apenas para análise e exclusão após decisão
+  kycDecidedBy       String?   // id do admin que aprovou/rejeitou (auditoria)
+  kycDecidedAt       DateTime? // quando o admin tomou a decisão
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   pets         Pet[]
@@ -65,20 +77,26 @@ model User {
   partnerRecommendations PartnerRecommendation[]
   inAppNotifications  InAppNotification[]
   petViews            PetView[]
+  petPartnershipsRequested  PetPartnership[] @relation("PetPartnershipRequestedBy")
+  petPartnershipsConfirmed  PetPartnership[] @relation("PetPartnershipConfirmedBy")
+  petPartnershipsCancelled  PetPartnership[] @relation("PetPartnershipCancelledBy")
+  satisfactionSurveys       SatisfactionSurvey[]
 }
 
 model InAppNotification {
-  id        String    @id @default(uuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      String    // PARTNERSHIP_ENDED_ONG | PARTNERSHIP_ENDED_PAID_SCHEDULED | PARTNERSHIP_ENDED_PAID_TODAY
-  title     String
-  body      String    @db.Text
-  metadata  String?   @db.Text // JSON: { partnerName?, periodEndFormatted? }
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       String    // PARTNERSHIP_ENDED_ONG | PARTNERSHIP_ENDED_PAID_SCHEDULED | PARTNERSHIP_ENDED_PAID_TODAY
+  title      String
+  body       String    @db.Text
+  metadata   String?   @db.Text // JSON: { partnerName?, periodEndFormatted? }
+  readAt     DateTime?
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
   @@index([userId])
   @@index([userId, readAt])
+  @@index([userId, archivedAt])
 }
 
 model UserPreferences {
@@ -184,6 +202,7 @@ model Partner {
   services             PartnerService[]
   events               PartnerEvent[]
   members              PartnerMember[]  // membros da ONG (só type=ONG)
+  petPartnerships      PetPartnership[]
   @@index([type])
   @@index([active, type])
   @@index([userId])
@@ -312,6 +331,7 @@ model Pet {
   favorites       Favorite[]
   conversations   Conversation[]
   views           PetView[]
+  petPartnerships PetPartnership[]
 
   @@index([publicationStatus, status, id])
   @@index([publicationStatus, status, expiresAt, id])
@@ -319,18 +339,38 @@ model Pet {
 }
 
 model Adoption {
-  id         String   @id @default(uuid())
-  petId      String   @unique // um pet só pode ser adotado uma vez
-  pet        Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
-  tutorId    String   // dono do pet no momento da adoção (ownerId)
-  tutor      User     @relation("AdoptionsAsTutor", fields: [tutorId], references: [id], onDelete: Cascade)
-  adopterId  String   // usuário que adotou
-  adopter    User     @relation("AdoptionsAsAdopter", fields: [adopterId], references: [id], onDelete: Cascade)
-  adoptedAt  DateTime @default(now())
-  createdAt  DateTime @default(now())
+  id                         String    @id @default(uuid())
+  petId                      String    @unique // um pet só pode ser adotado uma vez
+  pet                        Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
+  tutorId                    String    // dono do pet no momento da adoção (ownerId)
+  tutor                      User      @relation("AdoptionsAsTutor", fields: [tutorId], references: [id], onDelete: Cascade)
+  adopterId                  String    // usuário que adotou
+  adopter                    User      @relation("AdoptionsAsAdopter", fields: [adopterId], references: [id], onDelete: Cascade)
+  adoptedAt                  DateTime  @default(now())
+  responsibilityTermAcceptedAt DateTime? // quando o adotante aceitou o termo de responsabilidade
+  createdAt                  DateTime  @default(now())
+  satisfactionSurveys        SatisfactionSurvey[]
   @@index([tutorId])
   @@index([adopterId])
   @@index([adoptedAt])
+}
+
+model SatisfactionSurvey {
+  id                 String    @id @default(uuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  adoptionId         String?
+  adoption           Adoption? @relation(fields: [adoptionId], references: [id], onDelete: SetNull)
+  role               String    // ADOPTER | TUTOR — papel na adoção (quando vinculado a uma adoção)
+  trustScore         Int       // 1-5 confiança no app
+  easeOfUseScore     Int       // 1-5 facilidade de uso
+  communicationScore Int       // 1-5 comunicação/clareza
+  overallScore       Int       // 1-5 satisfação geral
+  comment            String?   @db.Text
+  createdAt          DateTime  @default(now())
+  @@index([userId])
+  @@index([adoptionId])
+  @@index([createdAt])
 }
 
 model PetMedia {
@@ -488,10 +528,41 @@ model PartnerRecommendation {
   @@index([createdAt])
 }
 
+model PetPartnership {
+  id             String    @id @default(uuid())
+  petId          String
+  pet            Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
+  partnerId      String
+  partner        Partner   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  status         String    // PENDING | CONFIRMED | CANCELLED
+  requestedById  String
+  requestedBy    User      @relation("PetPartnershipRequestedBy", fields: [requestedById], references: [id], onDelete: Cascade)
+  confirmedById  String?
+  confirmedBy    User?     @relation("PetPartnershipConfirmedBy", fields: [confirmedById], references: [id], onDelete: SetNull)
+  confirmedAt    DateTime?
+  cancelledAt    DateTime?
+  cancelledById  String?
+  cancelledBy    User?     @relation("PetPartnershipCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  createdAt      DateTime  @default(now())
+
+  @@unique([petId, partnerId])
+  @@index([partnerId, status])
+  @@index([petId])
+}
+
 model FeatureFlag {
-  id          String   @id @default(uuid())
-  key         String   @unique // ex: REQUIRE_EMAIL_VERIFICATION, ENABLE_NEW_FEATURE
-  enabled     Boolean  @default(false)
-  description String?  // texto para o admin entender o que a flag faz
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(uuid())
+  key            String   // ex: NGO_PRO_BILLING_ENABLED, REQUIRE_EMAIL_VERIFICATION
+  enabled        Boolean  @default(false)
+  description    String?  // texto para o admin entender o que a flag faz
+  scope          String   @default("GLOBAL") // GLOBAL | CITY | PARTNER
+  cityId         String?  // preenchido quando scope = CITY
+  partnerId      String?  // preenchido quando scope = PARTNER
+  rolloutPercent Int?     // 0..100 para rollout gradual (hash determinístico)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([key, scope])
+  @@index([key, cityId])
+  @@index([key, partnerId])
 }

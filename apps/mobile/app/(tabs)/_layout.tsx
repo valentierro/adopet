@@ -1,5 +1,6 @@
 import { Tabs, useRouter } from 'expo-router';
 import { TouchableOpacity } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '../../src/hooks/useTheme';
 import { usePushToken } from '../../src/hooks/usePushToken';
@@ -24,6 +25,21 @@ function HeaderBackButton() {
   );
 }
 
+/** Volta sempre para a tela inicial (primeira tab). */
+function HeaderBackToHomeButton() {
+  const router = useRouter();
+  const { colors } = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={() => router.replace('/(tabs)')}
+      style={{ padding: 8, marginLeft: 4 }}
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+    >
+      <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+    </TouchableOpacity>
+  );
+}
+
 /** Header com logo + botão Voltar (volta para a tela anterior, seja home ou perfil). */
 const backWithLogoOptions = {
   headerLeft: () => <HeaderBackButton />,
@@ -34,7 +50,10 @@ const backWithLogoOptions = {
 export default function TabsLayout() {
   const router = useRouter();
   const { colors } = useTheme();
-  usePushToken(true);
+  const insets = useSafeAreaInsets();
+  const userId = useAuthStore((s) => s.user?.id);
+  const isGuest = !userId;
+  usePushToken(!!userId);
   useNotificationResponse(router);
   const isAdmin = useAuthStore((s) => s.user?.isAdmin === true);
   const { data: conversationsData } = useQuery({
@@ -54,6 +73,7 @@ export default function TabsLayout() {
       ? (adminStats.pendingPetsCount ?? 0) +
         (adminStats.pendingReportsCount ?? 0) +
         (adminStats.pendingAdoptionsByTutorCount ?? 0) +
+        (adminStats.adoptionsPendingAdopetConfirmationCount ?? 0) +
         (adminStats.pendingVerificationsCount ?? 0)
       : 0;
 
@@ -70,12 +90,18 @@ export default function TabsLayout() {
         headerLeft: () => <HeaderBackButton />,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
-        tabBarStyle: { backgroundColor: colors.tabBarBg },
+        tabBarStyle: {
+          backgroundColor: colors.tabBarBg,
+          paddingTop: 10,
+          paddingBottom: Math.max(insets.bottom, 8) + 4,
+          minHeight: 56 + 10 + Math.max(insets.bottom, 8) + 4,
+        },
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
+          href: isGuest ? null : undefined,
           title: 'Início',
           headerShown: false,
           tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
@@ -84,17 +110,19 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="feed"
         options={{
-          href: null,
-          title: 'Feed',
+          href: isGuest ? '/(tabs)/feed' : null,
+          title: isGuest ? 'Explorar' : 'Feed',
           headerShown: true,
-          headerTitle: 'Descobrir pets',
+          headerTitle: isGuest ? 'Pets para adoção' : 'Descobrir pets',
           headerTitleAlign: 'center',
-          headerLeft: () => <HeaderBackButton />,
+          headerLeft: isGuest ? undefined : () => <HeaderBackButton />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="paw" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="favorites"
         options={{
+          href: isGuest ? '/(tabs)/favorites' : undefined,
           title: 'Favoritos',
           headerTitle: () => <HeaderLogo />,
           headerTitleAlign: 'center',
@@ -105,6 +133,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="add-pet"
         options={{
+          href: isGuest ? '/(tabs)/add-pet' : undefined,
           title: 'Anunciar',
           headerTitle: () => <HeaderLogo />,
           headerTitleAlign: 'center',
@@ -115,27 +144,44 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="chats"
         options={{
+          href: isGuest ? '/(tabs)/chats' : undefined,
           title: 'Conversas',
           headerTitle: () => <HeaderLogo />,
           headerTitleAlign: 'center',
           headerLeft: () => <HeaderBackButton />,
           tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" size={size} color={color} />,
-          tabBarBadge: unreadTotal > 0 ? (unreadTotal > 99 ? '99+' : unreadTotal) : undefined,
+          tabBarBadge: !isGuest && unreadTotal > 0 ? (unreadTotal > 99 ? '99+' : unreadTotal) : undefined,
+        }}
+      />
+      {/* Visitante: tab "Entrar" abre entrar.tsx que redireciona para welcome. Logado: tab "Perfil". */}
+      <Tabs.Screen
+        name="entrar"
+        options={{
+          href: isGuest ? '/(tabs)/entrar' : null,
+          title: 'Entrar',
+          headerTitle: () => <HeaderLogo />,
+          headerTitleAlign: 'center',
+          tabBarIcon: ({ color, size }) => <Ionicons name="log-in-outline" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
+          href: isGuest ? null : undefined,
           title: 'Perfil',
           headerTitle: () => <HeaderLogo />,
           headerTitleAlign: 'center',
           tabBarIcon: ({ color, size }) => <Ionicons name="person" size={size} color={color} />,
-          tabBarBadge: adminPendingTotal > 0 ? (adminPendingTotal > 99 ? '99+' : adminPendingTotal) : undefined,
+          tabBarBadge: !isGuest && adminPendingTotal > 0 ? (adminPendingTotal > 99 ? '99+' : adminPendingTotal) : undefined,
         }}
       />
       <Tabs.Screen
         name="pet/[id]"
         options={{ href: null, title: 'Detalhes do pet', ...backScreenOptions }}
+      />
+      <Tabs.Screen
+        name="pet-priority/[id]"
+        options={{ href: null, title: 'Quem priorizar', ...backWithLogoOptions }}
       />
       <Tabs.Screen
         name="chat/[id]"
@@ -166,12 +212,26 @@ export default function TabsLayout() {
         options={{ href: null, title: 'Mapa', ...backWithLogoOptions }}
       />
       <Tabs.Screen
+        name="feed-grid"
+        options={{ href: null, title: 'Pets', ...backWithLogoOptions }}
+      />
+      <Tabs.Screen
         name="saved-searches"
         options={{ href: null, title: 'Buscas salvas', ...backWithLogoOptions }}
       />
       <Tabs.Screen
         name="adoption-confirm"
         options={{ href: null, title: 'Confirmar adoção', ...backWithLogoOptions }}
+      />
+      <Tabs.Screen
+        name="recent-adoptions"
+        options={{
+          href: null,
+          title: 'Últimas adoções',
+          headerTitle: () => <HeaderLogo />,
+          headerTitleAlign: 'center',
+          headerLeft: () => <HeaderBackToHomeButton />,
+        }}
       />
       <Tabs.Screen
         name="admin"

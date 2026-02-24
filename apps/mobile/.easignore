@@ -1,0 +1,30 @@
+# Reduz o upload do EAS Build (evitar 300+ MB). Ver: https://docs.expo.dev/build-reference/easignore/
+
+# Dependências (EAS instala no servidor)
+node_modules/
+
+# Build e cache
+.expo/
+*.tsbuildinfo
+android/build/
+android/app/build/
+android/.cxx/
+android/.gradle/
+ios/build/
+ios/Pods/
+*.xcworkspace/xcuserdata/
+
+# Chaves e segredos
+.env
+.env.*
+*.local
+google-service-account.json
+
+# Opcional: docs e teste (reduz mais um pouco)
+docs/
+.maestro/
+__tests__/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx

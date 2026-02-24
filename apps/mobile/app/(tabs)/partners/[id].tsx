@@ -1,9 +1,9 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useLayoutEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Linking, Image } from 'react-native';
-import { useLocalSearchParams, useNavigation } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
-import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, LoadingLogo, PageIntro, Toast } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
 import { getPartnerById, getPartnerCouponsPublic, getPartnerServicesPublic, recordPartnerView, recordPartnerCouponCopy, type PartnerCouponPublic, type PartnerServicePublic } from '../../../src/api/partners';
@@ -84,9 +84,28 @@ const serviceCardStyles = StyleSheet.create({
 });
 
 export default function PartnerDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, fromPet, from: fromParam } = useLocalSearchParams<{ id: string; fromPet?: string; from?: string }>();
   const navigation = useNavigation();
+  const router = useRouter();
   const { colors } = useTheme();
+
+  useLayoutEffect(() => {
+    if (fromPet) {
+      const petHref = fromParam === 'map' ? `/pet/${fromPet}?from=map` : `/pet/${fromPet}`;
+      navigation.setOptions({
+        headerLeft: () => (
+          <TouchableOpacity
+            onPress={() => router.replace(petHref)}
+            style={{ padding: 8, marginLeft: 4 }}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+        ),
+      });
+    }
+  }, [fromPet, fromParam, navigation, router, colors.textPrimary]);
+
   const { data: partner, isLoading } = useQuery({
     queryKey: ['partners', id],
     queryFn: () => getPartnerById(id!),
@@ -235,13 +254,33 @@ export default function PartnerDetailScreen() {
             <Text style={[styles.linkText, { color: colors.primary }]}>{partner.phone}</Text>
           </TouchableOpacity>
         ) : null}
+
+        <TouchableOpacity
+          style={[styles.linkBtn, { borderColor: colors.primary, marginTop: spacing.sm }]}
+          onPress={() => router.push({ pathname: '/partner-pets', params: { id: partner.id, partnerName: partner.name } })}
+        >
+          <Ionicons name="paw-outline" size={18} color={colors.primary} />
+          <Text style={[styles.linkText, { color: colors.primary }]}>Ver anúncios vinculados</Text>
+        </TouchableOpacity>
       </View>
 
-      {services.length > 0 && (
-        <View style={[styles.section, { paddingHorizontal: spacing.lg }]}>
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Serviços</Text>
-          <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>Oferecidos pelo estabelecimento</Text>
-          {services.map((s) => (
+      <View style={[styles.section, { paddingHorizontal: spacing.lg }]}>
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+          {partner.type === 'ONG' ? 'Serviços prestados pela ONG' : 'Serviços'}
+        </Text>
+        <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
+          {partner.type === 'ONG'
+            ? 'Serviços voluntários oferecidos pela ONG (sem cobrança).'
+            : 'Oferecidos pelo estabelecimento'}
+        </Text>
+        {services.length === 0 ? (
+          <Text style={[styles.emptyServicesText, { color: colors.textSecondary }]}>
+            {partner.type === 'ONG'
+              ? 'A ONG ainda não cadastrou serviços voluntários.'
+              : 'Nenhum serviço cadastrado ainda.'}
+          </Text>
+        ) : (
+          services.map((s) => (
             <View key={s.id} style={[serviceCardStyles.card, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
               <View style={serviceCardStyles.cardTop}>
                 {s.imageUrl ? (
@@ -249,7 +288,9 @@ export default function PartnerDetailScreen() {
                 ) : null}
                 <View style={serviceCardStyles.cardBody}>
                   <Text style={[serviceCardStyles.name, { color: colors.textPrimary }]}>{s.name}</Text>
-                  {s.priceDisplay ? <Text style={[serviceCardStyles.price, { color: colors.primary }]}>{s.priceDisplay}</Text> : null}
+                  {partner.type !== 'ONG' && s.priceDisplay ? (
+                    <Text style={[serviceCardStyles.price, { color: colors.primary }]}>{s.priceDisplay}</Text>
+                  ) : null}
                   {s.description ? <Text style={[serviceCardStyles.desc, { color: colors.textSecondary }]} numberOfLines={2}>{s.description}</Text> : null}
                   {s.validUntil && (
                     <Text style={[serviceCardStyles.valid, { color: colors.textSecondary }]}>Válido até {new Date(s.validUntil).toLocaleDateString('pt-BR')}</Text>
@@ -257,9 +298,9 @@ export default function PartnerDetailScreen() {
                 </View>
               </View>
             </View>
-          ))}
-        </View>
-      )}
+          ))
+        )}
+      </View>
 
       {coupons.length > 0 && (
         <View style={[styles.section, { paddingHorizontal: spacing.lg }]}>
@@ -325,6 +366,7 @@ const styles = StyleSheet.create({
   section: { marginTop: spacing.lg, marginBottom: spacing.xl },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 2 },
   sectionSub: { fontSize: 13, marginBottom: spacing.md },
+  emptyServicesText: { fontSize: 15, fontStyle: 'italic', marginTop: spacing.sm },
   empty: {
     margin: spacing.lg,
     padding: spacing.xl,

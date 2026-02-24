@@ -16,13 +16,13 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, PageIntro, Toast, LoadingLogo } from '../../src/components';
-import { useTheme } from '../../src/hooks/useTheme';
+import { ScreenContainer, PageIntro, Toast, LoadingLogo } from '../../../src/components';
+import { useTheme } from '../../../src/hooks/useTheme';
 import {
   getPendingPets,
   setPetPublication,
@@ -67,10 +67,10 @@ import {
   type CreatePartnerBody,
   type UpdatePartnerBody,
   type FeatureFlagItem,
-} from '../../src/api/admin';
-import { presign } from '../../src/api/uploads';
-import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
-import { spacing } from '../../src/theme';
+} from '../../../src/api/admin';
+import { presign } from '../../../src/api/uploads';
+import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
+import { spacing } from '../../../src/theme';
 
 const VERIFICATION_TYPE_LABEL: Record<string, string> = {
   USER_VERIFIED: 'Verificação de usuário',
@@ -339,6 +339,15 @@ export default function AdminScreen() {
       scrollRef.current.scrollTo({ y: Math.max(0, y - 20), animated: true });
     }
   }, []);
+
+  const params = useLocalSearchParams<{ section?: string }>();
+  useEffect(() => {
+    const section = params.section;
+    if (!section) return;
+    const t = setTimeout(() => scrollToSection(section), 500);
+    return () => clearTimeout(t);
+  }, [params.section, scrollToSection]);
+
   const createAdoptionMutation = useMutation({
     mutationFn: ({ petId, adopterUserId }: { petId: string; adopterUserId: string }) => createAdoption(petId, adopterUserId),
     onSuccess: () => {

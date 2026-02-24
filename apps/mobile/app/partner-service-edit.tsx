@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, TextInput, StyleSheet, Alert, ScrollView, TouchableOpacity, Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PrimaryButton, LoadingLogo, PartnerPanelLayout } from '../src/components';
@@ -13,10 +13,18 @@ import { spacing } from '../src/theme';
 
 export default function PartnerServiceEditScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string }>();
+  const navigation = useNavigation();
+  const params = useLocalSearchParams<{ id?: string; ong?: string }>();
   const queryClient = useQueryClient();
   const { colors } = useTheme();
+  const isOng = params.ong === '1';
   const isEdit = !!params.id;
+
+  useEffect(() => {
+    if (isOng) {
+      navigation.setOptions({ title: isEdit ? 'Editar serviço voluntário' : 'Cadastrar serviço voluntário' });
+    }
+  }, [isOng, isEdit, navigation]);
   const { data: services, isLoading } = useQuery({
     queryKey: ['me', 'partner', 'services'],
     queryFn: getMyPartnerServices,
@@ -108,8 +116,8 @@ export default function PartnerServiceEditScreen() {
         body: {
           name: nameTrim,
           description: description.trim() || undefined,
-          priceDisplay: priceDisplay.trim() || undefined,
-          validUntil: validUntil.trim() || null,
+          priceDisplay: isOng ? undefined : (priceDisplay.trim() || undefined),
+          validUntil: isOng ? null : (validUntil.trim() || null),
           active,
           imageUrl: imageUrl?.trim() || null,
         },
@@ -118,8 +126,8 @@ export default function PartnerServiceEditScreen() {
       createMutation.mutate({
         name: nameTrim,
         description: description.trim() || undefined,
-        priceDisplay: priceDisplay.trim() || undefined,
-        validUntil: validUntil.trim() || undefined,
+        priceDisplay: isOng ? undefined : (priceDisplay.trim() || undefined),
+        validUntil: isOng ? undefined : (validUntil.trim() || undefined),
         imageUrl: imageUrl?.trim() || undefined,
       });
     }
@@ -161,14 +169,31 @@ export default function PartnerServiceEditScreen() {
             </View>
           )}
         </TouchableOpacity>
-        <Text style={labelStyle}>Nome do serviço *</Text>
-        <TextInput style={inputStyle} placeholder="Ex: Banho e tosa" placeholderTextColor={colors.textSecondary} value={name} onChangeText={setName} />
-        <Text style={labelStyle}>Preço ou valor (opcional)</Text>
-        <TextInput style={inputStyle} placeholder="Ex: A partir de R$ 50 ou Sob consulta" placeholderTextColor={colors.textSecondary} value={priceDisplay} onChangeText={setPriceDisplay} />
-        <Text style={labelStyle}>Validade (opcional, AAAA-MM-DD)</Text>
-        <TextInput style={inputStyle} placeholder="2025-12-31" placeholderTextColor={colors.textSecondary} value={validUntil} onChangeText={setValidUntil} />
+        <Text style={labelStyle}>{isOng ? 'Nome do serviço voluntário *' : 'Nome do serviço *'}</Text>
+        <TextInput
+          style={inputStyle}
+          placeholder={isOng ? 'Ex: Castração gratuita, Consulta veterinária' : 'Ex: Banho e tosa'}
+          placeholderTextColor={colors.textSecondary}
+          value={name}
+          onChangeText={setName}
+        />
+        {!isOng && (
+          <>
+            <Text style={labelStyle}>Preço ou valor (opcional)</Text>
+            <TextInput style={inputStyle} placeholder="Ex: A partir de R$ 50 ou Sob consulta" placeholderTextColor={colors.textSecondary} value={priceDisplay} onChangeText={setPriceDisplay} />
+            <Text style={labelStyle}>Validade (opcional, AAAA-MM-DD)</Text>
+            <TextInput style={inputStyle} placeholder="2025-12-31" placeholderTextColor={colors.textSecondary} value={validUntil} onChangeText={setValidUntil} />
+          </>
+        )}
         <Text style={labelStyle}>Descrição (opcional)</Text>
-        <TextInput style={[inputStyle, styles.textArea]} placeholder="Ex: Banho completo + tosa higiênica para cães" placeholderTextColor={colors.textSecondary} value={description} onChangeText={setDescription} multiline />
+        <TextInput
+          style={[inputStyle, styles.textArea]}
+          placeholder={isOng ? 'Ex: Castração para cães e gatos, mediante agendamento' : 'Ex: Banho completo + tosa higiênica para cães'}
+          placeholderTextColor={colors.textSecondary}
+          value={description}
+          onChangeText={setDescription}
+          multiline
+        />
         {isEdit && (
           <TouchableOpacity style={styles.activeRow} onPress={() => setActive((a) => !a)}>
             <Text style={[styles.activeLabel, { color: colors.textPrimary }]}>Serviço ativo (visível no app)</Text>
@@ -178,7 +203,11 @@ export default function PartnerServiceEditScreen() {
           </TouchableOpacity>
         )}
         <PrimaryButton
-          title={isEdit ? (updateMutation.isPending ? 'Salvando...' : 'Salvar') : createMutation.isPending ? 'Criando...' : 'Cadastrar serviço'}
+          title={
+            isEdit
+              ? (updateMutation.isPending ? 'Salvando...' : 'Salvar')
+              : createMutation.isPending ? 'Criando...' : isOng ? 'Cadastrar serviço voluntário' : 'Cadastrar serviço'
+          }
           onPress={handleSave}
           disabled={createMutation.isPending || updateMutation.isPending}
         />

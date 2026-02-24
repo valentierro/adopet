@@ -51,6 +51,9 @@ export function getAdoptionCongratulationsAdopterHtml(data: AdoptionEmailData, l
                 </tr>
               </table>
               <p style="margin: 0 0 16px 0; font-size: 15px; line-height: 1.6; color: #57534E;">Agradecemos a ${data.tutorName} por ter confiado no Adopet para encontrar um lar para ${data.petName}. Juntos, estamos fazendo a diferença.</p>
+              <p style="margin: 0 0 8px 0; font-size: 12px; line-height: 1.5; color: #78716C;">O Adopet atua apenas como plataforma de conexão entre doadores e adotantes. O acompanhamento pós-adoção é responsabilidade de quem anunciou o pet (o doador); o app não realiza nem se responsabiliza por esse acompanhamento.</p>
+              <h2 style="margin: 24px 0 12px 0; font-size: 17px; font-weight: 600; color: #1C1917;">Seu compromisso com ${data.petName}</h2>
+              <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.7; color: #57534E;">A adoção responsável inclui cuidado por toda a vida: ambiente adequado, alimentação, vacinação, castração e nunca abandonar. O doador que anunciou ${data.petName} pode entrar em contato para saber como está o pet — responder e manter o canal aberto é uma forma de demonstrar que está em boas mãos. O Adopet não acompanha nem se responsabiliza pelo pós-adoção.</p>
               <h2 style="margin: 24px 0 12px 0; font-size: 17px; font-weight: 600; color: #1C1917;">Dicas para os primeiros dias</h2>
               <ul style="margin: 0 0 24px 0; padding-left: 20px; font-size: 14px; line-height: 1.8; color: #57534E;">
                 <li>Respeite o tempo de adaptação: um ambiente calmo ajuda muito.</li>
@@ -90,6 +93,10 @@ Sua adoção foi confirmada. ${data.petName} agora faz parte da sua família.
 Dados do pet: ${data.petName} · ${data.speciesLabel}${data.breed ? ` · ${data.breed}` : ''} · ${data.age} ano(s).
 
 Agradecemos a ${data.tutorName} por ter confiado no Adopet.
+
+O Adopet atua apenas como plataforma de conexão; o acompanhamento pós-adoção é responsabilidade de quem anunciou (o doador), não do app.
+
+Seu compromisso: cuidado por toda a vida (ambiente, alimentação, vacinação, castração, nunca abandonar). O doador que anunciou ${data.petName} pode entrar em contato para saber como está o pet — responder é uma forma de demonstrar responsabilidade. O Adopet não acompanha nem se responsabiliza pelo pós-adoção.
 
 Dicas: respeite o tempo de adaptação, mantenha a alimentação indicada, ofereça um cantinho de descanso e consulte um veterinário em breve.
 

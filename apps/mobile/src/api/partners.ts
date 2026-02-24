@@ -17,9 +17,10 @@ export type Partner = {
   isPaidPartner?: boolean;
 };
 
-export async function getPartners(type?: 'ONG' | 'CLINIC' | 'STORE'): Promise<Partner[]> {
+export async function getPartners(type?: 'ONG' | 'CLINIC' | 'STORE', q?: string): Promise<Partner[]> {
   const params: Record<string, string> = {};
   if (type) params.type = type;
+  if (q?.trim()) params.q = q.trim();
   return api.get<Partner[]>('/partners', params);
 }
 
@@ -68,4 +69,38 @@ export type PartnerServicePublic = {
 
 export async function getPartnerServicesPublic(partnerId: string): Promise<PartnerServicePublic[]> {
   return api.get<PartnerServicePublic[]>(`/partners/${partnerId}/services`, undefined, { skipAuth: true });
+}
+
+/** Lista de pets vinculados ao parceiro (anúncios públicos). Quando autenticado, inclui matchScore. */
+export type PartnerPetsPage = {
+  items: Array<{
+    id: string;
+    name: string;
+    species: string;
+    age: number;
+    sex: string;
+    size: string;
+    vaccinated: boolean;
+    neutered: boolean;
+    description: string;
+    status: string;
+    publicationStatus?: string;
+    photos?: string[];
+    createdAt: string;
+    verified?: boolean;
+    partner?: { id: string; name: string; slug: string; logoUrl?: string; isPaidPartner?: boolean };
+    /** Score de match com o perfil do usuário (0–100), quando logado. */
+    matchScore?: number | null;
+  }>;
+  nextCursor: string | null;
+};
+
+export async function getPartnerPets(
+  partnerId: string,
+  opts?: { cursor?: string; species?: 'BOTH' | 'DOG' | 'CAT' },
+): Promise<PartnerPetsPage> {
+  const params: Record<string, string> = {};
+  if (opts?.cursor) params.cursor = opts.cursor;
+  if (opts?.species && opts.species !== 'BOTH') params.species = opts.species;
+  return api.get<PartnerPetsPage>(`/pets/by-partner/${partnerId}`, params);
 }

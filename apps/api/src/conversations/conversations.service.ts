@@ -123,6 +123,7 @@ export class ConversationsService {
                 hasChildren: true,
                 timeAtHome: true,
                 deactivatedAt: true,
+                kycStatus: true,
               },
             },
           },
@@ -137,7 +138,7 @@ export class ConversationsService {
     });
     if (!conv) return null;
     const other = conv.participants.find((p) => p.userId !== userId)?.user as
-      | { id: string; name: string; avatarUrl: string | null; city: string | null; housingType: string | null; hasYard: boolean | null; hasOtherPets: boolean | null; hasChildren: boolean | null; timeAtHome: string | null; deactivatedAt: Date | null }
+      | { id: string; name: string; avatarUrl: string | null; city: string | null; housingType: string | null; hasYard: boolean | null; hasOtherPets: boolean | null; hasChildren: boolean | null; timeAtHome: string | null; deactivatedAt: Date | null; kycStatus: string | null }
       | undefined;
     const otherUserDeactivated = !!other?.deactivatedAt;
     const otherUserTyping = this.typingService.isOtherUserTyping(conversationId, userId);
@@ -159,6 +160,7 @@ export class ConversationsService {
         hasOtherPets?: boolean;
         hasChildren?: boolean;
         timeAtHome?: string;
+        kycVerified?: boolean;
       };
       pet?: { name: string; photoUrl?: string; species?: string; size?: string; age?: number; adoptionFinalized?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string };
       otherUserTyping?: boolean;
@@ -178,6 +180,7 @@ export class ConversationsService {
             hasOtherPets: other.hasOtherPets ?? undefined,
             hasChildren: other.hasChildren ?? undefined,
             timeAtHome: other.timeAtHome ?? undefined,
+            kycVerified: other.kycStatus === 'VERIFIED',
           }
         : { id: '', name: '' },
       otherUserTyping,
@@ -224,7 +227,7 @@ export class ConversationsService {
             adoption: { select: { id: true } },
           },
         },
-        participants: { include: { user: { select: { id: true, name: true, avatarUrl: true } } } },
+        participants: { include: { user: { select: { id: true, name: true, avatarUrl: true, kycStatus: true } } } },
         messages: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
       orderBy: { updatedAt: 'desc' },
@@ -266,6 +269,7 @@ export class ConversationsService {
           id: other?.id ?? '',
           name: other?.name ?? '',
           avatarUrl: other?.avatarUrl ?? undefined,
+          kycVerified: other?.kycStatus === 'VERIFIED',
         },
         lastMessage: last
           ? { content: last.content, createdAt: last.createdAt.toISOString(), senderId: last.senderId ?? '' }

@@ -116,12 +116,13 @@ export class AdminController {
   }
 
   @Patch('users/:userId/kyc')
-  @ApiOperation({ summary: '[Admin] Aprovar ou rejeitar KYC do usuário (status PENDING)' })
+  @ApiOperation({ summary: '[Admin] Aprovar ou rejeitar KYC do usuário (status PENDING). Decisão humana; análise feita pela equipe.' })
   async updateUserKyc(
+    @CurrentUser() adminUser: { id: string },
     @Param('userId') userId: string,
     @Body() body: { status: 'VERIFIED' | 'REJECTED'; rejectionReason?: string },
   ): Promise<{ message: string }> {
-    return this.adminService.updateUserKyc(userId, body.status, body.rejectionReason);
+    return this.adminService.updateUserKyc(userId, body.status, adminUser.id, body.rejectionReason);
   }
 
   @Get('users')

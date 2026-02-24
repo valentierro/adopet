@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import type { Router } from 'expo-router';
 
@@ -7,31 +8,42 @@ const isExpoGo = Constants.appOwnership === 'expo';
 /**
  * Navega para chat quando o usuário toca em notificação com conversationId (engajamento/retenção).
  * No Expo Go (SDK 53+) push foi removido no Android; este hook não faz nada lá.
+ * Na web, expo-notifications não está disponível.
  */
 export function useNotificationResponse(router: Router) {
   useEffect(() => {
-    if (isExpoGo) return;
+    if (isExpoGo || Platform.OS === 'web') return;
     let sub: { remove: () => void } | null = null;
     let cancelled = false;
     (async () => {
       const Notifications = await import('expo-notifications');
       if (cancelled) return;
-      const openChatIfConversation = (data: Record<string, unknown> | undefined) => {
-        const conversationId = data?.conversationId;
+      const handleNotificationData = (data: Record<string, unknown> | undefined) => {
+        if (!data) return;
+        const conversationId = data.conversationId;
         if (typeof conversationId === 'string' && conversationId) {
           router.push(`/chat/${conversationId}`);
+          return;
+        }
+        const screen = data.screen;
+        if (screen === 'my-adoptions') {
+          router.push('/my-adoptions');
+          return;
+        }
+        if (screen === 'profile') {
+          router.push('/(tabs)/profile');
         }
       };
 
       sub = Notifications.addNotificationResponseReceivedListener((response) => {
         const data = response.notification.request.content.data as Record<string, unknown> | undefined;
-        openChatIfConversation(data);
+        handleNotificationData(data);
       });
 
       const response = await Notifications.getLastNotificationResponseAsync();
       if (!cancelled && response?.notification.request.content.data) {
         const data = response.notification.request.content.data as Record<string, unknown>;
-        openChatIfConversation(data);
+        handleNotificationData(data);
       }
     })();
     return () => {

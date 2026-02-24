@@ -10,6 +10,7 @@ import { AdminService } from '../admin/admin.service';
 import { SimilarPetsEngineService } from '../similar-pets-engine/similar-pets-engine.service';
 import { MatchEngineService } from '../match-engine/match-engine.service';
 import { PetViewService } from './pet-view.service';
+import { PetPartnershipService } from '../pet-partnership/pet-partnership.service';
 import { reverseGeocode, forwardGeocode } from '../common/geocoding';
 import type { PetResponseDto, SimilarPetItemDto } from './dto/pet-response.dto';
 import type { CreatePetDto } from './dto/create-pet.dto';
@@ -28,6 +29,7 @@ export class PetsService {
     private readonly similarPetsEngine: SimilarPetsEngineService,
     private readonly matchEngine: MatchEngineService,
     private readonly petViewService: PetViewService,
+    private readonly petPartnershipService: PetPartnershipService,
   ) {}
 
   private mapToDto(
@@ -83,6 +85,7 @@ export class PetsService {
     userLat?: number,
     userLng?: number,
     verified?: boolean,
+    confirmedPartners?: Array<{ id: string; name: string; slug: string; logoUrl: string | null; isPaidPartner?: boolean; type: string }>,
   ): PetResponseDto {
     let distanceKm: number | undefined;
     if (userLat != null && userLng != null && pet.latitude != null && pet.longitude != null) {
@@ -136,7 +139,25 @@ export class PetsService {
     if (pet.expiresAt != null) dto.expiresAt = pet.expiresAt.toISOString();
     if (pet.adoptionRejectedAt != null) dto.adoptionRejectedAt = pet.adoptionRejectedAt.toISOString();
     if (pet.adoptionRejectionReason != null) dto.adoptionRejectionReason = pet.adoptionRejectionReason;
-    if (pet.partner != null) {
+    if (confirmedPartners != null && confirmedPartners.length > 0) {
+      dto.partners = confirmedPartners.map((p) => ({
+        id: p.id,
+        name: p.name,
+        slug: p.slug,
+        logoUrl: p.logoUrl ?? undefined,
+        isPaidPartner: p.isPaidPartner,
+        type: p.type,
+      }));
+      const first = confirmedPartners[0];
+      dto.partner = {
+        id: first.id,
+        name: first.name,
+        slug: first.slug,
+        logoUrl: first.logoUrl ?? undefined,
+        isPaidPartner: first.isPaidPartner,
+        type: first.type,
+      };
+    } else if (confirmedPartners === undefined && pet.partner != null) {
       const rawType = (pet.partner as { type?: string }).type;
       const typeNorm = rawType?.toUpperCase?.() || rawType;
       dto.partner = {
@@ -248,12 +269,13 @@ export class PetsService {
       },
     });
     if (!pet) return null;
-    const [verified, petsCount, ownerVerified] = await Promise.all([
+    const [verified, petsCount, ownerVerified, confirmedPartners] = await Promise.all([
       this.verificationService.isPetVerified(pet.id),
       this.prisma.pet.count({ where: { ownerId: pet.ownerId } }),
       pet.owner ? this.verificationService.isUserVerified(pet.owner.id) : Promise.resolve(false),
+      this.petPartnershipService.getConfirmedPartnersForPet(pet.id),
     ]);
-    const dto = this.mapToDto(pet, userLat, userLng, verified);
+    const dto = this.mapToDto(pet, userLat, userLng, verified, confirmedPartners);
     if (dto.city == null && pet.owner?.city != null) dto.city = pet.owner.city;
     if (pet.owner) {
       dto.owner = this.mapOwnerToPublicDto(pet.owner, petsCount, ownerVerified);
@@ -354,7 +376,10 @@ export class PetsService {
       },
     });
     const petIds = pets.map((p) => p.id);
-    const verifiedIds = await this.verificationService.getVerifiedPetIds(petIds);
+    const [verifiedIds, petIdsWithPendingPartnership] = await Promise.all([
+      this.verificationService.getVerifiedPetIds(petIds),
+      this.petPartnershipService.getPetIdsWithPendingPartnership(petIds),
+    ]);
     const ownerIdsWithoutPartner = [...new Set(pets.filter((p) => !p.partnerId).map((p) => p.ownerId))];
     const ownerPartners =
       ownerIdsWithoutPartner.length > 0
@@ -365,13 +390,14 @@ export class PetsService {
         : [];
     const partnerByOwnerId = Object.fromEntries(ownerPartners.map((p) => [p.userId, p]));
     const dtos = pets.map((p) => this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id)));
-    // Inclui partner para qualquer tipo (ONG, CLINIC, STORE) quando o dono do pet é o admin do parceiro
+    // Inclui partner para qualquer tipo (ONG, CLINIC, STORE) quando o dono do pet é o admin do parceiro; marca parceria não confirmada
     dtos.forEach((dto, i) => {
       if (!dto.partner && partnerByOwnerId[pets[i].ownerId]) {
         const op = partnerByOwnerId[pets[i].ownerId];
         const typeNorm = op.type?.toUpperCase?.() || op.type;
         dto.partner = { id: op.id, name: op.name, slug: op.slug, logoUrl: op.logoUrl ?? undefined, isPaidPartner: op.isPaidPartner, type: typeNorm };
       }
+      dto.hasPendingPartnership = petIdsWithPendingPartnership.has(pets[i].id);
     });
     return dtos;
   }
@@ -523,8 +549,23 @@ export class PetsService {
     return this.mapToDto(updated, undefined, undefined, verified);
   }
 
+  /** Parceiro vinculado ao usuário (dono do parceiro ou membro de ONG). Retorna null se não for parceiro. */
+  private async findPartnerForUser(ownerId: string): Promise<{ id: string; name: string; slug: string } | null> {
+    const owned = await this.prisma.partner.findFirst({
+      where: { userId: ownerId, active: true },
+      select: { id: true, name: true, slug: true },
+    });
+    if (owned) return owned;
+    const membership = await this.prisma.partnerMember.findFirst({
+      where: { userId: ownerId },
+      include: { partner: { select: { id: true, name: true, slug: true, active: true } } },
+    });
+    const partner = membership?.partner;
+    return partner?.active === true ? { id: partner.id, name: partner.name, slug: partner.slug } : null;
+  }
+
   /** Perfil público de um usuário por id (ex.: interessado na lista "Quem priorizar"). Mesmo formato do perfil por petId. */
-  async findOwnerProfileByUserId(userId: string): Promise<NonNullable<PetResponseDto['owner']> | null> {
+  async findOwnerProfileByUserId(userId: string): Promise<NonNullable<PetResponseDto['owner']> & { partner?: { id: string; name: string; slug: string } } | null> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId, deactivatedAt: null },
       select: {
@@ -543,24 +584,28 @@ export class PetsService {
         catExperience: true,
         householdAgreesToAdoption: true,
         whyAdopt: true,
+        kycStatus: true,
       },
     });
     if (!user) return null;
-    const [petsCount, ownerVerified] = await Promise.all([
+    const [petsCount, userVerifiedBadge, partner] = await Promise.all([
       this.prisma.pet.count({ where: { ownerId: userId } }),
       this.verificationService.isUserVerified(user.id),
+      this.findPartnerForUser(user.id),
     ]);
-    const ownerDto = this.mapOwnerToPublicDto(user, petsCount, ownerVerified);
+    const ownerVerified = userVerifiedBadge || user.kycStatus === 'VERIFIED';
+    const ownerDto = this.mapOwnerToPublicDto(user, petsCount, ownerVerified) as NonNullable<PetResponseDto['owner']> & { partner?: { id: string; name: string; slug: string } };
     try {
       ownerDto.tutorStats = await this.tutorStatsService.getStats(user.id);
     } catch {
       // ignora falha de stats
     }
+    if (partner) ownerDto.partner = partner;
     return ownerDto;
   }
 
   /** Perfil público do tutor do pet (sem dados de contato). */
-  async findOwnerProfileByPetId(petId: string): Promise<NonNullable<PetResponseDto['owner']> | null> {
+  async findOwnerProfileByPetId(petId: string): Promise<(NonNullable<PetResponseDto['owner']> & { partner?: { id: string; name: string; slug: string } }) | null> {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
       include: {
@@ -581,22 +626,26 @@ export class PetsService {
             catExperience: true,
             householdAgreesToAdoption: true,
             whyAdopt: true,
+            kycStatus: true,
           },
         },
       },
     });
     if (!pet?.owner) return null;
-    const [petsCount, ownerVerified] = await Promise.all([
+    const [petsCount, userVerifiedBadge, partner] = await Promise.all([
       this.prisma.pet.count({ where: { ownerId: pet.ownerId } }),
       this.verificationService.isUserVerified(pet.owner.id),
+      this.findPartnerForUser(pet.owner.id),
     ]);
-    const ownerDto = this.mapOwnerToPublicDto(pet.owner, petsCount, ownerVerified);
+    const ownerVerified = userVerifiedBadge || pet.owner.kycStatus === 'VERIFIED';
+    const ownerDto = this.mapOwnerToPublicDto(pet.owner, petsCount, ownerVerified) as NonNullable<PetResponseDto['owner']> & { partner?: { id: string; name: string; slug: string } };
     ownerDto.tutorStats = await this.tutorStatsService.getStats(pet.owner.id);
+    if (partner) ownerDto.partner = partner;
     return ownerDto;
   }
 
   /** Perfil do tutor com telefone (apenas para admin). */
-  async findOwnerProfileByPetIdForAdmin(petId: string): Promise<(NonNullable<PetResponseDto['owner']> & { phone?: string }) | null> {
+  async findOwnerProfileByPetIdForAdmin(petId: string): Promise<(NonNullable<PetResponseDto['owner']> & { phone?: string; partner?: { id: string; name: string; slug: string } }) | null> {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
       include: {
@@ -618,15 +667,18 @@ export class PetsService {
             householdAgreesToAdoption: true,
             whyAdopt: true,
             phone: true,
+            kycStatus: true,
           },
         },
       },
     });
     if (!pet?.owner) return null;
-    const [petsCount, ownerVerified] = await Promise.all([
+    const [petsCount, userVerifiedBadge, partner] = await Promise.all([
       this.prisma.pet.count({ where: { ownerId: pet.ownerId } }),
       this.verificationService.isUserVerified(pet.owner.id),
+      this.findPartnerForUser(pet.owner.id),
     ]);
+    const ownerVerified = userVerifiedBadge || pet.owner.kycStatus === 'VERIFIED';
     const ownerDto = this.mapOwnerToPublicDto(
       {
         id: pet.owner.id,
@@ -647,9 +699,10 @@ export class PetsService {
       },
       petsCount,
       ownerVerified,
-    ) as NonNullable<PetResponseDto['owner']> & { phone?: string };
+    ) as NonNullable<PetResponseDto['owner']> & { phone?: string; partner?: { id: string; name: string; slug: string } };
     ownerDto.tutorStats = await this.tutorStatsService.getStats(pet.owner.id);
     if (pet.owner.phone) ownerDto.phone = pet.owner.phone;
+    if (partner) ownerDto.partner = partner;
     return ownerDto;
   }
 
@@ -681,7 +734,7 @@ export class PetsService {
     const hasMore = pets.length > this.MINE_PAGE_SIZE;
     const items = pets.slice(0, this.MINE_PAGE_SIZE);
     const petIds = items.map((p) => p.id);
-    const [verifiedIds, favoriteCounts, viewCounts] = await Promise.all([
+    const [verifiedIds, favoriteCounts, viewCounts, confirmedPartnersByPet] = await Promise.all([
       this.verificationService.getVerifiedPetIds(petIds),
       this.prisma.favorite.groupBy({
         by: ['petId'],
@@ -689,9 +742,11 @@ export class PetsService {
         _count: { id: true },
       }).then((rows) => new Map(rows.map((r) => [r.petId, r._count.id]))),
       this.petViewService.getViewCountsLast24h(petIds),
+      this.petPartnershipService.getConfirmedPartnersByPetIds(petIds),
     ]);
     const dtos = items.map((p) => {
-      const dto = this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id));
+      const confirmedPartners = confirmedPartnersByPet.get(p.id) ?? [];
+      const dto = this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id), confirmedPartners);
       if (p.adoption?.adoptedAt) dto.adoptedAt = p.adoption.adoptedAt.toISOString();
       if (p.adoption?.adopter?.username) dto.adopterUsername = p.adoption.adopter.username;
       if (p.adoptionRejectedAt) dto.adoptionRejectedAt = p.adoptionRejectedAt.toISOString();
@@ -707,7 +762,12 @@ export class PetsService {
   }
 
   async create(ownerId: string, dto: CreatePetDto): Promise<PetResponseDto> {
-    if (dto.partnerId) {
+    const partnerIds = dto.partnerIds?.length
+      ? dto.partnerIds
+      : dto.partnerId
+        ? [dto.partnerId]
+        : [];
+    if (dto.partnerId && !partnerIds.includes(dto.partnerId)) {
       const partner = await this.prisma.partner.findFirst({
         where: { id: dto.partnerId, type: 'ONG', active: true, approvedAt: { not: null } },
       });
@@ -766,7 +826,7 @@ export class PetsService {
         latitude,
         longitude,
         city,
-        partnerId: dto.partnerId ?? null,
+        partnerId: partnerIds.length > 0 ? partnerIds[0] : (dto.partnerId ?? null),
         status: 'AVAILABLE',
         publicationStatus: 'PENDING',
       },
@@ -782,6 +842,9 @@ export class PetsService {
         },
       });
     }
+    if (partnerIds.length > 0) {
+      await this.petPartnershipService.syncPetPartnerships(pet.id, ownerId, partnerIds);
+    }
     const withMedia = await this.prisma.pet.findUnique({
       where: { id: pet.id },
       include: {
@@ -792,7 +855,8 @@ export class PetsService {
     const verified = withMedia
       ? await this.verificationService.isPetVerified(withMedia.id)
       : false;
-    return this.mapToDto(withMedia!, undefined, undefined, verified);
+    const confirmedPartners = await this.petPartnershipService.getConfirmedPartnersForPet(pet.id);
+    return this.mapToDto(withMedia!, undefined, undefined, verified, confirmedPartners);
   }
 
   async update(
@@ -800,7 +864,10 @@ export class PetsService {
     ownerId: string,
     dto: UpdatePetDto,
   ): Promise<PetResponseDto> {
-    if (dto.partnerId !== undefined) {
+    const partnerIds = dto.partnerIds !== undefined
+      ? (Array.isArray(dto.partnerIds) ? dto.partnerIds : [])
+      : undefined;
+    if (dto.partnerId !== undefined && !partnerIds) {
       if (dto.partnerId) {
         const partner = await this.prisma.partner.findFirst({
           where: { id: dto.partnerId, type: 'ONG', active: true, approvedAt: { not: null } },
@@ -878,15 +945,22 @@ export class PetsService {
         ...(dto.hasOngoingCosts !== undefined && { hasOngoingCosts: dto.hasOngoingCosts ?? null }),
         ...(latLngUpdate !== undefined && latLngUpdate),
         ...(cityUpdate !== undefined && cityUpdate),
-        ...(dto.partnerId !== undefined && { partnerId: dto.partnerId || null }),
+        ...(dto.partnerId !== undefined && !partnerIds && { partnerId: dto.partnerId || null }),
+        ...(partnerIds !== undefined && { partnerId: partnerIds.length > 0 ? partnerIds[0] : null }),
       },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
         partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
       },
     });
+    if (partnerIds !== undefined && partnerIds.length > 0) {
+      await this.petPartnershipService.syncPetPartnerships(id, ownerId, partnerIds);
+    } else if (partnerIds !== undefined && partnerIds.length === 0) {
+      await this.petPartnershipService.syncPetPartnerships(id, ownerId, []);
+    }
     const verified = await this.verificationService.isPetVerified(pet.id);
-    return this.mapToDto(pet, undefined, undefined, verified);
+    const confirmedPartners = await this.petPartnershipService.getConfirmedPartnersForPet(id);
+    return this.mapToDto(pet, undefined, undefined, verified, confirmedPartners);
   }
 
   async patchStatus(
@@ -925,6 +999,19 @@ export class PetsService {
       }
     }
 
+    if (status === 'ADOPTED' && resolvedAdopterId) {
+      const adopter = await this.prisma.user.findUnique({
+        where: { id: resolvedAdopterId },
+        select: { kycStatus: true, name: true },
+      });
+      if (adopter?.kycStatus !== 'VERIFIED') {
+        throw new BadRequestException({
+          code: 'KYC_NOT_COMPLETE',
+          message: `O interessado ${adopter?.name ?? 'ainda'} não finalizou a verificação de identidade (KYC). Peça para a pessoa completar no app em Perfil → Verificação de identidade.`,
+        });
+      }
+    }
+
     const pet = await this.prisma.pet.update({
       where: { id },
       data: {
@@ -946,8 +1033,13 @@ export class PetsService {
       const adminIds = this.config.get<string>('ADMIN_USER_IDS')?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
       const title = 'Pet marcado como adotado';
       const body = `${pet.name} foi marcado como adotado pelo tutor ${pet.owner.name}. Confira no painel para registrar a adoção.`;
+      const pushData = { screen: 'admin', petId: id };
+      const metadata = { petId: id };
       for (const adminId of adminIds) {
-        this.push.sendToUser(adminId, title, body, { screen: 'admin', petId: pet.id }).catch(() => {});
+        this.push.sendToUser(adminId, title, body, pushData).catch(() => {});
+        this.inAppNotifications
+          .create(adminId, IN_APP_NOTIFICATION_TYPES.PENDING_ADOPTION_BY_TUTOR, title, body, metadata, pushData)
+          .catch((e) => console.warn('[PetsService] in-app notification to admin failed', e));
       }
       if (resolvedAdopterId) {
         this.requestAdoptionConfirmation(id, pet.name, pet.owner.name, resolvedAdopterId).catch((e) =>
@@ -999,7 +1091,7 @@ export class PetsService {
   async getConversationPartners(
     petId: string,
     ownerId: string,
-  ): Promise<{ id: string; name: string; username?: string }[]> {
+  ): Promise<{ id: string; name: string; username?: string; kycVerified: boolean }[]> {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
       select: { ownerId: true },
@@ -1015,12 +1107,13 @@ export class PetsService {
     if (userIds.length === 0) return [];
     const users = await this.prisma.user.findMany({
       where: { id: { in: userIds }, deactivatedAt: null },
-      select: { id: true, name: true, username: true },
+      select: { id: true, name: true, username: true, kycStatus: true },
     });
     return users.map((u) => ({
       id: u.id,
       name: u.name,
       ...(u.username ? { username: u.username } : undefined),
+      kycVerified: u.kycStatus === 'VERIFIED',
     }));
   }
 
@@ -1081,7 +1174,7 @@ export class PetsService {
   }
 
   /** Adotante confirma que realizou a adoção; cria o registro de adoção na hora para o número atualizar. */
-  async confirmAdoption(petId: string, userId: string): Promise<{ confirmed: boolean }> {
+  async confirmAdoption(petId: string, userId: string, responsibilityTermAccepted = false): Promise<{ confirmed: boolean }> {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
       select: {
@@ -1110,7 +1203,17 @@ export class PetsService {
       if (pet.ownerId === userId) {
         console.warn('[PetsService] confirmAdoption: não cria Adoption quando adotante é o próprio tutor (petId=%s)', petId);
       } else {
-        await this.adminService.createAdoption(petId);
+        const adopter = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { kycStatus: true },
+        });
+        if (adopter?.kycStatus !== 'VERIFIED') {
+          throw new ForbiddenException({
+            code: 'KYC_REQUIRED',
+            message: 'É necessário completar a verificação de identidade (KYC) para confirmar a adoção.',
+          });
+        }
+        await this.adminService.createAdoption(petId, undefined, false, responsibilityTermAccepted ? new Date() : undefined);
       }
     }
     return { confirmed: true };
@@ -1134,8 +1237,16 @@ export class PetsService {
         partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
       },
     });
-    const verifiedIds = await this.verificationService.getVerifiedPetIds(pets.map((p) => p.id));
-    const byId = new Map(pets.map((p) => [p.id, this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id))]));
+    const [verifiedIds, confirmedPartnersByPet] = await Promise.all([
+      this.verificationService.getVerifiedPetIds(pets.map((p) => p.id)),
+      this.petPartnershipService.getConfirmedPartnersByPetIds(pets.map((p) => p.id)),
+    ]);
+    const byId = new Map(
+      pets.map((p) => {
+        const confirmedPartners = confirmedPartnersByPet.get(p.id) ?? [];
+        return [p.id, this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id), confirmedPartners)];
+      }),
+    );
     return ids.filter((id) => byId.has(id)).map((id) => byId.get(id)!);
   }
 

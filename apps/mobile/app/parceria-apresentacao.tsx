@@ -26,9 +26,9 @@ const BENEFITS_COMERCIAL = [
   { icon: 'phone-portrait' as const, title: 'Portal no app', description: 'Gerencie seu estabelecimento e assinatura direto pelo app, com pagamento seguro.' },
 ];
 
-/** Plano único por enquanto: R$ 50/mês com todos os benefícios */
+/** Plano único por enquanto: R$ 100/mês com todos os benefícios */
 const PLANO_UNICO = {
-  preco: 'R$ 50',
+  preco: 'R$ 100',
   periodo: '/mês',
   itens: [
     'Página de parceiros com sua marca e logo',
@@ -82,7 +82,7 @@ export default function ParceriaApresentacaoScreen() {
               </Text>
               <Text style={styles.heroSubtitle}>
                 {tipo === 'comercial'
-                  ? 'Leve sua clínica veterinária, pet shop ou loja para milhares de tutores. Plano único por R$ 50/mês com todos os benefícios: portal no app, cupons de desconto e destaque.'
+                  ? 'Leve sua clínica veterinária, pet shop ou loja para milhares de tutores. Plano único por R$ 100/mês com todos os benefícios: portal no app, cupons de desconto e destaque.'
                   : 'Se sua ONG ou abrigo divulga pets para adoção, faça parte do Adopet. Parceria gratuita: mais visibilidade para seus animais e sua marca.'}
               </Text>
             </View>

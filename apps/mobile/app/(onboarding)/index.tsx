@@ -8,16 +8,21 @@ import {
   TouchableOpacity,
   NativeSyntheticEvent,
   NativeScrollEvent,
-  Image,
   Pressable,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
+import { Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { PrimaryButton } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useAuthStore } from '../../src/stores/authStore';
 import { setOnboardingSeen } from '../../src/storage/onboarding';
 import { spacing } from '../../src/theme';
+
+const LOGO_LIGHT = require('../../assets/brand/logo/logo_horizontal_light.png');
+const LOGO_DARK = require('../../assets/brand/logo/logo_dark.png');
 
 const ONBOARDING_IMAGES = {
   feed: require('../../assets/feed.png'),
@@ -34,16 +39,19 @@ type SlideImageKey = keyof typeof ONBOARDING_IMAGES;
 const SLIDES: Array<{
   key: string;
   image?: SlideImageKey;
-  icon: 'paw' | 'heart' | 'chatbubbles' | 'map' | 'add-circle' | 'heart-circle' | 'checkmark-circle';
+  icon: 'paw' | 'heart' | 'chatbubbles' | 'map' | 'add-circle' | 'heart-circle' | 'checkmark-circle' | 'speedometer-outline';
+  iconSize?: number;
+  showLogo?: boolean;
   title: string;
   message: string;
 }> = [
   {
     key: 'feed',
+    showLogo: true,
     image: 'feed',
     icon: 'paw',
     title: 'Feed de pets',
-    message: 'Deslize pelos anúncios de cachorros e gatos disponíveis para adoção. Use o filtro por espécie e ajuste o raio em Preferências.',
+    message: 'Deslize pelos anúncios de cachorros e gatos disponíveis para adoção. Toda adoção no Adopet é voluntária e sem custos — não incentivamos a comercialização de animais. Use o filtro por espécie e o raio na aba Mapa.',
   },
   {
     key: 'like',
@@ -64,7 +72,7 @@ const SLIDES: Array<{
     image: 'mapa',
     icon: 'map',
     title: 'Mapa',
-    message: 'Veja no mapa onde estão os pets. Toque em um marcador para ver nome, foto e idade e acessar o perfil. O raio é o mesmo das suas Preferências.',
+    message: 'Veja no mapa onde estão os pets. Toque em um marcador para ver nome, foto e idade e acessar o perfil. O raio pode ser alterado na própria tela do mapa.',
   },
   {
     key: 'announce',
@@ -85,7 +93,22 @@ const SLIDES: Array<{
     image: 'perfil',
     icon: 'checkmark-circle',
     title: 'Verificação',
-    message: 'Você e seus pets podem solicitar o selo "Verificado", que gera mais confiança. A verificação é opcional e analisada pela equipe.',
+    message: 'Você e seus pets podem solicitar o selo "Verificado", que indica que o perfil ou anúncio passou por análise da equipe. O selo não é garantia de autenticidade; o encontro responsável com o tutor continua essencial.',
+  },
+  {
+    key: 'match-score',
+    icon: 'speedometer-outline',
+    iconSize: 80,
+    title: 'Score de match',
+    message: 'A porcentagem que aparece nos pets indica a compatibilidade entre seu perfil e o que o anúncio busca no tutor: moradia, quintal, experiência com pets, tempo em casa, passeios e outros critérios. Quanto maior, mais alinhado você está com as preferências daquele pet.',
+  },
+  {
+    key: 'tutor-score',
+    showLogo: true,
+    icon: 'speedometer-outline',
+    iconSize: 80,
+    title: 'Nível do tutor',
+    message: 'Quem anuncia pets ganha pontos e sobe de nível conforme adotações confirmadas e anúncios verificados. O nível aparece no perfil do anunciante e ajuda a dar transparência. Não substitui o cuidado na hora do encontro e da adoção.',
   },
 ];
 
@@ -93,7 +116,8 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const userId = useAuthStore((s) => s.user?.id);
   const [index, setIndex] = useState(0);
   const [dontShowAgain, setDontShowAgain] = useState(false);
   const listRef = useRef<FlatList>(null);
@@ -111,10 +135,10 @@ export default function OnboardingScreen() {
     }
   };
 
-  /** Grava "não exibir novamente" sempre que o checkbox estiver marcado, seja ao tocar em "Pular" ou em "Começar". */
+  /** Marca o tour como visto ao terminar (para não exibir de novo). O checkbox "não exibir novamente" é legado; sempre persistimos. */
   const finish = async () => {
-    if (dontShowAgain) {
-      await setOnboardingSeen();
+    if (userId) {
+      await setOnboardingSeen(userId);
     }
     router.replace('/(tabs)');
   };
@@ -139,11 +163,15 @@ export default function OnboardingScreen() {
         renderItem={({ item }) => (
           <View style={[styles.slide, { width }]}>
             <View style={styles.slideContent}>
-              {item.image ? (
+              {item.showLogo ? (
+                <View style={styles.logoWrap}>
+                  <ExpoImage source={isDark ? LOGO_DARK : LOGO_LIGHT} style={styles.logoImage} contentFit="contain" />
+                </View>
+              ) : item.image ? (
                 <Image source={ONBOARDING_IMAGES[item.image]} style={styles.slideImage} resizeMode="contain" />
               ) : (
-                <View style={[styles.iconWrap, { backgroundColor: colors.surface }]}>
-                  <Ionicons name={item.icon} size={56} color={colors.primary} />
+                <View style={[styles.iconWrap, item.iconSize ? { ...styles.iconWrapLarge, width: item.iconSize + 32, height: item.iconSize + 32, borderRadius: (item.iconSize + 32) / 2 } : {}, { backgroundColor: colors.surface }]}>
+                  <Ionicons name={item.icon} size={item.iconSize ?? 56} color={colors.primary} />
                 </View>
               )}
               <Text style={[styles.title, { color: colors.textPrimary }]}>{item.title}</Text>
@@ -220,10 +248,26 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     marginBottom: spacing.lg,
   },
+  logoWrap: {
+    marginBottom: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 56,
+  },
+  logoImage: {
+    height: 52,
+    width: 195,
+    maxWidth: '90%',
+  },
   iconWrap: {
     width: 120,
     height: 120,
     borderRadius: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xl,
+  },
+  iconWrapLarge: {
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.xl,

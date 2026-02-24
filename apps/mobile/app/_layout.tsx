@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Stack, useRouter } from 'expo-router';
-import { TouchableOpacity, Alert } from 'react-native';
+import { TouchableOpacity, AppState, Alert, type AppStateStatus } from 'react-native';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { QueryClient } from '@tanstack/react-query';
@@ -10,9 +10,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
 import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
 import { AppWithOfflineBanner } from '../src/components/AppWithOfflineBanner';
-import { HeaderLogo } from '../src/components';
+import { HeaderLogo, UpdateAvailableModal } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
-import { setAuthProvider } from '../src/api/client';
+import { useAppVersionCheck } from '../src/hooks/useAppVersionCheck';
+import { setAuthProvider, setOnFeatureDisabled } from '../src/api/client';
 import { useAuthStore } from '../src/stores/authStore';
 
 SplashScreen.preventAutoHideAsync();
@@ -69,20 +70,67 @@ function RootLayout() {
   const { colors } = useTheme();
   const getAccessToken = useAuthStore((s) => s.getAccessToken);
   const refreshTokens = useAuthStore((s) => s.refreshTokens);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const userId = useAuthStore((s) => s.user?.id);
+  const sessionExpiredShownRef = useRef(false);
+  const {
+    forceUpdate,
+    optionalUpdate,
+    currentVersion,
+    latestVersion,
+    optionalShownThisSession,
+  } = useAppVersionCheck();
+  const showUpdateModal = !!userId && (forceUpdate || optionalUpdate);
 
   useEffect(() => {
     SplashScreen.hideAsync();
   }, []);
 
   useEffect(() => {
+    if (accessToken) sessionExpiredShownRef.current = false;
     setAuthProvider(getAccessToken, refreshTokens, () => {
-      Alert.alert(
-        'Sessão expirada',
-        'Sua sessão expirou. Você será redirecionado para a tela de login.',
-        [{ text: 'OK', onPress: () => router.replace('/(auth)/welcome') }],
-      );
+      if (sessionExpiredShownRef.current) return;
+      sessionExpiredShownRef.current = true;
+      router.replace('/(tabs)/feed');
     });
-  }, [getAccessToken, refreshTokens, router]);
+  }, [getAccessToken, refreshTokens, router, accessToken]);
+
+  useEffect(() => {
+    setOnFeatureDisabled(() => {
+      Alert.alert('Recurso em breve', 'Este recurso estará disponível em breve.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    });
+    return () => setOnFeatureDisabled(null);
+  }, [router]);
+
+  // Renovar token ao voltar ao app e a cada 10 min em foreground (sessão só expira se inativo)
+  const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 min (access token dura 15 min)
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const refreshIfLoggedIn = () => {
+      if (getAccessToken()) refreshTokens().catch(() => {});
+    };
+    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        refreshIfLoggedIn();
+        intervalId = setInterval(refreshIfLoggedIn, REFRESH_INTERVAL_MS);
+      } else {
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+      }
+    });
+    if (AppState.currentState === 'active') {
+      refreshIfLoggedIn();
+      intervalId = setInterval(refreshIfLoggedIn, REFRESH_INTERVAL_MS);
+    }
+    return () => {
+      subscription.remove();
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [getAccessToken, refreshTokens]);
 
   return (
     <PersistQueryClientProvider
@@ -105,16 +153,24 @@ function RootLayout() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="profile-edit" options={{ title: 'Editar perfil', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="change-password" options={{ title: 'Alterar senha', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="notifications" options={{ title: 'Notificações', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="tutor-profile" options={{ title: 'Perfil do anunciante' }} />
-        <Stack.Screen name="owner-pets" options={{ title: 'Anúncios do tutor' }} />
+        <Stack.Screen name="user-unavailable" options={{ title: 'Usuário não disponível', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="owner-pets" options={{ title: 'Anúncios do tutor', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="partner-pets" options={{ title: 'Anúncios vinculados', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="partner-my-pets" options={{ title: 'Anúncios da ONG', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="partner-ong-adoptions" options={{ title: 'Adoções pela ONG', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="feature-disabled" options={{ title: 'Em breve', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="partner-portal" options={{ title: 'Portal do parceiro', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="partner-edit" options={{ title: 'Dados do estabelecimento' }} />
+        <Stack.Screen name="partner-edit" options={{ title: 'Dados do estabelecimento', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="partner-coupons" options={{ title: 'Cupons de desconto' }} />
         <Stack.Screen name="partner-coupon-edit" options={{ title: 'Cupom' }} />
         <Stack.Screen name="partner-services" options={{ title: 'Serviços prestados' }} />
         <Stack.Screen name="partner-service-edit" options={{ title: 'Serviço' }} />
         <Stack.Screen name="partner-analytics" options={{ title: 'Analytics' }} />
         <Stack.Screen name="partner-members" options={{ title: 'Membros da ONG', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="partner-members-bulk" options={{ title: 'Importar membros em lote', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="partner-member-profile" options={{ title: 'Perfil do membro' }} />
         <Stack.Screen name="partner-subscription" options={{ title: 'Assinatura', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="partner-success" options={{ title: 'Pagamento concluído' }} />
         <Stack.Screen name="partner-cancel" options={{ title: 'Pagamento cancelado' }} />
@@ -123,7 +179,17 @@ function RootLayout() {
         <Stack.Screen name="terms" options={{ title: 'Termos de Uso', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="privacy" options={{ title: 'Política de Privacidade', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="bug-report-suggestion" options={{ title: 'Bug report / Sugestões', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="kyc" options={{ title: 'Solicitar verificação (KYC)', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="survey" options={{ title: 'Pesquisa de satisfação', ...profileMenuHeaderOptions }} />
       </Stack>
+      <UpdateAvailableModal
+        visible={showUpdateModal}
+        forceUpdate={forceUpdate}
+        currentVersion={currentVersion}
+        latestVersion={latestVersion}
+        onUpdate={() => {}}
+        onDismiss={() => optionalShownThisSession()}
+      />
       </AppWithOfflineBanner>
       </AppErrorBoundary>
     </PersistQueryClientProvider>

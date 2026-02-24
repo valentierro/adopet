@@ -10,6 +10,7 @@ import { OptionalJwtAuthGuard } from './optional-jwt.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PartnersModule } from '../partners/partners.module';
 import { EmailModule } from '../email/email.module';
+import { FeatureFlagModule } from '../feature-flag/feature-flag.module';
 
 @Global()
 @Module({
@@ -17,6 +18,7 @@ import { EmailModule } from '../email/email.module';
     PrismaModule,
     forwardRef(() => PartnersModule),
     EmailModule,
+    FeatureFlagModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

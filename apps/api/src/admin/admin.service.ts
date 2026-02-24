@@ -43,9 +43,20 @@ export class AdminService {
     private readonly uploadsService: UploadsService,
   ) {}
 
+  /**
+   * Estatísticas do painel admin. Cada contador usa o mesmo critério da lista correspondente:
+   * - pendingPetsCount: Pet publicationStatus PENDING → lista em PetsService.findPendingPublication
+   * - pendingReportsCount: Report resolvedAt null → lista em ReportsService.findAll (filtrar por resolvedAt)
+   * - pendingAdoptionsByTutorCount: Pet ADOPTED, sem Adoption, não rejeitado → getPendingAdoptionsByTutor
+   * - adoptionsPendingAdopetConfirmationCount: Adoption com pet.adopetConfirmedAt null → lista getAdoptions (badge "Aguardando confirmação Adopet")
+   * - pendingVerificationsCount: Verification status PENDING → VerificationService.listPending
+   * - pendingKycCount: User kycStatus PENDING → getPendingKyc
+   */
   async getStats(): Promise<AdminStatsDto> {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const adoptedPetIds = await this.prisma.adoption.findMany({ select: { petId: true } }).then((a) => a.map((x) => x.petId));
 
     const [
       totalAdoptions,
@@ -53,6 +64,7 @@ export class AdminService {
       pendingPetsCount,
       pendingReportsCount,
       pendingAdoptionsByTutorCount,
+      adoptionsPendingAdopetConfirmationCount,
       pendingVerificationsCount,
       pendingKycCount,
     ] = await Promise.all([
@@ -65,8 +77,12 @@ export class AdminService {
       this.prisma.pet.count({
         where: {
           status: 'ADOPTED',
-          adoption: null,
+          adoptionRejectedAt: null,
+          ...(adoptedPetIds.length > 0 ? { id: { notIn: adoptedPetIds } } : {}),
         },
+      }),
+      this.prisma.adoption.count({
+        where: { pet: { adopetConfirmedAt: null } },
       }),
       this.prisma.verification.count({ where: { status: 'PENDING' } }),
       this.prisma.user.count({ where: { kycStatus: 'PENDING' } }),
@@ -78,6 +94,7 @@ export class AdminService {
       pendingPetsCount,
       pendingReportsCount,
       pendingAdoptionsByTutorCount,
+      adoptionsPendingAdopetConfirmationCount,
       pendingVerificationsCount,
       pendingKycCount,
     };
@@ -442,10 +459,11 @@ export class AdminService {
     return { message: 'Usuário banido. A conta foi desativada e não poderá fazer login; e-mail, nome de usuário e telefone continuam bloqueados para novo cadastro.' };
   }
 
-  /** Aprovar ou rejeitar KYC de um usuário. Ao aprovar, envia mensagem no chat. Após decisão, apaga as imagens do storage e zera as keys (não retenção; redução de risco jurídico). */
+  /** Aprovar ou rejeitar KYC de um usuário. Decisão humana (admin). Ao aprovar, envia mensagem no chat. Após decisão, apaga as imagens do storage e zera as keys (não retenção; redução de risco jurídico). Registra quem decidiu para auditoria. */
   async updateUserKyc(
     userId: string,
     status: 'VERIFIED' | 'REJECTED',
+    adminUserId: string,
     rejectionReason?: string,
   ): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({
@@ -478,6 +496,8 @@ export class AdminService {
             }),
         kycDocumentKey: null,
         kycSelfieKey: null,
+        kycDecidedBy: adminUserId,
+        kycDecidedAt: now,
       },
     });
 

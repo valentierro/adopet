@@ -45,6 +45,7 @@ export function TutorLevelBadge({ tutorStats, showDetails = false, compact = tru
         <View style={styles.details}>
           <Text style={[styles.points, { color: colors.primary }]}>{tutorStats.points} pts</Text>
           <Text style={[styles.meta, { color: colors.textSecondary }]}>
+            {tutorStats.petsCount != null ? `${tutorStats.petsCount} anúncio(s) • ` : ''}
             {tutorStats.verifiedCount} pet(s) verificados • {tutorStats.adoptedCount} adotado(s)
           </Text>
         </View>

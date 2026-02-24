@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,19 +11,28 @@ import {
   ScrollView,
   TouchableOpacity,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
+import Constants from 'expo-constants';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { PrimaryButton } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuthStore } from '../../src/stores/authStore';
 import { getApiUrlConfigIssue } from '../../src/api/client';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
+import { isSignup409Conflict } from '../../src/utils/signupError';
+import { setShouldShowOnboardingAfterSignup } from '../../src/storage/onboarding';
+import { formatPhoneInput, getPhoneDigits } from '../../src/utils/phoneMask';
 import { spacing } from '../../src/theme';
+import { presign } from '../../src/api/uploads';
+import { submitKyc } from '../../src/api/me';
 
 const LogoSplash = require('../../assets/brand/logo/logo_splash.png');
+const APP_VERSION = Constants.expoConfig?.version ?? '1.1.0';
 
 /** Mín. 6 caracteres, pelo menos uma letra e um número */
 const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d).{6,}$/;
@@ -34,6 +43,8 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function SignupScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ redirectPetId?: string }>();
+  const redirectPetId = params.redirectPetId?.trim();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -46,12 +57,60 @@ export default function SignupScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [phone, setPhone] = useState('');
+  const [document, setDocument] = useState('');
   const [username, setUsername] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [wantKycNow, setWantKycNow] = useState(false);
+  const [selfieWithDocUri, setSelfieWithDocUri] = useState<string | null>(null);
+  const [isUploadingKyc, setIsUploadingKyc] = useState(false);
+
+  /** Envia uma imagem já escolhida (URI local) para o servidor; retorna a key. Requer estar logado. */
+  const uploadImageFromUri = useCallback(async (uri: string, label: string): Promise<string> => {
+    const ext = uri.split('.').pop()?.toLowerCase() || 'jpg';
+    const filename = `${label}-${Date.now()}.${ext === 'jpg' ? 'jpg' : ext}`;
+    const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+    const { uploadUrl, key } = await presign(filename, contentType);
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    const putRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      body: blob,
+      headers: { 'Content-Type': blob.type || 'image/jpeg' },
+    });
+    if (!putRes.ok) throw new Error(`Upload falhou: ${putRes.status}`);
+    return key;
+  }, []);
+
+  const pickSelfieWithDocForKyc = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão', 'Precisamos acessar suas fotos para enviar a verificação.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+    });
+    if (!result.canceled && result.assets[0]?.uri) setSelfieWithDocUri(result.assets[0].uri);
+  }, []);
+
+  /** Formata como CPF (11 dígitos) ou CNPJ (14 dígitos) conforme o usuário digita. */
+  const formatDocumentDisplay = (raw: string) => {
+    const digits = raw.replace(/\D/g, '').slice(0, 14);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+    if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+    if (digits.length <= 11) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+    // CNPJ: XX.XXX.XXX/XXXX-XX
+    if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+  };
 
   const handleSubmit = async () => {
-    if (!name.trim() || !email.trim() || !password || !passwordConfirm || !phone.trim()) {
-      Alert.alert('Erro', 'Preencha nome, email, telefone, senha e confirmação da senha.');
+    if (!name.trim() || !email.trim() || !password || !passwordConfirm || !phone.trim() || !document.trim()) {
+      Alert.alert('Erro', 'Preencha nome, email, CPF ou CNPJ, telefone, senha e confirmação da senha.');
       return;
     }
     if (!EMAIL_REGEX.test(email.trim())) {
@@ -71,7 +130,12 @@ export default function SignupScreen() {
       Alert.alert('Erro', 'Use apenas letras minúsculas, números, ponto e underscore no nome de usuário.');
       return;
     }
-    const phoneDigits = phone.replace(/\D/g, '');
+    const documentDigits = document.replace(/\D/g, '');
+    if (documentDigits.length !== 11 && documentDigits.length !== 14) {
+      Alert.alert('Erro', 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos).');
+      return;
+    }
+    const phoneDigits = getPhoneDigits(phone);
     if (phoneDigits.length < 10 || phoneDigits.length > 11) {
       Alert.alert('Erro', 'Informe um telefone válido com DDD (10 ou 11 dígitos).');
       return;
@@ -93,12 +157,12 @@ export default function SignupScreen() {
       return;
     }
     try {
-      const res = await signup(email.trim(), password, name.trim(), phoneDigits, userInput);
+      const res = await signup(email.trim(), password, name.trim(), phoneDigits, documentDigits, userInput);
       try {
         const { trackEvent } = await import('../../src/analytics');
         trackEvent({ name: 'signup_complete', properties: {} });
       } catch {
-        // não falhar o fluxo se analytics der erro (ex.: ambiente de desenvolvimento)
+        // não falhar o fluxo se analytics der erro
       }
       if (res.requiresEmailVerification) {
         Alert.alert(
@@ -107,27 +171,82 @@ export default function SignupScreen() {
           [{ text: 'Ir para o login', onPress: () => router.replace('/(auth)/login') }]
         );
       } else {
-        Alert.alert('Conta criada!', 'Sua conta foi criada com sucesso. Bem-vindo(a)!', [
-          { text: 'Continuar', onPress: () => router.replace('/') },
-        ]);
+        if (!redirectPetId) {
+          setShouldShowOnboardingAfterSignup();
+          try {
+            const { clearOnboardingSeen } = await import('../../src/storage/onboarding');
+            await clearOnboardingSeen();
+          } catch {
+            // Não falhar o fluxo; a flag em memória garante que o onboarding será exibido
+          }
+        }
+        if (wantKycNow && selfieWithDocUri) {
+          setIsUploadingKyc(true);
+          try {
+            const key = await uploadImageFromUri(selfieWithDocUri, 'selfie-with-doc');
+            await submitKyc(key);
+            queryClient.invalidateQueries({ queryKey: ['me'] });
+            queryClient.invalidateQueries({ queryKey: ['me', 'kyc-status'] });
+            Alert.alert(
+              'Conta criada!',
+              'Sua conta foi criada e sua verificação de identidade foi enviada. Em breve nossa equipe analisará e você poderá confirmar adoções.',
+              [{ text: 'Continuar', onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(onboarding)')) }]
+            );
+          } catch (kycErr) {
+            Alert.alert(
+              'Conta criada!',
+              'Sua conta foi criada com sucesso. O envio da verificação de identidade falhou; você pode fazer depois em Perfil > Solicitar verificação.',
+              [{ text: 'Continuar', onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(onboarding)')) }]
+            );
+          } finally {
+            setIsUploadingKyc(false);
+          }
+        } else {
+          Alert.alert('Conta criada!', 'Sua conta foi criada com sucesso. Bem-vindo(a)!', [
+            {
+              text: 'Continuar',
+              onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(onboarding)')),
+            },
+          ]);
+        }
       }
     } catch (e: unknown) {
-      const configMsg = getApiUrlConfigIssue();
       const msg = e instanceof Error ? e.message : String(e ?? '');
+      const isHmrBug = /HMRClient\.registerBundle|registerBundle is not a function/i.test(msg);
+      if (isHmrBug && __DEV__) {
+        console.warn('[Signup] Erro HMR após resposta da API (conta criada). Exibindo sucesso.', msg);
+        setShouldShowOnboardingAfterSignup();
+        Alert.alert('Conta criada!', 'Sua conta foi criada com sucesso. Bem-vindo(a)!', [
+          {
+            text: 'Continuar',
+            onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(onboarding)')),
+          },
+        ]);
+        return;
+      }
+      if (__DEV__ && !isSignup409Conflict(msg)) {
+        const raw = e instanceof Error ? { message: e.message, name: e.name, stack: e.stack } : e;
+        console.error('[Signup] Erro ao criar conta (causa real):', raw);
+      }
+      const configMsg = getApiUrlConfigIssue();
       const isConnectionError = /network|fetch|connection|timeout|ECONNREFUSED|failed to fetch|could not connect|request timeout/i.test(msg);
       const friendlyMsg = getFriendlyErrorMessage(e, 'Tente outro email ou mais tarde.');
       const isDevEnvError = /ambiente de desenvolvimento|dev:mobile:clear/i.test(friendlyMsg);
+      const isServerOrUncertain = /API\s+5\d{2}|request timeout|ambiente de desenvolvimento|dev:mobile:clear/i.test(msg) || isConnectionError;
+      if (isServerOrUncertain) {
+        setShouldShowOnboardingAfterSignup();
+      }
       const title = 'Não foi possível completar';
       const body = configMsg
         ? configMsg
         : isConnectionError
           ? 'Não foi possível conectar ao servidor. Sua conta pode ter sido criada — tente fazer login com seu e-mail e senha. Se funcionar, use o app normalmente; se não, tente criar a conta novamente.'
           : isDevEnvError
-            ? 'Pode ser um problema temporário do app em desenvolvimento. Primeiro tente fazer login com esse e-mail e senha (a conta pode ter sido criada). Se não funcionar: pare o servidor (Ctrl+C); na raiz do projeto execute pnpm dev:mobile:clear ou, dentro de apps/mobile, pnpm dev:clear; depois abra o app de novo.'
+            ? 'Pode ser um problema temporário. Tente fazer login com esse e-mail e senha (a conta pode ter sido criada). Se não funcionar, tente criar a conta novamente.'
             : friendlyMsg;
       Alert.alert(title, body, [
         { text: 'OK' },
-        ...(configMsg || isConnectionError || isDevEnvError ? [{ text: 'Ir para o login', onPress: () => router.replace('/(auth)/login') }] : []),
+        { text: 'Ir para o login', onPress: () => router.replace('/(auth)/login') },
       ]);
     }
   };
@@ -174,12 +293,21 @@ export default function SignupScreen() {
           />
           <TextInput
             style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
-            placeholder="Telefone com DDD (ex: 11 98765-4321)"
+            placeholder="(11) 98765-4321"
             placeholderTextColor={colors.textSecondary}
             value={phone}
-            onChangeText={setPhone}
+            onChangeText={(t) => setPhone(formatPhoneInput(t))}
             keyboardType="phone-pad"
-            maxLength={15}
+            maxLength={16}
+          />
+          <TextInput
+            style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+            placeholder="CPF ou CNPJ (apenas números)"
+            placeholderTextColor={colors.textSecondary}
+            value={document}
+            onChangeText={(t) => setDocument(formatDocumentDisplay(t))}
+            keyboardType="number-pad"
+            maxLength={18}
           />
           <TextInput
             style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
@@ -227,6 +355,59 @@ export default function SignupScreen() {
               Nome, email e telefone não são compartilhados com outros usuários. Usamos o telefone apenas para o administrador confirmar adoções com você quando necessário.
             </Text>
           </View>
+          <View style={[styles.kycCheckWrap, { backgroundColor: colors.surface, borderColor: colors.primary + '30' }]}>
+            <Pressable
+              style={styles.termsCheckWrap}
+              onPress={() => setWantKycNow((v) => !v)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: wantKycNow }}
+              accessibilityLabel="Deseja fazer a verificação de identidade (KYC) agora?"
+            >
+              <View style={[styles.checkbox, { borderColor: wantKycNow ? colors.primary : colors.textSecondary, backgroundColor: wantKycNow ? colors.primary : 'transparent' }]}>
+                {wantKycNow ? <Ionicons name="checkmark" size={16} color="#fff" /> : null}
+              </View>
+              <Text style={[styles.termsLabel, { color: colors.textPrimary }]}>
+                Deseja fazer a verificação de identidade (KYC) agora?
+              </Text>
+            </Pressable>
+            <Text style={[styles.kycCheckHint, { color: colors.textSecondary }]}>
+              Se preferir, você pode fazer depois em Perfil {'>'} Solicitar verificação.
+            </Text>
+            {wantKycNow && (
+              <View style={styles.kycFields}>
+                <Text style={[styles.kycLabel, { color: colors.textSecondary }]}>Selfie com a frente do documento (RG ou CNH)</Text>
+                <Text style={[styles.kycRetentionHint, { color: colors.textSecondary }]}>
+                  A imagem é usada apenas para esta verificação e não é armazenada após a análise.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.kycUploadBox, { borderColor: colors.primary + '60', backgroundColor: colors.background + '80' }]}
+                  onPress={pickSelfieWithDocForKyc}
+                >
+                  {selfieWithDocUri ? (
+                    <View style={styles.kycUploadDone}>
+                      <Ionicons name="checkmark-circle" size={28} color={colors.primary} />
+                      <Text style={[styles.kycUploadDoneText, { color: colors.textPrimary }]}>Foto selecionada</Text>
+                    </View>
+                  ) : (
+                    <>
+                      <Ionicons name="person-outline" size={40} color={colors.primary} />
+                      <Text style={[styles.kycUploadHint, { color: colors.textSecondary }]}>Toque para escolher (documento e rosto visíveis)</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                {selfieWithDocUri ? (
+                  <TouchableOpacity
+                    onPress={() => setSelfieWithDocUri(null)}
+                    style={styles.kycRemoveWrap}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
+                    <Text style={[styles.kycRemoveText, { color: colors.textSecondary }]}>Apagar imagem</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            )}
+          </View>
           <View style={[styles.termsRow, { marginTop: spacing.sm }]}>
             <Pressable
               style={styles.termsCheckWrap}
@@ -249,11 +430,14 @@ export default function SignupScreen() {
             </TouchableOpacity>
           </View>
           <PrimaryButton
-            title={isLoading ? 'Cadastrando...' : 'Criar conta'}
+            title={isLoading ? 'Cadastrando...' : isUploadingKyc ? 'Enviando verificação...' : 'Criar conta'}
             onPress={handleSubmit}
-            disabled={isLoading || !acceptedTerms}
+            disabled={isLoading || isUploadingKyc || !acceptedTerms}
           />
         </KeyboardAvoidingView>
+        <Text style={[styles.versionText, { color: colors.textSecondary }]}>
+          Versão {APP_VERSION}
+        </Text>
       </ScrollView>
     </View>
   );
@@ -304,6 +488,28 @@ const styles = StyleSheet.create({
   },
   privacyTitle: { fontSize: 14, fontWeight: '700', marginBottom: spacing.xs },
   privacyText: { fontSize: 13, lineHeight: 20 },
+  kycCheckWrap: {
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  kycCheckHint: { fontSize: 12, marginTop: spacing.xs, paddingLeft: 30 },
+  kycFields: { marginTop: spacing.md, gap: spacing.sm },
+  kycLabel: { fontSize: 13, marginBottom: spacing.xs },
+  kycRetentionHint: { fontSize: 12, lineHeight: 18, marginBottom: spacing.xs },
+  kycUploadBox: {
+    borderWidth: 2,
+    borderRadius: 10,
+    padding: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 100,
+  },
+  kycUploadDone: { alignItems: 'center', gap: spacing.xs },
+  kycUploadDoneText: { fontSize: 14, fontWeight: '600' },
+  kycUploadHint: { fontSize: 13, marginTop: spacing.xs },
+  kycRemoveWrap: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: spacing.sm },
+  kycRemoveText: { fontSize: 14, fontWeight: '600' },
   passwordWrap: { position: 'relative' },
   passwordInput: { paddingRight: 48 },
   eyeBtn: { position: 'absolute', right: 12, top: 0, bottom: 0, justifyContent: 'center' },
@@ -312,5 +518,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     fontSize: 16,
     borderWidth: 1,
+  },
+  versionText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
   },
 });

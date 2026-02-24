@@ -24,6 +24,7 @@ import { CreatePetDto } from './dto/create-pet.dto';
 import { UpdatePetDto } from './dto/update-pet.dto';
 import { PatchStatusDto } from './dto/patch-status.dto';
 import { ReorderMediaDto } from './dto/reorder-media.dto';
+import { ConfirmAdoptionDto } from './dto/confirm-adoption.dto';
 import { PetResponseDto, SimilarPetItemDto } from './dto/pet-response.dto';
 
 @ApiTags('pets')
@@ -159,8 +160,9 @@ export class PetsController {
   async confirmAdoption(
     @Param('id') id: string,
     @CurrentUser() user: { id: string },
+    @Body() body: ConfirmAdoptionDto,
   ): Promise<{ confirmed: boolean }> {
-    return this.petsService.confirmAdoption(id, user.id);
+    return this.petsService.confirmAdoption(id, user.id, body.responsibilityTermAccepted === true);
   }
 
   @Get(':id/match-score')

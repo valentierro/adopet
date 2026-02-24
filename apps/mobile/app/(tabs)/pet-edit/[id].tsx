@@ -12,12 +12,13 @@ import {
   ScrollView,
   ActivityIndicator,
   Modal,
+  FlatList,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, PrimaryButton, SecondaryButton, LoadingLogo } from '../../../src/components';
+import { ScreenContainer, PrimaryButton, SecondaryButton, LoadingLogo, VerifiedBadge } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
 import {
   getPet,
@@ -33,14 +34,30 @@ import {
 import { getPartners } from '../../../src/api/partners';
 import { lookupUsername } from '../../../src/api/me';
 import { presign, confirmUpload } from '../../../src/api/uploads';
-import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
+import { getFriendlyErrorMessage, isKycNotCompleteError, getApiErrorBodyMessage } from '../../../src/utils/errorMessage';
 import { spacing } from '../../../src/theme';
+import {
+  BR_STATES,
+  fetchCitiesByStateId,
+  buildLocationString,
+  parseLocationString,
+} from '../../../src/utils/brazilLocations';
 
 const STATUS_OPTIONS: { value: PetStatus; label: string }[] = [
   { value: 'AVAILABLE', label: 'Disponível' },
   { value: 'IN_PROCESS', label: 'Em processo' },
   { value: 'ADOPTED', label: 'Adotado' },
 ];
+
+type SimNaoIndiferente = '' | 'SIM' | 'NAO' | 'INDIFERENTE';
+function mapPreferredTutorBoolOrString(
+  v: boolean | string | null | undefined,
+): SimNaoIndiferente {
+  if (v === true) return 'SIM';
+  if (v === false) return 'NAO';
+  if (v === 'SIM' || v === 'NAO' || v === 'INDIFERENTE') return v;
+  return '';
+}
 
 export default function PetEditScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -53,10 +70,37 @@ export default function PetEditScreen() {
   const [age, setAge] = useState('');
   const [sex, setSex] = useState<'male' | 'female'>('male');
   const [size, setSize] = useState<'small' | 'medium' | 'large' | 'xlarge'>('medium');
+  const [stateId, setStateId] = useState(0);
+  const [cityId, setCityId] = useState(0);
+  const [neighborhood, setNeighborhood] = useState('');
+  const [pendingCityName, setPendingCityName] = useState('');
+  const [showStateModal, setShowStateModal] = useState(false);
+  const [showCityModal, setShowCityModal] = useState(false);
+  const [cityModalSearch, setCityModalSearch] = useState('');
   const [description, setDescription] = useState('');
   const [adoptionReason, setAdoptionReason] = useState('');
   const [feedingType, setFeedingType] = useState('');
   const [feedingNotes, setFeedingNotes] = useState('');
+  const [energyLevel, setEnergyLevel] = useState('');
+  const [healthNotes, setHealthNotes] = useState('');
+  const [hasSpecialNeeds, setHasSpecialNeeds] = useState(false);
+  const [goodWithDogs, setGoodWithDogs] = useState('');
+  const [goodWithCats, setGoodWithCats] = useState('');
+  const [goodWithChildren, setGoodWithChildren] = useState('');
+  const [temperament, setTemperament] = useState('');
+  const [isDocile, setIsDocile] = useState(false);
+  const [isTrained, setIsTrained] = useState(false);
+  const [preferredTutorHousingType, setPreferredTutorHousingType] = useState('');
+  const [preferredTutorHasYard, setPreferredTutorHasYard] = useState<SimNaoIndiferente>('');
+  const [preferredTutorHasOtherPets, setPreferredTutorHasOtherPets] = useState<SimNaoIndiferente>('');
+  const [preferredTutorHasChildren, setPreferredTutorHasChildren] = useState<SimNaoIndiferente>('');
+  const [preferredTutorTimeAtHome, setPreferredTutorTimeAtHome] = useState('');
+  const [preferredTutorPetsAllowedAtHome, setPreferredTutorPetsAllowedAtHome] = useState('');
+  const [preferredTutorDogExperience, setPreferredTutorDogExperience] = useState('');
+  const [preferredTutorCatExperience, setPreferredTutorCatExperience] = useState('');
+  const [preferredTutorHouseholdAgrees, setPreferredTutorHouseholdAgrees] = useState('');
+  const [preferredTutorWalkFrequency, setPreferredTutorWalkFrequency] = useState('');
+  const [hasOngoingCosts, setHasOngoingCosts] = useState<boolean | undefined>(undefined);
   const [vaccinated, setVaccinated] = useState(false);
   const [neutered, setNeutered] = useState(false);
   const [partnerId, setPartnerId] = useState('');
@@ -79,11 +123,26 @@ export default function PetEditScreen() {
     staleTime: 5 * 60_000,
   });
 
+  const { data: cities = [] } = useQuery({
+    queryKey: ['ibge', 'municipios', stateId],
+    queryFn: () => fetchCitiesByStateId(stateId),
+    enabled: stateId > 0,
+    staleTime: 10 * 60_000,
+  });
+
   useFocusEffect(
     useCallback(() => {
       if (id) refetchPet();
     }, [id, refetchPet]),
   );
+
+  useEffect(() => {
+    if (pendingCityName && cities.length > 0 && cityId === 0) {
+      const match = cities.find((c) => c.nome.trim().toLowerCase() === pendingCityName.trim().toLowerCase());
+      if (match) setCityId(match.id);
+      setPendingCityName('');
+    }
+  }, [pendingCityName, cities, cityId]);
 
   useEffect(() => {
     if (pet) {
@@ -93,13 +152,43 @@ export default function PetEditScreen() {
       setAge(String(pet.age ?? ''));
       setSex((pet.sex as 'male' | 'female') || 'male');
       setSize((pet.size as 'small' | 'medium' | 'large' | 'xlarge') || 'medium');
+      const parsed = parseLocationString((pet as { city?: string | null }).city);
+      const state = parsed.stateSigla ? BR_STATES.find((s) => s.sigla === parsed.stateSigla) : null;
+      setStateId(state?.id ?? 0);
+      setCityId(0);
+      setNeighborhood(parsed.neighborhood);
+      setPendingCityName(parsed.cityName);
       setDescription(pet.description);
       setAdoptionReason(pet.adoptionReason ?? '');
       setFeedingType(pet.feedingType ?? '');
       setFeedingNotes(pet.feedingNotes ?? '');
+      setEnergyLevel(pet.energyLevel ?? '');
+      setHealthNotes(pet.healthNotes ?? '');
+      setHasSpecialNeeds(pet.hasSpecialNeeds ?? false);
+      setGoodWithDogs(pet.goodWithDogs ?? '');
+      setGoodWithCats(pet.goodWithCats ?? '');
+      setGoodWithChildren(pet.goodWithChildren ?? '');
+      setTemperament(pet.temperament ?? '');
+      setIsDocile(pet.isDocile ?? false);
+      setIsTrained(pet.isTrained ?? false);
+      setPreferredTutorHousingType(pet.preferredTutorHousingType ?? '');
+      setPreferredTutorHasYard(mapPreferredTutorBoolOrString(pet.preferredTutorHasYard));
+      setPreferredTutorHasOtherPets(mapPreferredTutorBoolOrString(pet.preferredTutorHasOtherPets));
+      setPreferredTutorHasChildren(mapPreferredTutorBoolOrString(pet.preferredTutorHasChildren));
+      setPreferredTutorTimeAtHome(pet.preferredTutorTimeAtHome ?? '');
+      setPreferredTutorPetsAllowedAtHome(pet.preferredTutorPetsAllowedAtHome ?? '');
+      setPreferredTutorDogExperience(pet.preferredTutorDogExperience ?? '');
+      setPreferredTutorCatExperience(pet.preferredTutorCatExperience ?? '');
+      setPreferredTutorHouseholdAgrees(pet.preferredTutorHouseholdAgrees ?? '');
+      setPreferredTutorWalkFrequency((pet as { preferredTutorWalkFrequency?: string }).preferredTutorWalkFrequency ?? '');
+      setHasOngoingCosts((pet as { hasOngoingCosts?: boolean }).hasOngoingCosts);
       setVaccinated(pet.vaccinated);
       setNeutered(pet.neutered);
-      setPartnerId((pet as { partner?: { id: string } })?.partner?.id ?? '');
+      setPartnerId(
+        (pet as { partner?: { id: string }; partners?: Array<{ id: string }> })?.partner?.id
+          ?? (pet as { partners?: Array<{ id: string }> })?.partners?.[0]?.id
+          ?? '',
+      );
     }
   }, [pet]);
 
@@ -107,6 +196,7 @@ export default function PetEditScreen() {
     queryClient.invalidateQueries({ queryKey: ['pet', id] });
     queryClient.invalidateQueries({ queryKey: ['pets', 'mine'] });
     queryClient.invalidateQueries({ queryKey: ['me', 'tutor-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['feed'] });
   }, [queryClient, id]);
 
   const updateMutation = useMutation({
@@ -119,12 +209,40 @@ export default function PetEditScreen() {
         sex,
         size,
         description,
+        ...(stateId > 0 &&
+          cityId > 0 && {
+            city: buildLocationString(
+              neighborhood,
+              cities.find((c) => c.id === cityId)?.nome ?? '',
+              BR_STATES.find((s) => s.id === stateId)?.sigla ?? '',
+            ),
+          }),
         ...(adoptionReason.trim() && { adoptionReason: adoptionReason.trim() }),
         feedingType: feedingType,
         feedingNotes: feedingNotes.trim(),
+        ...(energyLevel && { energyLevel }),
+        ...(healthNotes.trim() && { healthNotes: healthNotes.trim() }),
+        hasSpecialNeeds,
+        ...(goodWithDogs && { goodWithDogs }),
+        ...(goodWithCats && { goodWithCats }),
+        ...(goodWithChildren && { goodWithChildren }),
+        ...(temperament && { temperament }),
+        isDocile,
+        isTrained,
+        preferredTutorHousingType: preferredTutorHousingType || null,
+        preferredTutorHasYard: preferredTutorHasYard || null,
+        preferredTutorHasOtherPets: preferredTutorHasOtherPets || null,
+        preferredTutorHasChildren: preferredTutorHasChildren || null,
+        preferredTutorTimeAtHome: preferredTutorTimeAtHome || null,
+        preferredTutorPetsAllowedAtHome: preferredTutorPetsAllowedAtHome || null,
+        preferredTutorDogExperience: preferredTutorDogExperience || null,
+        preferredTutorCatExperience: preferredTutorCatExperience || null,
+        preferredTutorHouseholdAgrees: preferredTutorHouseholdAgrees || null,
+        preferredTutorWalkFrequency: preferredTutorWalkFrequency || null,
+        hasOngoingCosts: hasOngoingCosts ?? null,
         vaccinated,
         neutered,
-        partnerId: partnerId.trim() || null,
+        partnerIds: partnerId.trim() ? [partnerId.trim()] : [],
       }),
     onSuccess: () => {
       invalidate();
@@ -160,8 +278,17 @@ export default function PetEditScreen() {
         Alert.alert('Status atualizado', 'O status do pet foi alterado.');
       }
     },
-    onError: (e: unknown) =>
-      Alert.alert('Não foi possível atualizar', getFriendlyErrorMessage(e, 'Tente novamente.')),
+    onError: (e: unknown) => {
+      if (isKycNotCompleteError(e)) {
+        const bodyMsg = getApiErrorBodyMessage(e);
+        Alert.alert(
+          'Verificação pendente',
+          bodyMsg ?? 'O interessado ainda não finalizou a verificação de identidade (KYC). Peça para a pessoa completar em Perfil → Verificação de identidade no app.',
+        );
+        return;
+      }
+      Alert.alert('Não foi possível atualizar', getFriendlyErrorMessage(e, 'Tente novamente.'));
+    },
   });
 
   const { data: rawPartners = [], isLoading: loadingPartners } = useQuery({
@@ -175,7 +302,7 @@ export default function PetEditScreen() {
     if (status === 'ADOPTED') {
       Alert.alert(
         'Marcar como adotado?',
-        'O pet sairá da lista de disponíveis (feed e mapa). Escolha como deseja registrar: quem adotou pelo app ou se a adoção foi feita fora da plataforma.',
+        'O pet sairá da lista de disponíveis (feed e mapa). Se você indicar quem adotou, essa pessoa receberá um pedido de confirmação no app. Após a confirmação, a Adopet valida em até 48h e sua pontuação será atualizada.\n\nEscolha: quem adotou pelo app ou se a adoção foi feita fora da plataforma.',
         [
           { text: 'Cancelar', style: 'cancel' },
           {
@@ -474,6 +601,103 @@ export default function PetEditScreen() {
             </TouchableOpacity>
           ))}
         </View>
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Localização do pet *</Text>
+        <TouchableOpacity
+          style={[styles.input, styles.selectTouch, { backgroundColor: colors.surface }]}
+          onPress={() => !isAdopted && setShowStateModal(true)}
+          disabled={isAdopted}
+        >
+          <Text style={[styles.selectTouchText, { color: stateId ? colors.textPrimary : colors.textSecondary }]}>
+            {stateId ? BR_STATES.find((s) => s.id === stateId)?.nome ?? 'Estado' : 'Selecione o estado'}
+          </Text>
+          <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.input,
+            styles.selectTouch,
+            { backgroundColor: colors.surface, opacity: stateId ? 1 : 0.6 },
+          ]}
+          onPress={() => !isAdopted && stateId && setShowCityModal(true)}
+          disabled={isAdopted || !stateId}
+        >
+          <Text style={[styles.selectTouchText, { color: cityId ? colors.textPrimary : colors.textSecondary }]}>
+            {cityId ? cities.find((c) => c.id === cityId)?.nome ?? 'Cidade' : 'Selecione a cidade'}
+          </Text>
+          <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
+        <Text style={[styles.label, { color: colors.textSecondary }]}>Bairro (opcional)</Text>
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary }]}
+          value={neighborhood}
+          onChangeText={setNeighborhood}
+          placeholder="Ex: Centro, Pinheiros"
+          placeholderTextColor={colors.textSecondary}
+          editable={!isAdopted}
+        />
+        <Modal visible={showStateModal} transparent animationType="slide">
+          <TouchableOpacity style={styles.locationModalOverlay} activeOpacity={1} onPress={() => setShowStateModal(false)}>
+            <View style={[styles.locationModalContent, { backgroundColor: colors.background }]}>
+              <Text style={[styles.locationModalTitle, { color: colors.textPrimary }]}>Estado</Text>
+              <FlatList
+                data={BR_STATES}
+                keyExtractor={(item) => String(item.id)}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[styles.locationModalRow, { backgroundColor: colors.surface }]}
+                    onPress={() => {
+                      setStateId(item.id);
+                      setCityId(0);
+                      setShowStateModal(false);
+                    }}
+                  >
+                    <Text style={{ color: colors.textPrimary }}>{item.nome}</Text>
+                    {stateId === item.id && <Ionicons name="checkmark" size={20} color={colors.primary} />}
+                  </TouchableOpacity>
+                )}
+              />
+              <TouchableOpacity style={[styles.locationModalClose, { backgroundColor: colors.surface }]} onPress={() => setShowStateModal(false)}>
+                <Text style={{ color: colors.primary, fontWeight: '600' }}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+        <Modal visible={showCityModal} transparent animationType="slide">
+          <TouchableOpacity style={styles.locationModalOverlay} activeOpacity={1} onPress={() => setShowCityModal(false)}>
+            <View style={[styles.locationModalContent, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
+              <Text style={[styles.locationModalTitle, { color: colors.textPrimary }]}>Cidade</Text>
+              <TextInput
+                style={[styles.input, styles.locationModalSearchInput, { backgroundColor: colors.surface, color: colors.textPrimary }]}
+                value={cityModalSearch}
+                onChangeText={setCityModalSearch}
+                placeholder="Buscar cidade..."
+                placeholderTextColor={colors.textSecondary}
+                autoCorrect={false}
+              />
+              <FlatList
+                data={cities.filter((c) => c.nome.toLowerCase().includes(cityModalSearch.trim().toLowerCase()))}
+                keyExtractor={(item) => String(item.id)}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[styles.locationModalRow, { backgroundColor: colors.surface }]}
+                    onPress={() => {
+                      setCityId(item.id);
+                      setNeighborhood('');
+                      setCityModalSearch('');
+                      setShowCityModal(false);
+                    }}
+                  >
+                    <Text style={{ color: colors.textPrimary }}>{item.nome}</Text>
+                    {cityId === item.id && <Ionicons name="checkmark" size={20} color={colors.primary} />}
+                  </TouchableOpacity>
+                )}
+              />
+              <TouchableOpacity style={[styles.locationModalClose, { backgroundColor: colors.surface }]} onPress={() => setShowCityModal(false)}>
+                <Text style={{ color: colors.primary, fontWeight: '600' }}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </Modal>
         <Text style={[styles.label, { color: colors.textSecondary }]}>Descrição</Text>
         <TextInput
           style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.textPrimary }]}
@@ -534,6 +758,262 @@ export default function PetEditScreen() {
           numberOfLines={2}
           editable={!isAdopted}
         />
+        <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.md }]}>Nível de energia (opcional)</Text>
+        <View style={styles.rowWrap}>
+          {[
+            { value: '', label: 'Não informar' },
+            { value: 'LOW', label: 'Calmo' },
+            { value: 'MEDIUM', label: 'Moderado' },
+            { value: 'HIGH', label: 'Agitado' },
+          ]
+            .filter((o) => o.value !== '')
+            .map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.chip, { backgroundColor: energyLevel === opt.value ? colors.primary : colors.surface }]}
+                onPress={() => setEnergyLevel(energyLevel === opt.value ? '' : opt.value)}
+                disabled={isAdopted}
+              >
+                <Text style={{ color: energyLevel === opt.value ? '#fff' : colors.textPrimary, fontSize: 13 }}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+        </View>
+        <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.sm }]}>Temperamento (opcional)</Text>
+        <View style={styles.rowWrap}>
+          {[
+            { value: '', label: 'Não informar' },
+            { value: 'CALM', label: 'Tranquilo' },
+            { value: 'PLAYFUL', label: 'Brincalhão' },
+            { value: 'SHY', label: 'Tímido' },
+            { value: 'SOCIABLE', label: 'Sociável' },
+            { value: 'INDEPENDENT', label: 'Independente' },
+          ]
+            .filter((o) => o.value !== '')
+            .map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.chip, { backgroundColor: temperament === opt.value ? colors.primary : colors.surface }]}
+                onPress={() => setTemperament(temperament === opt.value ? '' : opt.value)}
+                disabled={isAdopted}
+              >
+                <Text style={{ color: temperament === opt.value ? '#fff' : colors.textPrimary, fontSize: 13 }}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+        </View>
+        <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.sm }]}>Se dá bem com crianças / cachorros / gatos (opcional)</Text>
+        <View style={styles.rowWrap}>
+          {[
+            { value: '', label: 'Não informar' },
+            { value: 'YES', label: 'Sim' },
+            { value: 'NO', label: 'Não' },
+            { value: 'UNKNOWN', label: 'Não sei' },
+          ]
+            .filter((o) => o.value !== '')
+            .map((opt) => (
+              <TouchableOpacity
+                key={`children-${opt.value}`}
+                style={[styles.chip, { backgroundColor: goodWithChildren === opt.value ? colors.primary : colors.surface }]}
+                onPress={() => setGoodWithChildren(goodWithChildren === opt.value ? '' : opt.value)}
+                disabled={isAdopted}
+              >
+                <Text style={{ color: goodWithChildren === opt.value ? '#fff' : colors.textPrimary, fontSize: 13 }}>Crianças: {opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+        </View>
+        <View style={styles.rowWrap}>
+          {[
+            { value: '', label: 'Não informar' },
+            { value: 'YES', label: 'Sim' },
+            { value: 'NO', label: 'Não' },
+            { value: 'UNKNOWN', label: 'Não sei' },
+          ]
+            .filter((o) => o.value !== '')
+            .map((opt) => (
+              <TouchableOpacity
+                key={`dogs-${opt.value}`}
+                style={[styles.chip, { backgroundColor: goodWithDogs === opt.value ? colors.primary : colors.surface }]}
+                onPress={() => setGoodWithDogs(goodWithDogs === opt.value ? '' : opt.value)}
+                disabled={isAdopted}
+              >
+                <Text style={{ color: goodWithDogs === opt.value ? '#fff' : colors.textPrimary, fontSize: 13 }}>Cachorros: {opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+        </View>
+        <View style={styles.rowWrap}>
+          {[
+            { value: '', label: 'Não informar' },
+            { value: 'YES', label: 'Sim' },
+            { value: 'NO', label: 'Não' },
+            { value: 'UNKNOWN', label: 'Não sei' },
+          ]
+            .filter((o) => o.value !== '')
+            .map((opt) => (
+              <TouchableOpacity
+                key={`cats-${opt.value}`}
+                style={[styles.chip, { backgroundColor: goodWithCats === opt.value ? colors.primary : colors.surface }]}
+                onPress={() => setGoodWithCats(goodWithCats === opt.value ? '' : opt.value)}
+                disabled={isAdopted}
+              >
+                <Text style={{ color: goodWithCats === opt.value ? '#fff' : colors.textPrimary, fontSize: 13 }}>Gatos: {opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+        </View>
+        <View style={[styles.switchRow, { borderBottomColor: colors.surface, marginTop: spacing.sm }]}>
+          <Text style={[styles.switchLabel, { color: colors.textPrimary }]}>É dócil? (manso/calmo com pessoas)</Text>
+          <Switch value={isDocile} onValueChange={setIsDocile} trackColor={{ false: colors.textSecondary, true: colors.primary }} disabled={isAdopted} />
+        </View>
+        <View style={[styles.switchRow, { borderBottomColor: colors.surface }]}>
+          <Text style={[styles.switchLabel, { color: colors.textPrimary }]}>É adestrado?</Text>
+          <Switch value={isTrained} onValueChange={setIsTrained} trackColor={{ false: colors.textSecondary, true: colors.primary }} disabled={isAdopted} />
+        </View>
+        <View style={[styles.switchRow, { borderBottomColor: colors.surface }]}>
+          <Text style={[styles.switchLabel, { color: colors.textPrimary }]}>Necessita cuidados especiais?</Text>
+          <Switch value={hasSpecialNeeds} onValueChange={setHasSpecialNeeds} trackColor={{ false: colors.textSecondary, true: colors.primary }} disabled={isAdopted} />
+        </View>
+        {hasSpecialNeeds && (
+          <>
+            <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.sm }]}>Descreva (comorbidades, medicação, etc.)</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, minHeight: 72 }]}
+              value={healthNotes}
+              onChangeText={setHealthNotes}
+              placeholder="Ex: cardíaco, toma remédio diário..."
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              numberOfLines={2}
+              editable={!isAdopted}
+            />
+          </>
+        )}
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary, marginTop: spacing.lg }]}>Preferência de tutor (match)</Text>
+        <Text style={[styles.label, { color: colors.textSecondary, fontSize: 12 }]}>Opcional. Quem preencher verá um score de compatibilidade no feed. Deixe em branco para não usar.</Text>
+        <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.sm }]}>Prefere tutor em</Text>
+        <View style={styles.rowWrap}>
+          {[
+            { value: '', label: 'Não informar' },
+            { value: 'CASA', label: 'Casa' },
+            { value: 'APARTAMENTO', label: 'Apartamento' },
+            { value: 'INDIFERENTE', label: 'Indiferente' },
+          ].map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: preferredTutorHousingType === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setPreferredTutorHousingType(preferredTutorHousingType === opt.value ? '' : opt.value)}
+              disabled={isAdopted}
+            >
+              <Text style={{ color: preferredTutorHousingType === opt.value ? '#fff' : colors.textPrimary, fontSize: 13 }}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.sm }]}>Prefere tutor com quintal?</Text>
+        <View style={styles.rowWrap}>
+          {[
+            { value: '' as SimNaoIndiferente, label: 'Não informar' },
+            { value: 'INDIFERENTE', label: 'Indiferente' },
+            { value: 'SIM', label: 'Sim' },
+            { value: 'NAO', label: 'Não' },
+          ].map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: preferredTutorHasYard === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setPreferredTutorHasYard(preferredTutorHasYard === opt.value ? '' : opt.value)}
+              disabled={isAdopted}
+            >
+              <Text style={{ color: preferredTutorHasYard === opt.value ? '#fff' : colors.textPrimary, fontSize: 13 }}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.sm }]}>Prefere tutor com outros pets?</Text>
+        <View style={styles.rowWrap}>
+          {[
+            { value: '' as SimNaoIndiferente, label: 'Não informar' },
+            { value: 'INDIFERENTE', label: 'Indiferente' },
+            { value: 'SIM', label: 'Sim' },
+            { value: 'NAO', label: 'Não' },
+          ].map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: preferredTutorHasOtherPets === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setPreferredTutorHasOtherPets(preferredTutorHasOtherPets === opt.value ? '' : opt.value)}
+              disabled={isAdopted}
+            >
+              <Text style={{ color: preferredTutorHasOtherPets === opt.value ? '#fff' : colors.textPrimary, fontSize: 13 }}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.sm }]}>Prefere tutor com crianças?</Text>
+        <View style={styles.rowWrap}>
+          {[
+            { value: '' as SimNaoIndiferente, label: 'Não informar' },
+            { value: 'INDIFERENTE', label: 'Indiferente' },
+            { value: 'SIM', label: 'Sim' },
+            { value: 'NAO', label: 'Não' },
+          ].map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: preferredTutorHasChildren === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setPreferredTutorHasChildren(preferredTutorHasChildren === opt.value ? '' : opt.value)}
+              disabled={isAdopted}
+            >
+              <Text style={{ color: preferredTutorHasChildren === opt.value ? '#fff' : colors.textPrimary, fontSize: 13 }}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.sm }]}>Tempo em casa do tutor</Text>
+        <View style={styles.rowWrap}>
+          {[
+            { value: '', label: 'Não informar' },
+            { value: 'INDIFERENTE', label: 'Indiferente' },
+            { value: 'MOST_DAY', label: 'Maior parte do dia' },
+            { value: 'HALF_DAY', label: 'Metade do dia' },
+            { value: 'LITTLE', label: 'Pouco tempo' },
+          ].map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: preferredTutorTimeAtHome === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setPreferredTutorTimeAtHome(preferredTutorTimeAtHome === opt.value ? '' : opt.value)}
+              disabled={isAdopted}
+            >
+              <Text style={{ color: preferredTutorTimeAtHome === opt.value ? '#fff' : colors.textPrimary, fontSize: 13 }}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.sm }]}>Prefere tutor que passeie</Text>
+        <View style={styles.rowWrap}>
+          {[
+            { value: '', label: 'Não informar' },
+            { value: 'DAILY', label: 'Diariamente' },
+            { value: 'FEW_TIMES_WEEK', label: 'Algumas vezes/semana' },
+            { value: 'RARELY', label: 'Raramente' },
+            { value: 'INDIFERENTE', label: 'Indiferente' },
+          ].map((opt) => (
+            <TouchableOpacity
+              key={opt.value || 'none'}
+              style={[styles.chip, { backgroundColor: preferredTutorWalkFrequency === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setPreferredTutorWalkFrequency(preferredTutorWalkFrequency === opt.value ? '' : opt.value)}
+              disabled={isAdopted}
+            >
+              <Text style={{ color: preferredTutorWalkFrequency === opt.value ? '#fff' : colors.textPrimary, fontSize: 13 }}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.sm }]}>Este pet tem gastos contínuos? (medicação, ração especial)</Text>
+        <View style={styles.rowWrap}>
+          {[
+            { value: undefined as boolean | undefined, label: 'Não informar' },
+            { value: true, label: 'Sim' },
+            { value: false, label: 'Não' },
+          ].map((opt) => (
+            <TouchableOpacity
+              key={opt.value === undefined ? 'any' : String(opt.value)}
+              style={[styles.chip, { backgroundColor: hasOngoingCosts === opt.value ? colors.primary : colors.surface }]}
+              onPress={() => setHasOngoingCosts(hasOngoingCosts === opt.value ? undefined : opt.value)}
+              disabled={isAdopted}
+            >
+              <Text style={{ color: hasOngoingCosts === opt.value ? '#fff' : colors.textPrimary, fontSize: 13 }}>{opt.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
         {partners.length > 0 && (
           <>
             <Text style={[styles.label, { color: colors.textSecondary, marginTop: spacing.md }]}>Em parceria com (opcional)</Text>
@@ -629,7 +1109,10 @@ export default function PetEditScreen() {
                       ]}
                       onPress={() => setSelectedAdopter({ type: 'id', id: p.id, name: p.name })}
                     >
-                      <Text style={[styles.modalItemText, { color: colors.textPrimary }]}>{p.name}</Text>
+                      <View style={styles.modalItemNameRow}>
+                        <Text style={[styles.modalItemText, { color: colors.textPrimary }]}>{p.name}</Text>
+                        {p.kycVerified && <VerifiedBadge size={14} iconBackgroundColor={colors.primary} />}
+                      </View>
                       {p.username ? <Text style={[styles.modalItemSub, { color: colors.textSecondary }]}>@{p.username}</Text> : null}
                     </TouchableOpacity>
                   ))}
@@ -661,6 +1144,9 @@ export default function PetEditScreen() {
                 <Text style={[styles.modalItemSub, { color: colors.textSecondary }]}>@{selectedAdopter.username}</Text>
               </View>
             )}
+            <Text style={[styles.modalHint, { color: colors.textSecondary, marginTop: spacing.sm }]}>
+              Após marcar, o adotante indicado receberá um pedido de confirmação. A Adopet valida em até 48h.
+            </Text>
             <TouchableOpacity
               style={[styles.modalItem, { backgroundColor: colors.background, marginTop: spacing.sm }]}
               onPress={() => setSelectedAdopter({ type: 'other' })}
@@ -706,6 +1192,14 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginBottom: spacing.md },
   label: { fontSize: 12, marginBottom: spacing.xs },
   input: { padding: spacing.md, borderRadius: 10, fontSize: 16, marginBottom: spacing.md },
+  selectTouch: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  selectTouchText: { fontSize: 16 },
+  locationModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  locationModalContent: { maxHeight: '70%', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: spacing.lg },
+  locationModalTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.md },
+  locationModalSearchInput: { marginBottom: spacing.sm },
+  locationModalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: spacing.md, borderRadius: 8, marginBottom: spacing.xs },
+  locationModalClose: { padding: spacing.md, alignItems: 'center', borderRadius: 10, marginTop: spacing.sm },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
   row: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md },
   rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md },
@@ -739,8 +1233,10 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.sm },
   modalSub: { fontSize: 13, marginBottom: spacing.md },
   modalLabel: { fontSize: 12, fontWeight: '600', marginBottom: spacing.xs },
+  modalHint: { fontSize: 12 },
   modalList: { maxHeight: 140, marginBottom: spacing.sm },
   modalItem: { padding: spacing.md, borderRadius: 10, marginBottom: spacing.xs },
+  modalItemNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   modalItemText: { fontSize: 15, fontWeight: '500' },
   modalItemSub: { fontSize: 12, marginTop: 2 },
   modalSearchRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },

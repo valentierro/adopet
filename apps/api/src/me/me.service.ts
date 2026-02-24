@@ -50,6 +50,71 @@ export class MeService {
     return this.toMeDto(user, verified, isAdmin);
   }
 
+  /** Retorna apenas o status KYC do usuário (para uso em GET /me/kyc-status). */
+  async getKycStatus(userId: string): Promise<{
+    kycStatus: string | null;
+    kycSubmittedAt: string | null;
+    kycVerifiedAt: string | null;
+    kycRejectedAt: string | null;
+    kycRejectionReason: string | null;
+  }> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: {
+        kycStatus: true,
+        kycSubmittedAt: true,
+        kycVerifiedAt: true,
+        kycRejectedAt: true,
+        kycRejectionReason: true,
+      },
+    });
+    return {
+      kycStatus: user.kycStatus ?? null,
+      kycSubmittedAt: user.kycSubmittedAt?.toISOString() ?? null,
+      kycVerifiedAt: user.kycVerifiedAt?.toISOString() ?? null,
+      kycRejectedAt: user.kycRejectedAt?.toISOString() ?? null,
+      kycRejectionReason: user.kycRejectionReason ?? null,
+    };
+  }
+
+  /** Envia documento e selfie para análise KYC. Só permite quando status é null ou REJECTED. Exige consentimento explícito. */
+  async submitKyc(
+    userId: string,
+    selfieWithDocKey: string,
+    consentGiven: boolean,
+  ): Promise<{ kycStatus: string; kycSubmittedAt: string }> {
+    if (!consentGiven) {
+      throw new BadRequestException(
+        'É necessário aceitar que as fotos serão usadas apenas para análise e excluídas após a decisão.',
+      );
+    }
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { kycStatus: true },
+    });
+    if (user.kycStatus === 'VERIFIED') {
+      throw new BadRequestException('Sua identidade já foi verificada.');
+    }
+    if (user.kycStatus === 'PENDING') {
+      throw new BadRequestException('Você já possui uma verificação em análise. Aguarde o resultado.');
+    }
+    const now = new Date();
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        kycStatus: 'PENDING',
+        kycDocumentKey: null,
+        kycSelfieKey: selfieWithDocKey,
+        kycSubmittedAt: now,
+        kycVerifiedAt: null,
+        kycRejectedAt: null,
+        kycRejectionReason: null,
+        kycConsentAt: now,
+      },
+    });
+    return { kycStatus: 'PENDING', kycSubmittedAt: now.toISOString() };
+  }
+
   /** ADMIN_USER_IDS no .env deve estar entre aspas (ex.: "uuid-a,uuid-b") para não ser interpretado como expressão. */
   private isAdminUserId(userId: string): boolean {
     const raw = this.config.get<string>('ADMIN_USER_IDS');
@@ -202,7 +267,11 @@ export class MeService {
     };
   }
 
-  async getMyAdoptions(userId: string, species?: 'BOTH' | 'DOG' | 'CAT'): Promise<{
+  async getMyAdoptions(
+    userId: string,
+    species?: 'BOTH' | 'DOG' | 'CAT',
+    role: 'ADOPTER' | 'TUTOR' = 'ADOPTER',
+  ): Promise<{
     items: Array<{
       adoptionId: string;
       petId: string;
@@ -211,23 +280,28 @@ export class MeService {
       photos: string[];
       adoptedAt: string;
       tutorName: string;
+      adopterName?: string;
       confirmedByAdopet: boolean;
       adoptionRejectedAt?: string;
+      surveySubmitted?: boolean;
+      surveyOverallScore?: number;
       vaccinated?: boolean;
       neutered?: boolean;
       partner?: { isPaidPartner?: boolean };
       matchScore?: number | null;
     }>;
   }> {
+    const isAdopter = role === 'ADOPTER';
     const [adoptions, adopterProfile, prefs] = await Promise.all([
       this.prisma.adoption.findMany({
         where: {
-          adopterId: userId,
+          ...(isAdopter ? { adopterId: userId } : { tutorId: userId }),
           ...(species && species !== 'BOTH' && { pet: { species: species.toUpperCase() } }),
         },
         orderBy: { adoptedAt: 'desc' },
         include: {
           tutor: { select: { name: true } },
+          adopter: { select: { name: true } },
           pet: {
             include: {
               media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
@@ -245,15 +319,23 @@ export class MeService {
         select: { sizePref: true, species: true, sexPref: true },
       }),
     ]);
+    const adoptionIds = adoptions.map((a) => a.id);
+    const surveys = await this.prisma.satisfactionSurvey.findMany({
+      where: { userId, adoptionId: { in: adoptionIds }, role },
+      select: { adoptionId: true, overallScore: true },
+    });
+    const surveyByAdoption = new Map(surveys.map((s) => [s.adoptionId, s]));
+
     const profileForMatch = adopterProfile ? { ...adopterProfile, sizePref: prefs?.sizePref ?? undefined, speciesPref: prefs?.species ?? undefined, sexPref: prefs?.sexPref ?? undefined } as AdopterProfile : null;
     const items = adoptions.map((a) => {
       const pet = a.pet as { adoptionRejectedAt?: Date | null; adopetConfirmedAt?: Date | null };
       const partner = a.pet.partner as { isPaidPartner?: boolean } | null;
       let matchScore: number | null | undefined;
-      if (profileForMatch && a.pet) {
+      if (isAdopter && profileForMatch && a.pet) {
         const matchResult = computeMatchScore(profileForMatch, a.pet);
         matchScore = matchResult.score;
       }
+      const survey = surveyByAdoption.get(a.id);
       return {
         adoptionId: a.id,
         petId: a.petId,
@@ -262,8 +344,11 @@ export class MeService {
         photos: (a.pet.media ?? []).map((m) => m.url),
         adoptedAt: a.adoptedAt.toISOString(),
         tutorName: a.tutor.name,
+        ...(isAdopter ? {} : { adopterName: a.adopter.name }),
         confirmedByAdopet: !pet.adoptionRejectedAt && !!pet.adopetConfirmedAt,
         ...(pet.adoptionRejectedAt && { adoptionRejectedAt: pet.adoptionRejectedAt.toISOString() }),
+        surveySubmitted: !!survey,
+        ...(survey && { surveyOverallScore: survey.overallScore }),
         vaccinated: a.pet.vaccinated,
         neutered: a.pet.neutered,
         ...(partner != null && { partner: { isPaidPartner: partner.isPaidPartner } }),
@@ -508,6 +593,11 @@ export class MeService {
       walkFrequency?: string | null;
       monthlyBudgetForPet?: string | null;
       createdAt: Date;
+      kycStatus?: string | null;
+      kycSubmittedAt?: Date | null;
+      kycVerifiedAt?: Date | null;
+      kycRejectedAt?: Date | null;
+      kycRejectionReason?: string | null;
     },
     verified?: boolean,
     isAdmin?: boolean,
@@ -543,6 +633,11 @@ export class MeService {
       monthlyBudgetForPet: user.monthlyBudgetForPet ?? undefined,
       verified,
       isAdmin,
+      kycStatus: user.kycStatus ?? undefined,
+      kycSubmittedAt: user.kycSubmittedAt?.toISOString() ?? undefined,
+      kycVerifiedAt: user.kycVerifiedAt?.toISOString() ?? undefined,
+      kycRejectedAt: user.kycRejectedAt?.toISOString() ?? undefined,
+      kycRejectionReason: user.kycRejectionReason ?? undefined,
       partner: u.partner
         ? {
             id: u.partner.id,

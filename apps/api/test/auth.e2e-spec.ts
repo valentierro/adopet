@@ -12,6 +12,22 @@ const E2E_TEST_PASSWORD = process.env.E2E_TEST_PASSWORD ?? 'admin123';
 
 const unique = () => `e2e.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
 const uniquePhone = () => '11' + String(Date.now()).slice(-9);
+/** CPF válido (dígitos verificadores corretos) para uso nos testes de signup. */
+const VALID_CPF = '52998224725';
+/** Outro CPF válido para teste de documento duplicado (mesmo doc em dois signups). */
+const VALID_CPF_DUP = '11144477736';
+
+function signupPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    email: `${unique()}@adopet-e2e.test`,
+    password: 'Senha123',
+    name: 'Tutor E2E',
+    phone: uniquePhone(),
+    document: VALID_CPF,
+    username: unique().replace(/[^a-z0-9._]/g, '').slice(0, 30),
+    ...overrides,
+  };
+}
 
 describe('Auth (e2e)', () => {
   let app: INestApplication;
@@ -47,17 +63,9 @@ describe('Auth (e2e)', () => {
 
   it('POST /v1/auth/signup cria conta (tutor) e retorna tokens ou requiresEmailVerification', async () => {
     const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
-    const email = `${unique()}@adopet-e2e.test`;
-    const username = unique().replace(/[^a-z0-9._]/g, '').slice(0, 30);
     const res = await agent
       .post('/v1/auth/signup')
-      .send({
-        email,
-        password: 'Senha123',
-        name: 'Tutor E2E',
-        phone: uniquePhone(),
-        username,
-      })
+      .send(signupPayload())
       .expect(201);
     const body = (res as unknown as { body: Record<string, unknown> }).body;
     const hasTokens = typeof body.accessToken === 'string';
@@ -75,6 +83,7 @@ describe('Auth (e2e)', () => {
       password: 'admin123',
       name: 'Duplicado',
       phone: '11987654320',
+      document: VALID_CPF,
       username: 'duplicadoe2e',
     });
     expect(res.status).toBe(409);
@@ -85,23 +94,11 @@ describe('Auth (e2e)', () => {
 
   it('POST /v1/auth/signup com username duplicado retorna 409', async () => {
     const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
-    const email1 = `${unique()}@adopet-e2e.test`;
     const username = 'userdup' + unique().slice(-8).replace(/[^a-z0-9._]/g, '');
-    await agent.post('/v1/auth/signup').send({
-      email: email1,
-      password: 'Senha123',
-      name: 'Primeiro User',
-      phone: uniquePhone(),
-      username,
-    }).expect(201);
-    const email2 = `${unique()}@adopet-e2e.test`;
-    const res = await agent.post('/v1/auth/signup').send({
-      email: email2,
-      password: 'OutraSenha456',
-      name: 'Segundo User',
-      phone: uniquePhone(),
-      username,
-    });
+    await agent.post('/v1/auth/signup').send(signupPayload({ username })).expect(201);
+    const res = await agent.post('/v1/auth/signup').send(
+      signupPayload({ email: `${unique()}@adopet-e2e.test`, password: 'OutraSenha456', name: 'Segundo User', username }),
+    );
     expect(res.status).toBe(409);
     const body = (res as unknown as { body: { message?: string } }).body;
     expect(body.message).toBeDefined();
@@ -111,99 +108,81 @@ describe('Auth (e2e)', () => {
   it('POST /v1/auth/signup com telefone duplicado retorna 409', async () => {
     const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
     const phone = uniquePhone();
-    const email1 = `${unique()}@adopet-e2e.test`;
-    const username1 = 'teldup1' + unique().slice(-6).replace(/[^a-z0-9._]/g, '');
-    await agent.post('/v1/auth/signup').send({
-      email: email1,
-      password: 'Senha123',
-      name: 'Primeiro',
-      phone,
-      username: username1,
-    }).expect(201);
-    const email2 = `${unique()}@adopet-e2e.test`;
-    const username2 = 'teldup2' + unique().slice(-6).replace(/[^a-z0-9._]/g, '');
-    const res = await agent.post('/v1/auth/signup').send({
-      email: email2,
-      password: 'OutraSenha456',
-      name: 'Segundo',
-      phone,
-      username: username2,
-    });
+    await agent.post('/v1/auth/signup').send(signupPayload({ phone, username: 'teldup1' + unique().slice(-6).replace(/[^a-z0-9._]/g, '') })).expect(201);
+    const res = await agent.post('/v1/auth/signup').send(
+      signupPayload({ email: `${unique()}@adopet-e2e.test`, password: 'OutraSenha456', name: 'Segundo', phone, username: 'teldup2' + unique().slice(-6).replace(/[^a-z0-9._]/g, '') }),
+    );
     expect(res.status).toBe(409);
     const body = (res as unknown as { body: { message?: string } }).body;
     expect(body.message).toBeDefined();
     expect(String(body.message).toLowerCase()).toMatch(/telefone|já|cadastrado/);
   });
 
+  it('POST /v1/auth/signup com documento (CPF/CNPJ) duplicado retorna 409', async () => {
+    const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
+    await agent.post('/v1/auth/signup').send(signupPayload({ document: VALID_CPF_DUP, username: 'docdup1' + unique().slice(-6).replace(/[^a-z0-9._]/g, '') })).expect(201);
+    const res = await agent.post('/v1/auth/signup').send(
+      signupPayload({ email: `${unique()}@adopet-e2e.test`, document: VALID_CPF_DUP, username: 'docdup2' + unique().slice(-6).replace(/[^a-z0-9._]/g, '') }),
+    );
+    expect(res.status).toBe(409);
+    const body = (res as unknown as { body: { message?: string } }).body;
+    expect(body.message).toBeDefined();
+    expect(String(body.message).toLowerCase()).toMatch(/cpf|cnpj|documento|já|cadastrado|conta/);
+  });
+
+  it('POST /v1/auth/signup com CPF inválido (dígitos verificadores) retorna 400', async () => {
+    const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
+    const res = await agent.post('/v1/auth/signup').send(
+      signupPayload({ document: '12345678901' }),
+    );
+    expect(res.status).toBe(400);
+    const body = (res as unknown as { body: { message?: string } }).body;
+    expect(String(body.message || '').toLowerCase()).toMatch(/cpf|cnpj|inválido|dígito/);
+  });
+
+  it('POST /v1/auth/signup com CNPJ inválido (dígitos verificadores) retorna 400', async () => {
+    const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
+    const res = await agent.post('/v1/auth/signup').send(
+      signupPayload({ document: '12345678000199' }),
+    );
+    expect(res.status).toBe(400);
+    const body = (res as unknown as { body: { message?: string } }).body;
+    expect(String(body.message || '').toLowerCase()).toMatch(/cpf|cnpj|inválido|dígito/);
+  });
+
   it('POST /v1/auth/signup com nome de usuário inválido (1 caractere) retorna 400', async () => {
     const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
-    const res = await agent.post('/v1/auth/signup').send({
-      email: `${unique()}@adopet-e2e.test`,
-      password: 'Senha123',
-      name: 'Teste',
-      phone: uniquePhone(),
-      username: 'a',
-    });
+    const res = await agent.post('/v1/auth/signup').send(signupPayload({ username: 'a' }));
     expect(res.status).toBe(400);
   });
 
   it('POST /v1/auth/signup com nome de usuário inválido (caracteres não permitidos) retorna 400', async () => {
     const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
-    const res = await agent.post('/v1/auth/signup').send({
-      email: `${unique()}@adopet-e2e.test`,
-      password: 'Senha123',
-      name: 'Teste',
-      phone: uniquePhone(),
-      username: 'user-com-hifen',
-    });
+    const res = await agent.post('/v1/auth/signup').send(signupPayload({ username: 'user-com-hifen' }));
     expect(res.status).toBe(400);
   });
 
   it('POST /v1/auth/signup com senha sem número retorna 400', async () => {
     const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
-    const res = await agent.post('/v1/auth/signup').send({
-      email: `${unique()}@adopet-e2e.test`,
-      password: 'SoLetras',
-      name: 'Teste',
-      phone: uniquePhone(),
-      username: 'user' + unique().slice(-6).replace(/[^a-z0-9._]/g, ''),
-    });
+    const res = await agent.post('/v1/auth/signup').send(signupPayload({ password: 'SoLetras' }));
     expect(res.status).toBe(400);
   });
 
   it('POST /v1/auth/signup com senha curta (menos de 6 caracteres) retorna 400', async () => {
     const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
-    const res = await agent.post('/v1/auth/signup').send({
-      email: `${unique()}@adopet-e2e.test`,
-      password: 'Ab1',
-      name: 'Teste',
-      phone: uniquePhone(),
-      username: 'user' + unique().slice(-6).replace(/[^a-z0-9._]/g, ''),
-    });
+    const res = await agent.post('/v1/auth/signup').send(signupPayload({ password: 'Ab1' }));
     expect(res.status).toBe(400);
   });
 
   it('POST /v1/auth/signup com telefone inválido (poucos dígitos) retorna 400', async () => {
     const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
-    const res = await agent.post('/v1/auth/signup').send({
-      email: `${unique()}@adopet-e2e.test`,
-      password: 'Senha123',
-      name: 'Teste',
-      phone: '123',
-      username: 'user' + unique().slice(-6).replace(/[^a-z0-9._]/g, ''),
-    });
+    const res = await agent.post('/v1/auth/signup').send(signupPayload({ phone: '123' }));
     expect(res.status).toBe(400);
   });
 
   it('POST /v1/auth/signup com email em formato inválido retorna 400', async () => {
     const agent = request(app.getHttpServer()) as request.SuperTest<request.Test>;
-    const res = await agent.post('/v1/auth/signup').send({
-      email: 'nao-e-email',
-      password: 'Senha123',
-      name: 'Teste',
-      phone: uniquePhone(),
-      username: 'user' + unique().slice(-6).replace(/[^a-z0-9._]/g, ''),
-    });
+    const res = await agent.post('/v1/auth/signup').send(signupPayload({ email: 'nao-e-email' }));
     expect(res.status).toBe(400);
   });
 

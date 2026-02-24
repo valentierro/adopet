@@ -22,7 +22,7 @@ const BENEFITS_COMERCIAL = [
 const PLANO_UNICO = {
   id: 'parceiro',
   nome: 'Parceria comercial',
-  preco: 'R$ 50',
+  preco: 'R$ 100',
   periodo: '/mês',
   descricao: 'Plano único para clínicas, pet shops e lojas',
   itens: [
@@ -69,7 +69,7 @@ export default function SejaParceiroComercialScreen() {
             <View style={styles.heroTextWrap}>
               <Text style={styles.heroTitle}>Parceria para clínicas, veterinários e lojas</Text>
               <Text style={styles.heroSubtitle}>
-                Leve sua clínica veterinária, pet shop ou loja do segmento para milhares de tutores. Plano único de R$ 50/mês com destaque no app.
+                Leve sua clínica veterinária, pet shop ou loja do segmento para milhares de tutores. Plano único de R$ 100/mês com destaque no app.
               </Text>
             </View>
           </View>
@@ -135,7 +135,7 @@ export default function SejaParceiroComercialScreen() {
           <View style={[styles.ctaCard, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
             <Text style={[styles.ctaTitle, { color: colors.textPrimary }]}>Quer ser parceiro?</Text>
             <Text style={[styles.ctaSubtitle, { color: colors.textSecondary }]}>
-              Cadastre seu estabelecimento pelo formulário. Após a aprovação, assine o plano de R$ 50/mês e ative seu espaço no app.
+              Cadastre seu estabelecimento pelo formulário. Após a aprovação, assine o plano de R$ 100/mês e ative seu espaço no app.
             </Text>
             <PrimaryButton title="Realizar cadastro" onPress={() => router.push('/solicitar-parceria?tipo=comercial')} style={styles.ctaButtonFull} />
           </View>

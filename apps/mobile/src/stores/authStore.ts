@@ -24,6 +24,16 @@ export type User = {
   hasOtherPets?: boolean;
   hasChildren?: boolean;
   timeAtHome?: string;
+  petsAllowedAtHome?: string;
+  dogExperience?: string;
+  catExperience?: string;
+  householdAgreesToAdoption?: string;
+  whyAdopt?: string;
+  activityLevel?: string;
+  preferredPetAge?: string;
+  commitsToVetCare?: string;
+  walkFrequency?: string;
+  monthlyBudgetForPet?: string;
   verified?: boolean;
   isAdmin?: boolean;
   partner?: {
@@ -36,6 +46,12 @@ export type User = {
     isPaidPartner: boolean;
   };
   partnerMemberships?: Array<{ partnerId: string; partnerName: string; partnerSlug: string }>;
+  /** KYC: null = nunca enviou, PENDING = em análise, VERIFIED = aprovado, REJECTED = rejeitado */
+  kycStatus?: string | null;
+  kycSubmittedAt?: string | null;
+  kycVerifiedAt?: string | null;
+  kycRejectedAt?: string | null;
+  kycRejectionReason?: string | null;
 };
 
 type AuthState = {
@@ -44,13 +60,16 @@ type AuthState = {
   user: User | null;
   isLoading: boolean;
   isHydrated: boolean;
+  /** Flag para o feed exibir toast "Você saiu da sua conta" após logout (limpa após exibir). */
+  showLogoutToast: boolean;
   setTokens: (access: string, refresh: string) => void;
   setUser: (user: User | null) => void;
+  setShowLogoutToast: (value: boolean) => void;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string, phone: string, username: string) => Promise<void>;
   partnerSignup: (body: partnerApi.PartnerSignupBody) => Promise<void>;
   logout: () => Promise<void>;
-  refreshTokens: () => Promise<boolean>;
+  refreshTokens: () => Promise<boolean | 'network'>;
   hydrate: () => Promise<void>;
   getAccessToken: () => string | null;
   getRefreshToken: () => string | null;
@@ -62,6 +81,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isLoading: false,
   isHydrated: false,
+  showLogoutToast: false,
 
   setTokens: (access: string, refresh: string) => {
     set({ accessToken: access, refreshToken: refresh });
@@ -69,6 +89,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   setUser: (user: User | null) => set({ user }),
+
+  setShowLogoutToast: (value: boolean) => set({ showLogoutToast: value }),
 
   login: async (email: string, password: string) => {
     set({ isLoading: true, user: null });
@@ -94,11 +116,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  signup: async (email: string, password: string, name: string, phone: string, username: string) => {
+  signup: async (email: string, password: string, name: string, phone: string, document: string, username: string) => {
     set({ isLoading: true, user: null });
     try {
       const usernameNorm = username.trim().toLowerCase().replace(/^@/, '');
-      const res = await authApi.signup({ email, password, name, phone, username: usernameNorm });
+      const documentDigits = String(document).replace(/\D/g, '').slice(0, 14);
+      const res = await authApi.signup({ email, password, name, phone, document: documentDigits, username: usernameNorm });
       set({ isLoading: false });
       if ('accessToken' in res) {
         try {
@@ -154,14 +177,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ accessToken: null, refreshToken: null, user: null });
   },
 
-  refreshTokens: async (): Promise<boolean> => {
+  /** Retorna true se renovou; false se falhou por token inválido/expirado (fez logout); 'network' se falhou por rede (não desloga). */
+  refreshTokens: async (): Promise<boolean | 'network'> => {
     const refreshToken = get().refreshToken ?? (await getStoredRefreshToken());
     if (!refreshToken) return false;
     try {
       const res = await authApi.refresh(refreshToken);
       get().setTokens(res.accessToken, res.refreshToken);
       return true;
-    } catch {
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const isNetworkError = /timeout|failed to fetch|network request failed|network error|could not connect|econnrefused|enotfound/i.test(msg);
+      if (isNetworkError) return 'network';
       await get().logout();
       return false;
     }

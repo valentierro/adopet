@@ -6,10 +6,11 @@ import { PrismaClient } from '../api/prisma-generated';
 
 const prisma = new PrismaClient();
 
-function placeholderPhotoUrl(species: string): string {
-  const size = 400 + Math.floor(Math.random() * 5);
-  if (species === 'DOG') return `https://placedog.net/${size}/${size}?id=${Date.now()}`;
-  return `https://placekitten.com/${size}/${size}?id=${Date.now()}`;
+/** URL de placeholder que carrega (picsum.photos). Determinístico por espécie + petId. */
+function placeholderPhotoUrl(species: string, petId: string): string {
+  const safe = String(petId).replace(/[^a-zA-Z0-9-]/g, '');
+  const seed = (species === 'DOG' ? 'dog-' : 'cat-') + (safe || 'pet');
+  return `https://picsum.photos/seed/${seed}/400/400`;
 }
 
 async function main() {
@@ -26,7 +27,7 @@ async function main() {
   console.log(`Encontrados ${petsWithoutPhoto.length} pet(s) sem foto. Atribuindo imagem aleatória...`);
 
   for (const pet of petsWithoutPhoto) {
-    const url = placeholderPhotoUrl(pet.species);
+    const url = placeholderPhotoUrl(pet.species, pet.id);
     await prisma.petMedia.create({
       data: {
         petId: pet.id,

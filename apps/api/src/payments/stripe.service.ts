@@ -1,5 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import * as fs from 'fs';
+import * as path from 'path';
 import Stripe from 'stripe';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
@@ -327,12 +329,33 @@ export class StripeService {
           const to = partner?.user?.email ?? partner?.email ?? null;
           if (to && partner?.name) {
             const logoUrl = (this.config.get<string>('LOGO_URL') || '').trim();
+            const assetsDir = path.join(__dirname, '..', '..', 'assets', 'email');
+            const portalMenuPath = path.join(assetsDir, 'portal-menu.jpeg');
+            const portalDashboardPath = path.join(assetsDir, 'portal-dashboard.jpeg');
+            let attachments: Array<{ filename: string; content: Buffer; cid: string }> | undefined;
+            let includePortalImages = false;
+            try {
+              if (fs.existsSync(portalMenuPath) && fs.existsSync(portalDashboardPath)) {
+                attachments = [
+                  { filename: 'portal-menu.jpeg', content: fs.readFileSync(portalMenuPath), cid: 'portal-menu' },
+                  { filename: 'portal-dashboard.jpeg', content: fs.readFileSync(portalDashboardPath), cid: 'portal-dashboard' },
+                ];
+                includePortalImages = true;
+              }
+            } catch {
+              // Sem imagens: e-mail segue sem anexos
+            }
             this.emailService
               .sendMail({
                 to,
                 subject: 'Bem-vindo(a) à parceria Adopet',
                 text: getPartnerWelcomePaidEmailText({ partnerName: partner.name }),
-                html: getPartnerWelcomePaidEmailHtml({ partnerName: partner.name }, logoUrl || undefined),
+                html: getPartnerWelcomePaidEmailHtml(
+                  { partnerName: partner.name },
+                  logoUrl || undefined,
+                  { includePortalImages },
+                ),
+                attachments,
               })
               .catch((e) => console.warn('[StripeService] partner welcome email failed', e));
           }

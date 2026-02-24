@@ -1,6 +1,7 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import Constants from 'expo-constants';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,35 +9,71 @@ import { ScreenContainer, PrimaryButton, SecondaryButton } from '../../src/compo
 import { useTheme } from '../../src/hooks/useTheme';
 import { spacing } from '../../src/theme';
 
+const APP_VERSION = Constants.expoConfig?.version ?? '1.1.0';
+
 const LogoSplash = require('../../assets/brand/logo/logo_splash.png');
 
 const PARTNER_GRADIENT: [string, string] = ['#d97706', '#b45309'];
 
 export default function WelcomeScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ redirectPetId?: string }>();
+  const redirectPetId = params.redirectPetId?.trim();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
 
+  const goToLogin = () => {
+    if (redirectPetId) {
+      router.push(`/(auth)/login?redirectPetId=${encodeURIComponent(redirectPetId)}`);
+    } else {
+      router.push('/(auth)/login');
+    }
+  };
+
+  const goToSignup = () => {
+    if (redirectPetId) {
+      router.push(`/(auth)/signup?redirectPetId=${encodeURIComponent(redirectPetId)}`);
+    } else {
+      router.push('/(auth)/signup');
+    }
+  };
+
   return (
     <ScreenContainer>
-      <View style={[styles.content, { paddingTop: insets.top + spacing.sm }]}>
-        <Image source={LogoSplash} style={styles.logo} contentFit="contain" />
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          Encontre seu novo melhor amigo
-        </Text>
-        <View style={styles.buttons}>
-          <PrimaryButton
-            title="Entrar"
-            onPress={() => router.push('/(auth)/login')}
-            accessibilityLabel="Entrar"
-            accessibilityHint="Toque duas vezes para fazer login na sua conta"
-          />
-          <SecondaryButton
-            title="Criar conta"
-            onPress={() => router.push('/(auth)/signup')}
-            accessibilityLabel="Criar conta"
-            accessibilityHint="Toque duas vezes para criar uma nova conta"
-          />
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.scrollContent, { paddingTop: insets.top + spacing.sm, paddingBottom: insets.bottom + spacing.lg }]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.content}>
+          <Image source={LogoSplash} style={styles.logo} contentFit="contain" />
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            Encontre seu novo melhor amigo
+          </Text>
+          {redirectPetId ? (
+            <Text style={[styles.redirectMessage, { color: colors.textPrimary }]}>
+              Crie sua conta para ver o perfil completo e conversar com o tutor.
+            </Text>
+          ) : null}
+          <Text style={[styles.disclaimer, { color: colors.textSecondary }]}>
+            Adoção voluntária e sem custos. O Adopet não incentiva a comercialização de animais.
+          </Text>
+          <View style={[styles.ctaRow, { marginTop: spacing.lg }]}>
+            <PrimaryButton title="Entrar" onPress={goToLogin} accessibilityLabel="Entrar" />
+            <SecondaryButton title="Criar conta" onPress={goToSignup} accessibilityLabel="Criar conta" />
+            <TouchableOpacity
+              style={styles.guestLink}
+              onPress={() => router.replace('/(tabs)/feed')}
+              accessibilityRole="link"
+              accessibilityLabel="Navegar como visitante"
+            >
+              <Text style={[styles.guestLinkText, { color: colors.primary }]}>Navegar como visitante</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={[styles.buttons, styles.partnerSection]}>
           <TouchableOpacity
             style={styles.partnerCardWrap}
             onPress={() => router.push('/parceria-apresentacao?tipo=ong')}
@@ -80,17 +117,21 @@ export default function WelcomeScreen() {
             </LinearGradient>
           </TouchableOpacity>
         </View>
-      </View>
+        <Text style={[styles.versionText, { color: colors.textSecondary }]}>
+          Versão {APP_VERSION}
+        </Text>
+      </ScrollView>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  scroll: { flex: 1 },
+  scrollContent: { paddingHorizontal: 0 },
   content: {
-    flex: 1,
-    justifyContent: 'flex-start',
     paddingHorizontal: spacing.lg,
     alignItems: 'center',
+    marginBottom: spacing.lg,
   },
   logo: {
     width: 200,
@@ -101,11 +142,41 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 18,
     textAlign: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.sm,
+  },
+  redirectMessage: {
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  disclaimer: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    fontStyle: 'italic',
+  },
+  ctaRow: {
+    gap: spacing.sm,
+    width: '100%',
+  },
+  guestLink: {
+    alignSelf: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  guestLinkText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   buttons: {
     gap: spacing.md,
     width: '100%',
+    paddingHorizontal: spacing.lg,
+  },
+  partnerSection: {
+    marginTop: spacing.lg,
   },
   partnerCardWrap: {
     width: '100%',
@@ -146,5 +217,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
     color: 'rgba(255,255,255,0.9)',
+  },
+  versionText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
   },
 });

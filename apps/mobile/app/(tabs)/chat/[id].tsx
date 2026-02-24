@@ -24,17 +24,33 @@ import { useTheme } from '../../../src/hooks/useTheme';
 import { useAuthStore } from '../../../src/stores/authStore';
 import { getMessages, sendMessage, type SendMessagePayload } from '../../../src/api/messages';
 import { getConversation, postConversationTyping } from '../../../src/api/conversations';
-import { confirmAdoption, patchPetStatus } from '../../../src/api/pets';
+import { confirmAdoption, patchPetStatus, getMatchScore } from '../../../src/api/pets';
 import { presign } from '../../../src/api/uploads';
 import { BASE_URL } from '../../../src/api/client';
 import { createReport } from '../../../src/api/reports';
 import { blockUser } from '../../../src/api/blocks';
-import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
-import { LoadingLogo, PrimaryButton, SecondaryButton } from '../../../src/components';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getFriendlyErrorMessage, isKycRequiredError, isKycNotCompleteError, getApiErrorBodyMessage } from '../../../src/utils/errorMessage';
+import { trackEvent } from '../../../src/analytics';
+import { LoadingLogo, PrimaryButton, SecondaryButton, Toast, MatchScoreBadge, VerifiedBadge } from '../../../src/components';
+import { getMe } from '../../../src/api/me';
 import { Ionicons } from '@expo/vector-icons';
 import { spacing } from '../../../src/theme';
 
+const CHAT_REMINDER_KEY_PREFIX = 'adopet_chat_reminder_';
+
 const TYPING_DEBOUNCE_MS = 500;
+
+const SPECIES_LABEL: Record<string, string> = { dog: 'Cachorro', cat: 'Gato' };
+const SIZE_LABEL: Record<string, string> = { small: 'Pequeno', medium: 'Médio', large: 'Grande', xlarge: 'Muito grande' };
+function formatPetBasicInfo(pet: { species?: string; size?: string; age?: number } | undefined): string {
+  if (!pet) return '';
+  const parts: string[] = [];
+  if (pet.species) parts.push(SPECIES_LABEL[pet.species] ?? pet.species);
+  if (pet.size) parts.push(SIZE_LABEL[pet.size] ?? pet.size);
+  if (pet.age != null) parts.push(pet.age === 1 ? '1 ano' : `${pet.age} anos`);
+  return parts.join(' • ');
+}
 const CHAT_IMAGE_MAX = 280;
 
 function base64ToUint8Array(base64: string): Uint8Array {
@@ -75,6 +91,7 @@ export default function ChatRoomScreen() {
   const [text, setText] = useState('');
   const [fullScreenImageUri, setFullScreenImageUri] = useState<string | null>(null);
   const [savingPhoto, setSavingPhoto] = useState(false);
+  const [reminderToast, setReminderToast] = useState<string | null>(null);
 
   const resolveImageUri = useCallback((imageUrl: string) => {
     return imageUrl.startsWith('http')
@@ -86,11 +103,17 @@ export default function ChatRoomScreen() {
     queryKey: ['conversation', id],
     queryFn: () => getConversation(id!),
     enabled: !!id,
-    refetchInterval: 4500,
+    refetchInterval: (query) => {
+      const otherUserDeactivated = query.state.data?.otherUserDeactivated;
+      if (otherUserDeactivated) return false;
+      return 5000;
+    },
     refetchIntervalInBackground: false,
   });
   const otherUserId = conversation?.otherUser?.id;
   const otherUserName = conversation?.otherUser?.name ?? 'Usuário';
+  const otherUserKycVerified = conversation?.otherUser?.kycVerified === true;
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe });
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
@@ -106,7 +129,11 @@ export default function ChatRoomScreen() {
     getNextPageParam: (last) => last.nextCursor ?? undefined,
     initialPageParam: undefined as string | undefined,
     enabled: !!id,
-    refetchInterval: 5000,
+    refetchInterval: (query) => {
+      const conversationData = queryClient.getQueryData<{ otherUserDeactivated?: boolean }>(['conversation', id]);
+      if (conversationData?.otherUserDeactivated) return false;
+      return 5000;
+    },
     refetchIntervalInBackground: false,
   });
 
@@ -118,6 +145,19 @@ export default function ChatRoomScreen() {
       }
     }, [id, refetchConversation, refetchMessages]),
   );
+
+  // Lembrete "adoção voluntária e sem custos" uma vez por conversa
+  useEffect(() => {
+    if (!id || !data?.pages?.length) return;
+    const messages = data.pages.flatMap((p) => p.items);
+    if (messages.length === 0) return;
+    const key = CHAT_REMINDER_KEY_PREFIX + id;
+    AsyncStorage.getItem(key).then((seen) => {
+      if (seen) return;
+      setReminderToast('Lembrete: adoção no Adopet é voluntária e sem custos.');
+      AsyncStorage.setItem(key, '1');
+    });
+  }, [id, data?.pages]);
 
   // Atualiza contador de não lidas após carregar mensagens (API marca como lidas no getMessages)
   useEffect(() => {
@@ -222,6 +262,15 @@ export default function ChatRoomScreen() {
     };
   }, [id, text]);
 
+  const isTutorView = !!conversation?.pet?.isTutor && !!conversation.petId && !!otherUserId;
+  // Tutor vê o match do adotante com o pet; interessado vê o próprio match com o pet
+  const adopterIdForMatch = isTutorView ? otherUserId! : userId!;
+  const { data: matchScoreData } = useQuery({
+    queryKey: ['match-score', conversation?.petId, adopterIdForMatch],
+    queryFn: () => getMatchScore(conversation!.petId!, adopterIdForMatch),
+    enabled: !!conversation?.petId && !!adopterIdForMatch,
+  });
+
   const otherUserProfileLine =
     conversation?.otherUser &&
     (conversation.otherUser.housingType ||
@@ -240,40 +289,12 @@ export default function ChatRoomScreen() {
           .join(' • ')
       : '';
 
+  const petBasicInfo = formatPetBasicInfo(conversation?.pet);
+
   useEffect(() => {
     navigation.setOptions({
-      headerTitle: () =>
-        conversation?.pet ? (
-          <View style={styles.headerTitle}>
-            {conversation.pet.photoUrl ? (
-              <Image
-                source={{ uri: conversation.pet.photoUrl }}
-                style={[styles.headerPetImage, { backgroundColor: colors.surface }]}
-              />
-            ) : (
-              <View style={[styles.headerPetImage, styles.headerPetImagePlaceholder, { backgroundColor: colors.surface }]}>
-                <Ionicons name="paw" size={18} color={colors.textSecondary} />
-              </View>
-            )}
-            <View>
-              <Text style={[styles.headerUserName, { color: colors.textPrimary }]} numberOfLines={1}>
-                {otherUserName}
-              </Text>
-              <Text style={[styles.headerPetName, { color: colors.textSecondary }]} numberOfLines={1}>
-                {conversation.pet.name}
-              </Text>
-              {otherUserProfileLine ? (
-                <Text style={[styles.headerProfileLine, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {otherUserProfileLine}
-                </Text>
-              ) : null}
-            </View>
-          </View>
-        ) : (
-          <Text style={{ color: colors.textPrimary, fontSize: 17, fontWeight: '600' }} numberOfLines={1}>
-            {otherUserName}
-          </Text>
-        ),
+      headerTitle: conversation?.pet ? `${otherUserName} · ${conversation.pet.name}` : 'Conversa',
+      headerTitleAlign: 'left' as const,
       headerRight: otherUserId
         ? () => (
             <TouchableOpacity onPress={showChatMenu} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={{ padding: 8 }}>
@@ -282,7 +303,7 @@ export default function ChatRoomScreen() {
           )
         : undefined,
     });
-  }, [navigation, otherUserId, otherUserName, conversation?.pet, conversation?.otherUser, otherUserProfileLine, showChatMenu, colors.textPrimary, colors.textSecondary, colors.surface]);
+  }, [navigation, otherUserId, otherUserName, conversation?.pet, showChatMenu, colors.textPrimary]);
 
   const messages = data?.pages.flatMap((p) => p.items) ?? [];
   const adoptionFinalized = conversation?.pet?.adoptionFinalized === true;
@@ -298,8 +319,10 @@ export default function ChatRoomScreen() {
     !!otherUserId;
 
   const confirmAdoptionMutation = useMutation({
-    mutationFn: () => confirmAdoption(conversation!.petId!),
+    mutationFn: (responsibilityTermAccepted: boolean) =>
+      confirmAdoption(conversation!.petId!, { responsibilityTermAccepted }),
     onSuccess: async () => {
+      trackEvent({ name: 'adoption_confirmed', properties: { petId: conversation!.petId! } });
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['conversation', id] }),
         queryClient.refetchQueries({ queryKey: ['me', 'pending-adoption-confirmations'] }),
@@ -311,6 +334,17 @@ export default function ChatRoomScreen() {
       Alert.alert('Adoção confirmada', 'Sua confirmação foi registrada. A adoção seguirá para validação do Adopet.');
     },
     onError: (e: unknown) => {
+      if (isKycRequiredError(e)) {
+        Alert.alert(
+          'Verificação necessária',
+          'Para confirmar a adoção é preciso completar a verificação de identidade (KYC).',
+          [
+            { text: 'Fazer verificação', onPress: () => router.push('/kyc') },
+            { text: 'Depois' },
+          ],
+        );
+        return;
+      }
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível confirmar. Tente novamente.'));
     },
   });
@@ -331,6 +365,14 @@ export default function ChatRoomScreen() {
       );
     },
     onError: (e: unknown) => {
+      if (isKycNotCompleteError(e)) {
+        const bodyMsg = getApiErrorBodyMessage(e);
+        Alert.alert(
+          'Verificação pendente',
+          bodyMsg ?? `${otherUserName} ainda não finalizou a verificação de identidade (KYC). Peça para a pessoa completar em Perfil → Verificação de identidade.`,
+        );
+        return;
+      }
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível marcar como adotado. Tente novamente.'));
     },
   });
@@ -432,6 +474,96 @@ export default function ChatRoomScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
+      {conversation?.pet ? (
+        <View style={[styles.chatInfoBar, { backgroundColor: colors.surface, borderBottomColor: colors.border ?? colors.surface }]}>
+          <View style={styles.chatInfoBarRow}>
+            {conversation.pet.photoUrl ? (
+              <Image
+                source={{ uri: conversation.pet.photoUrl }}
+                style={[styles.chatInfoBarImage, { backgroundColor: colors.background }]}
+              />
+            ) : (
+              <View style={[styles.chatInfoBarImage, styles.chatInfoBarImagePlaceholder, { backgroundColor: colors.background }]}>
+                <Ionicons name="paw" size={22} color={colors.textSecondary} />
+              </View>
+            )}
+            <View style={styles.chatInfoBarText}>
+              {conversation.petId && !isTutorView ? (
+                <View style={styles.chatInfoBarNameRow}>
+                  <TouchableOpacity
+                    onPress={() =>
+                      conversation.otherUserDeactivated
+                        ? router.push('/user-unavailable')
+                        : router.push({ pathname: '/tutor-profile', params: { petId: conversation.petId! } })
+                    }
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+                  >
+                    <Text style={[styles.chatInfoBarTutorName, styles.chatInfoBarTutorNameLink, { color: colors.primary }]} numberOfLines={1}>
+                      {otherUserName}
+                    </Text>
+                  </TouchableOpacity>
+                  {otherUserKycVerified && <VerifiedBadge size={14} iconBackgroundColor={colors.primary} />}
+                </View>
+              ) : (
+                <View style={styles.chatInfoBarNameRow}>
+                  {conversation.petId && isTutorView && conversation.otherUser ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        conversation.otherUserDeactivated
+                          ? router.push('/user-unavailable')
+                          : router.push({ pathname: '/tutor-profile', params: { userId: conversation.otherUser.id } })
+                      }
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
+                    >
+                      <Text style={[styles.chatInfoBarTutorName, styles.chatInfoBarTutorNameLink, { color: colors.primary }]} numberOfLines={1}>
+                        {otherUserName}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={[styles.chatInfoBarTutorName, { color: colors.textPrimary }]} numberOfLines={1}>
+                      {otherUserName}
+                    </Text>
+                  )}
+                  {otherUserKycVerified && <VerifiedBadge size={14} iconBackgroundColor={colors.primary} />}
+                </View>
+              )}
+              <Text style={[styles.chatInfoBarPetName, { color: colors.textSecondary }]} numberOfLines={1}>
+                {conversation.pet.name}
+              </Text>
+              {petBasicInfo ? (
+                <Text style={[styles.chatInfoBarBasicInfo, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {petBasicInfo}
+                </Text>
+              ) : null}
+              {otherUserProfileLine ? (
+                <Text style={[styles.chatInfoBarProfileLine, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {otherUserProfileLine}
+                </Text>
+              ) : null}
+            </View>
+            {matchScoreData?.score != null ? (
+              <View style={styles.chatInfoBarMatch}>
+                <MatchScoreBadge
+                  data={matchScoreData}
+                  size="medium"
+                  showTooltip={true}
+                  contextLabel={isTutorView ? 'com este adotante' : 'com você'}
+                />
+              </View>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+      {conversation?.otherUserDeactivated ? (
+        <View style={[styles.chatDeactivatedBanner, { backgroundColor: (colors.error || '#DC2626') + '18', borderColor: (colors.error || '#DC2626') + '40' }]}>
+          <Ionicons name="information-circle" size={22} color={colors.error || '#DC2626'} />
+          <Text style={[styles.chatDeactivatedText, { color: colors.textPrimary }]}>
+            Este chat foi desativado pois o usuário não está mais ativo no app.
+          </Text>
+        </View>
+      ) : null}
       <FlatList
         data={[...messages].reverse()}
         keyExtractor={(m) => m.id}
@@ -453,10 +585,39 @@ export default function ChatRoomScreen() {
         }
         ListFooterComponent={
           <>
-            {canTutorConfirmAdoption && (
+            <View style={[styles.chatDisclaimerWrap, { backgroundColor: colors.primary + '0c' }]}>
+              <Text style={[styles.chatDisclaimerText, { color: colors.textSecondary }]}>
+                Adoção responsável, voluntária e sem custos
+              </Text>
+            </View>
+            {canConfirmAdoption && me?.kycStatus !== 'VERIFIED' && (
               <TouchableOpacity
-                style={[styles.confirmAdoptionBtn, { backgroundColor: colors.primary }]}
-                onPress={() => {
+                style={[styles.kycBannerChat, { backgroundColor: (colors.warning || '#d97706') + '22', borderColor: (colors.warning || '#d97706') + '60' }]}
+                onPress={() => router.push('/kyc')}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="shield-checkmark-outline" size={20} color={colors.warning || '#d97706'} />
+                <Text style={[styles.kycBannerChatText, { color: colors.textPrimary }]}>
+                  Para concluir o processo de adoção, complete a verificação de identidade (KYC).
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+            {canTutorConfirmAdoption && (
+              <>
+                <Text style={[styles.confirmAdoptionHint, { color: colors.textSecondary }]}>
+                  Só é possível marcar como adotante quem tiver concluído a verificação de identidade (KYC).
+                </Text>
+                <TouchableOpacity
+                  style={[styles.confirmAdoptionBtn, { backgroundColor: colors.primary }, !otherUserKycVerified && { opacity: 0.85 }]}
+                  onPress={() => {
+                  if (!otherUserKycVerified) {
+                    Alert.alert(
+                      'Verificação pendente',
+                      `${otherUserName} ainda não finalizou a verificação de identidade (KYC). A pessoa precisa completar em Perfil → Verificação de identidade para que você possa marcá-la como adotante.`,
+                    );
+                    return;
+                  }
                   Alert.alert(
                     'Confirmar adoção',
                     `Marcar este pet como adotado para ${otherUserName}? O anúncio sairá do feed e a pessoa receberá um pedido para confirmar a adoção no app.`,
@@ -482,11 +643,24 @@ export default function ChatRoomScreen() {
                   </>
                 )}
               </TouchableOpacity>
+              </>
             )}
             {canConfirmAdoption && (
               <TouchableOpacity
                 style={[styles.confirmAdoptionBtn, { backgroundColor: colors.primary }]}
-                onPress={() => confirmAdoptionMutation.mutate()}
+                onPress={() => {
+                  Alert.alert(
+                    'Termo de responsabilidade',
+                    'Ao confirmar, você declara que assume a responsabilidade de cuidar do pet com zelo, oferecendo ambiente adequado e cuidados veterinários; que não o abandonará nem o utilizará para fins que impliquem maus-tratos; e que o doador ou o Adopet podem entrar em contato para acompanhar como o pet está.\n\nDeseja confirmar que leu, aceita este termo e realizou a adoção?',
+                    [
+                      { text: 'Cancelar', style: 'cancel' },
+                      {
+                        text: 'Li e aceito – Confirmar',
+                        onPress: () => confirmAdoptionMutation.mutate(true),
+                      },
+                    ],
+                  );
+                }}
                 disabled={confirmAdoptionMutation.isPending}
               >
                 {confirmAdoptionMutation.isPending ? (
@@ -505,9 +679,8 @@ export default function ChatRoomScreen() {
                 <Text style={[styles.safetyTipsTitle, { color: colors.textPrimary }]}>Dicas de segurança</Text>
               </View>
               <Text style={[styles.safetyTipsText, { color: colors.textSecondary }]}>
+                • Não é permitida a comercialização de animais no Adopet — a adoção é voluntária e sem custos.{'\n'}
                 • Combine o primeiro encontro em local público e movimentado.{'\n'}
-                • Não envie dinheiro antes de conhecer a pessoa e o pet.{'\n'}
-                • Desconfie de pedidos de depósito ou transferência antecipada.{'\n'}
                 • Ao combinar entrega, prefira horário de dia e local seguro.
               </Text>
             </View>
@@ -557,40 +730,61 @@ export default function ChatRoomScreen() {
                 {item.content}
               </Text>
             ) : null}
+            {item.senderId === userId ? (
+              <View style={styles.bubbleMetaRow}>
+                <Text style={[styles.bubbleMetaText, { color: 'rgba(255,255,255,0.8)' }]}>
+                  {item.readAt ? 'Lida' : 'Enviada'}
+                </Text>
+                <Ionicons
+                  name={item.readAt ? 'checkmark-done' : 'checkmark'}
+                  size={12}
+                  color="rgba(255,255,255,0.8)"
+                  style={styles.bubbleMetaIcon}
+                />
+              </View>
+            ) : null}
           </View>
         )}
       />
-      <View style={[styles.inputRow, { backgroundColor: colors.surface, borderTopColor: colors.background }]}>
-        <TouchableOpacity
-          onPress={handleSendPhoto}
-          disabled={sendMutation.isPending}
-          style={[styles.attachBtn, { backgroundColor: colors.background }]}
-        >
-          <Ionicons name="image-outline" size={24} color={colors.primary} />
-        </TouchableOpacity>
-        <TextInput
-          style={[styles.input, { backgroundColor: colors.background, color: colors.textPrimary }]}
-          value={text}
-          onChangeText={setText}
-          placeholder="Mensagem"
-          placeholderTextColor={colors.textSecondary}
-          multiline
-          maxLength={2000}
-          accessibilityLabel="Campo de mensagem"
-          accessibilityHint="Digite sua mensagem para enviar na conversa"
-        />
-        <TouchableOpacity
-          style={[styles.sendBtn, { backgroundColor: colors.primary }]}
-          onPress={handleSend}
-          disabled={!text.trim() || sendMutation.isPending}
-          accessibilityRole="button"
-          accessibilityLabel="Enviar mensagem"
-          accessibilityHint="Toque duas vezes para enviar"
-          accessibilityState={{ disabled: !text.trim() || sendMutation.isPending }}
-        >
-          <Text style={styles.sendBtnText}>Enviar</Text>
-        </TouchableOpacity>
-      </View>
+      {!conversation?.otherUserDeactivated ? (
+        <View style={[styles.inputRow, { backgroundColor: colors.surface, borderTopColor: colors.background }]}>
+          <TouchableOpacity
+            onPress={handleSendPhoto}
+            disabled={sendMutation.isPending}
+            style={[styles.attachBtn, { backgroundColor: colors.background }]}
+          >
+            <Ionicons name="image-outline" size={24} color={colors.primary} />
+          </TouchableOpacity>
+          <TextInput
+            style={[styles.input, { backgroundColor: colors.background, color: colors.textPrimary }]}
+            value={text}
+            onChangeText={setText}
+            placeholder="Mensagem"
+            placeholderTextColor={colors.textSecondary}
+            multiline
+            maxLength={2000}
+            accessibilityLabel="Campo de mensagem"
+            accessibilityHint="Digite sua mensagem para enviar na conversa"
+          />
+          <TouchableOpacity
+            style={[styles.sendBtn, { backgroundColor: colors.primary }]}
+            onPress={handleSend}
+            disabled={!text.trim() || sendMutation.isPending}
+            accessibilityRole="button"
+            accessibilityLabel="Enviar mensagem"
+            accessibilityHint="Toque duas vezes para enviar"
+            accessibilityState={{ disabled: !text.trim() || sendMutation.isPending }}
+          >
+            <Text style={styles.sendBtnText}>Enviar</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={[styles.inputRowDisabled, { backgroundColor: colors.surface, borderTopColor: colors.background }]}>
+          <Text style={[styles.inputRowDisabledText, { color: colors.textSecondary }]}>
+            Não é possível enviar mensagens neste chat.
+          </Text>
+        </View>
+      )}
     </KeyboardAvoidingView>
 
     <Modal visible={reportModalVisible} transparent animationType="fade">
@@ -649,6 +843,7 @@ export default function ChatRoomScreen() {
         </Pressable>
       </Pressable>
     </Modal>
+    <Toast message={reminderToast} onHide={() => setReminderToast(null)} />
     </>
   );
 }
@@ -658,6 +853,27 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   list: { padding: spacing.md, paddingBottom: spacing.sm },
   loader: { padding: spacing.sm, alignItems: 'center' },
+  kycBannerChat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.sm,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  kycBannerChatText: { flex: 1, fontSize: 13 },
+  chatDisclaimerWrap: {
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    marginBottom: spacing.md,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  chatDisclaimerText: {
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
   safetyTips: {
     padding: spacing.md,
     borderRadius: 10,
@@ -677,6 +893,12 @@ const styles = StyleSheet.create({
   safetyTipsText: {
     fontSize: 13,
     lineHeight: 20,
+  },
+  confirmAdoptionHint: {
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: spacing.sm,
+    paddingHorizontal: 2,
   },
   confirmAdoptionBtn: {
     flexDirection: 'row',
@@ -704,12 +926,34 @@ const styles = StyleSheet.create({
   adoptionBannerText: { flex: 1, fontSize: 13 },
   typingRow: { paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, borderRadius: 12, alignSelf: 'flex-start', marginBottom: spacing.xs },
   typingText: { fontSize: 13, fontStyle: 'italic' },
-  headerTitle: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, maxWidth: 220 },
-  headerPetImage: { width: 36, height: 36, borderRadius: 18 },
-  headerPetImagePlaceholder: { justifyContent: 'center', alignItems: 'center' },
-  headerUserName: { fontSize: 17, fontWeight: '600' },
-  headerPetName: { fontSize: 12, marginTop: 2 },
-  headerProfileLine: { fontSize: 11, marginTop: 2, opacity: 0.9 },
+  chatDeactivatedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginHorizontal: spacing.sm,
+    marginTop: spacing.xs,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  chatDeactivatedText: { flex: 1, fontSize: 14 },
+  chatInfoBar: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+  },
+  chatInfoBarRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  chatInfoBarImage: { width: 48, height: 48, borderRadius: 24 },
+  chatInfoBarImagePlaceholder: { justifyContent: 'center', alignItems: 'center' },
+  chatInfoBarText: { flex: 1, minWidth: 0, gap: 2 },
+  chatInfoBarNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  chatInfoBarTutorName: { fontSize: 16, fontWeight: '700' },
+  chatInfoBarTutorNameLink: { textDecorationLine: 'underline' },
+  chatInfoBarPetName: { fontSize: 14, marginTop: 1, fontWeight: '500' },
+  chatInfoBarBasicInfo: { fontSize: 12, marginTop: 1, opacity: 0.95 },
+  chatInfoBarProfileLine: { fontSize: 11, marginTop: 2, opacity: 0.9 },
+  chatInfoBarMatch: { marginLeft: spacing.xs },
   bubble: {
     maxWidth: '80%',
     padding: spacing.sm,
@@ -719,6 +963,9 @@ const styles = StyleSheet.create({
   bubbleLeft: { alignSelf: 'flex-start' },
   bubbleRight: { alignSelf: 'flex-end' },
   bubbleText: { fontSize: 15 },
+  bubbleMetaRow: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', marginTop: 2, gap: 4 },
+  bubbleMetaText: { fontSize: 11 },
+  bubbleMetaIcon: {},
   bubbleImage: {
     width: CHAT_IMAGE_MAX,
     minHeight: 120,
@@ -743,6 +990,14 @@ const styles = StyleSheet.create({
   },
   sendBtn: { marginLeft: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: 20 },
   sendBtnText: { color: '#fff', fontWeight: '600' },
+  inputRowDisabled: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.md,
+    borderTopWidth: 1,
+  },
+  inputRowDisabledText: { fontSize: 14 },
   reportModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

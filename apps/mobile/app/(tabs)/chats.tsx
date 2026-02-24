@@ -8,6 +8,7 @@ import { ScreenContainer, EmptyState, LoadingLogo, PageIntro, Toast } from '../.
 import { useTheme } from '../../src/hooks/useTheme';
 import { getConversations, deleteConversation } from '../../src/api/conversations';
 import type { ConversationListItem } from '../../src/api/conversations';
+import { useAuthStore } from '../../src/stores/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import { spacing } from '../../src/theme';
 
@@ -16,12 +17,20 @@ type SectionKey = 'inProgress' | 'finalized';
 export default function ChatsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const userId = useAuthStore((s) => s.user?.id);
   const { colors } = useTheme();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [sectionExpanded, setSectionExpanded] = useState<Record<SectionKey, boolean>>({
     inProgress: true,
     finalized: true,
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) router.replace('/(auth)/welcome');
+    }, [userId, router]),
+  );
+
   const { data: conversations = [], isLoading, refetch, isRefetching } = useQuery({
     queryKey: ['conversations'],
     queryFn: getConversations,

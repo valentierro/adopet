@@ -3,6 +3,7 @@
  * Prisma Client em api/prisma-generated; build copia para dist/api para a Vercel incluir.
  * CORS: aplicado aqui e em vercel.json para o painel admin (admin.appadopet.com.br).
  */
+import '../instrument';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createApp } from '../src/app-bootstrap';
 
@@ -41,13 +42,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   } catch (err) {
     // Log completo para aparecer em Vercel → Project → Logs
     console.error('[api] FUNCTION_INVOCATION_FAILED', err);
+    if (process.env.SENTRY_DSN) {
+      try {
+        const Sentry = require('@sentry/nestjs');
+        Sentry.captureException(err);
+      } catch {
+        // ignora falha ao reportar no Sentry
+      }
+    }
     if (!res.headersSent) {
+      const isProduction = process.env.NODE_ENV === 'production';
       const payload: Record<string, string> = {
         error: 'FUNCTION_INVOCATION_FAILED',
         message: err instanceof Error ? err.message : 'Internal Server Error',
       };
-      // Incluir stack na resposta para debug (ver no Network do browser ou em /v1/health)
-      if (err instanceof Error && err.stack) payload.stack = err.stack;
+      // Stack só em desenvolvimento; em produção não expor detalhes internos
+      if (!isProduction && err instanceof Error && err.stack) payload.stack = err.stack;
       res.status(500).json(payload);
     }
   }

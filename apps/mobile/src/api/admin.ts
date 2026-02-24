@@ -36,6 +36,7 @@ export type ReportItem = {
   createdAt: string;
   resolvedAt?: string;
   resolvedById?: string;
+  resolutionAction?: string;
 };
 
 /** [Admin] Anúncios pendentes de aprovação para o feed */
@@ -76,8 +77,11 @@ export async function getReports(): Promise<ReportItem[]> {
   return api.get<ReportItem[]>('/reports');
 }
 
-/** [Admin] Marcar denúncia como resolvida (feedback opcional para o denunciador) */
-export async function resolveReport(reportId: string, body?: { resolutionFeedback?: string }): Promise<ReportItem> {
+/** [Admin] Marcar denúncia como resolvida (feedback opcional; banReportedUser=true desativa a conta do usuário alvo) */
+export async function resolveReport(
+  reportId: string,
+  body?: { resolutionFeedback?: string; banReportedUser?: boolean },
+): Promise<ReportItem> {
   return api.put<ReportItem>(`/reports/${reportId}/resolve`, body ?? {});
 }
 
@@ -89,8 +93,35 @@ export type AdminStats = {
   pendingPetsCount: number;
   pendingReportsCount: number;
   pendingAdoptionsByTutorCount: number;
+  adoptionsPendingAdopetConfirmationCount: number;
   pendingVerificationsCount: number;
+  pendingKycCount: number;
 };
+
+export type PendingKycItem = {
+  userId: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  document?: string | null;
+  kycSubmittedAt: string;
+  documentUrl?: string | null;
+  selfieUrl?: string | null;
+};
+
+/** [Admin] Listar usuários com KYC pendente (verificação de identidade). */
+export async function getPendingKyc(): Promise<PendingKycItem[]> {
+  return api.get<PendingKycItem[]>('/admin/pending-kyc');
+}
+
+/** [Admin] Aprovar ou rejeitar KYC do usuário. */
+export async function updateUserKyc(
+  userId: string,
+  status: 'VERIFIED' | 'REJECTED',
+  rejectionReason?: string,
+): Promise<{ message: string }> {
+  return api.patch<{ message: string }>(`/admin/users/${userId}/kyc`, { status, rejectionReason });
+}
 
 export type PendingAdoptionByTutorItem = {
   petId: string;
@@ -120,6 +151,23 @@ export type AdoptionItem = {
 };
 
 export type UserSearchItem = { id: string; name: string; email: string };
+
+/** Item da lista de usuários (seção Usuários do admin; banir sem denúncia) */
+export type AdminUserListItem = {
+  id: string;
+  name: string;
+  email: string;
+  username?: string;
+  phone?: string;
+  deactivatedAt?: string;
+  bannedAt?: string;
+};
+
+export type AdminUserListResponse = {
+  items: AdminUserListItem[];
+  total: number;
+};
+
 export type PetAvailableItem = { id: string; name: string; ownerId: string; ownerName: string };
 
 export async function getAdminStats(): Promise<AdminStats> {
@@ -150,12 +198,44 @@ export async function searchAdminUsers(search: string): Promise<UserSearchItem[]
   return api.get<UserSearchItem[]>('/admin/users', params);
 }
 
+/** [Admin] Lista usuários com busca e paginação (seção Usuários; banir sem denúncia) */
+export async function getAdminUsersList(
+  search?: string,
+  page = 1,
+  limit = 30,
+): Promise<AdminUserListResponse> {
+  const params: Record<string, string> = { page: String(page), limit: String(limit) };
+  if (search?.trim()) params.search = search.trim();
+  return api.get<AdminUserListResponse>('/admin/users/list', params);
+}
+
+/** [Admin] Banir usuário (sem denúncia). Desativa a conta; não permite banir admin. */
+export async function banUser(
+  userId: string,
+  body?: { reason?: string },
+): Promise<{ message: string }> {
+  return api.post<{ message: string }>(`/admin/users/${encodeURIComponent(userId)}/ban`, body ?? {});
+}
+
 export async function getAdminPetsAvailable(): Promise<PetAvailableItem[]> {
   return api.get<PetAvailableItem[]>('/admin/pets-available');
 }
 
 export async function getAdminPendingAdoptionsByTutor(): Promise<PendingAdoptionByTutorItem[]> {
   return api.get<PendingAdoptionByTutorItem[]>('/admin/pending-adoptions-by-tutor');
+}
+
+export type TopTutorPfItem = {
+  userId: string;
+  name: string;
+  email: string;
+  username?: string | null;
+  adoptionCount: number;
+};
+
+/** [Admin] Tutores PF (sem conta parceiro) com mais adoções nos últimos 12 meses. Possível red flag. */
+export async function getTopTutorsPf(limit = 50): Promise<TopTutorPfItem[]> {
+  return api.get<TopTutorPfItem[]>('/admin/top-tutors-pf', { limit: String(limit) });
 }
 
 /** [Admin] Rejeitar marcação de adoção pelo tutor; pet permanece como ADOPTED (não volta ao feed), não computa pontos/quantidade de adoção, tutor vê badge "Rejeitado pelo Adopet". */
@@ -194,6 +274,12 @@ export type PartnerAdminItem = {
   logoUrl?: string | null;
   phone?: string | null;
   email?: string | null;
+  address?: string | null;
+  documentType?: string | null;
+  document?: string | null;
+  legalName?: string | null;
+  tradeName?: string | null;
+  planId?: string | null;
   active: boolean;
   approvedAt?: string | null;
   /** Data do primeiro login; parceria "ativa" só após isso */
@@ -216,6 +302,13 @@ export type CreatePartnerBody = {
   logoUrl?: string;
   phone?: string;
   email?: string;
+  address?: string;
+  personType?: 'PF' | 'CNPJ';
+  cpf?: string;
+  cnpj?: string;
+  legalName?: string;
+  tradeName?: string;
+  planId?: string;
   active?: boolean;
   approve?: boolean;
   isPaidPartner?: boolean;
@@ -230,6 +323,13 @@ export type UpdatePartnerBody = {
   logoUrl?: string;
   phone?: string;
   email?: string;
+  address?: string;
+  personType?: 'PF' | 'CNPJ';
+  cpf?: string;
+  cnpj?: string;
+  legalName?: string;
+  tradeName?: string;
+  planId?: string;
   active?: boolean;
   approve?: boolean;
   reject?: boolean;
@@ -265,6 +365,11 @@ export async function bulkRejectPartners(ids: string[], rejectionReason?: string
 /** [Admin] Reenviar e-mail de definir senha para parceiro que ainda não acessou o app */
 export async function resendPartnerConfirmation(partnerId: string): Promise<{ message: string }> {
   return api.post<{ message: string }>(`/admin/partners/${partnerId}/resend-confirmation`, {});
+}
+
+/** [Admin] Encerrar parceria (ONG ou paga). Desativa o parceiro no app; se for pago, cancela a assinatura no Stripe. */
+export async function endAdminPartner(partnerId: string): Promise<PartnerAdminItem> {
+  return api.post<PartnerAdminItem>(`/admin/partners/${partnerId}/end`, {});
 }
 
 // --- Indicações de parceiros (usuários indicam ONGs/clínicas/lojas) ---
@@ -338,6 +443,48 @@ export type FeatureFlagItem = {
 /** [Admin] Listar feature flags (habilitar/desabilitar funcionalidades) */
 export async function getFeatureFlags(): Promise<FeatureFlagItem[]> {
   return api.get<FeatureFlagItem[]>('/admin/feature-flags');
+}
+
+// --- Pesquisa de satisfação ---
+
+export type SatisfactionStats = {
+  totalResponses: number;
+  averageTrust: number;
+  averageEaseOfUse: number;
+  averageCommunication: number;
+  averageOverall: number;
+  byRole: { adopter: { count: number; avgOverall: number }; tutor: { count: number; avgOverall: number } };
+};
+
+export type SatisfactionResponseItem = {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  adoptionId: string | null;
+  role: string;
+  trustScore: number;
+  easeOfUseScore: number;
+  communicationScore: number;
+  overallScore: number;
+  comment: string | null;
+  createdAt: string;
+};
+
+/** [Admin] Estatísticas da pesquisa de satisfação */
+export async function getSatisfactionStats(): Promise<SatisfactionStats> {
+  return api.get<SatisfactionStats>('/admin/satisfaction/stats');
+}
+
+/** [Admin] Lista de respostas da pesquisa de satisfação */
+export async function getSatisfactionResponses(
+  page = 1,
+  limit = 50,
+): Promise<{ items: SatisfactionResponseItem[]; total: number }> {
+  return api.get<{ items: SatisfactionResponseItem[]; total: number }>('/admin/satisfaction/responses', {
+    page: String(page),
+    limit: String(limit),
+  });
 }
 
 /** [Admin] Habilitar ou desabilitar uma feature flag */

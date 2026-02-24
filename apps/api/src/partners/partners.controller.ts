@@ -11,13 +11,13 @@ export class PartnersController {
   constructor(private readonly partnersService: PartnersService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Listar parceiros ativos e aprovados (público). Filtro opcional por tipo (ONG, CLINIC, STORE).' })
-  async list(@Query('type') type?: string): Promise<PartnerPublicDto[]> {
+  @ApiOperation({ summary: 'Listar parceiros ativos e aprovados (público). type=ONG|CLINIC|STORE; q=busca por nome/slug (autocomplete).' })
+  async list(@Query('type') type?: string, @Query('q') q?: string): Promise<PartnerPublicDto[]> {
     const normalized = type?.trim().toUpperCase();
     if (normalized && !['ONG', 'CLINIC', 'STORE'].includes(normalized)) {
-      return this.partnersService.findActivePublic();
+      return this.partnersService.findActivePublic(undefined, q);
     }
-    return this.partnersService.findActivePublic(normalized || undefined);
+    return this.partnersService.findActivePublic(normalized || undefined, q);
   }
 
   @Get(':id/coupons')

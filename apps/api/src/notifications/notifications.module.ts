@@ -4,9 +4,10 @@ import { InAppNotificationsService } from './in-app-notifications.service';
 import { NotificationsJobsService } from './notifications-jobs.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { FeedModule } from '../feed/feed.module';
+import { UploadsModule } from '../uploads/uploads.module';
 
 @Module({
-  imports: [PrismaModule, forwardRef(() => FeedModule)],
+  imports: [PrismaModule, forwardRef(() => FeedModule), UploadsModule],
   providers: [PushService, InAppNotificationsService, NotificationsJobsService],
   exports: [PushService, InAppNotificationsService],
 })

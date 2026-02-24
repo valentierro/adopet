@@ -157,17 +157,28 @@ export class PetResponseDto {
   @ApiPropertyOptional({ description: 'Pessoas únicas que viram o pet nas últimas 24h (feed, meus anúncios, favoritos, detalhe)' })
   viewCountLast24h?: number;
 
-  @ApiPropertyOptional({ description: 'Parceiro (ONG/Clínica/Loja) quando o anúncio é em parceria' })
+  @ApiPropertyOptional({ description: 'Parceiro principal (primeiro da lista de parceiros confirmados ou legado)' })
   partner?: {
     id: string;
     name: string;
     slug: string;
     logoUrl?: string;
-    /** Parceria paga: destaque e boost no feed' */
     isPaidPartner?: boolean;
-    /** ONG | CLINIC | STORE */
     type?: string;
   };
+
+  @ApiPropertyOptional({ description: 'Parceiros confirmados no anúncio (badges); só aparecem após aprovação do parceiro' })
+  partners?: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    logoUrl?: string;
+    isPaidPartner?: boolean;
+    type?: string;
+  }>;
+
+  @ApiPropertyOptional({ description: '[Admin lista pendentes] True quando o anúncio tem parceria solicitada mas ainda não confirmada pelo parceiro' })
+  hasPendingPartnership?: boolean;
 
   @ApiPropertyOptional({ description: 'Dados do tutor (apenas em GET /pets/:id)' })
   owner?: {

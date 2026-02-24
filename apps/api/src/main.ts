@@ -1,3 +1,4 @@
+import '../instrument';
 import { createApp } from './app-bootstrap';
 
 async function bootstrap() {

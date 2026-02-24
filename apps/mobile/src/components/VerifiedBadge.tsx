@@ -3,6 +3,9 @@ import { View, Text, StyleSheet, Image } from 'react-native';
 
 const VerificadoImage = require('../../assets/brand/logo/verificado.png');
 
+const DEFAULT_ACCESSIBILITY_LABEL =
+  'Verificado. Passou por análise da equipe Adopet; não garante autenticidade. Encontro responsável com o tutor é essencial.';
+
 type Props = {
   /** Tamanho do ícone em px (ex.: 14, 18) */
   size?: number;
@@ -14,6 +17,8 @@ type Props = {
   textColor?: string;
   /** Cor de fundo só do ícone (melhor visualização sobre foto); ex.: colors.primary ou 'rgba(255,255,255,0.95)' */
   iconBackgroundColor?: string;
+  /** Texto para leitores de tela (default explica o que o selo significa e não garante) */
+  accessibilityLabel?: string;
 };
 
 export function VerifiedBadge({
@@ -22,17 +27,24 @@ export function VerifiedBadge({
   backgroundColor,
   textColor = '#fff',
   iconBackgroundColor,
+  accessibilityLabel = DEFAULT_ACCESSIBILITY_LABEL,
 }: Props) {
   const icon = (
     <Image
       source={VerificadoImage}
       style={{ width: size, height: size }}
       resizeMode="contain"
+      accessible
+      accessibilityLabel={accessibilityLabel}
     />
   );
 
   const badge = iconBackgroundColor ? (
-    <View style={[styles.iconWrap, { backgroundColor: iconBackgroundColor, padding: Math.max(2, Math.round(size / 8)), borderRadius: size }]}>
+    <View
+      style={[styles.iconWrap, { backgroundColor: iconBackgroundColor, padding: Math.max(2, Math.round(size / 8)), borderRadius: size }]}
+      accessible
+      accessibilityLabel={accessibilityLabel}
+    >
       {icon}
     </View>
   ) : (
@@ -44,7 +56,11 @@ export function VerifiedBadge({
   }
 
   return (
-    <View style={[styles.withLabel, backgroundColor && { backgroundColor }]}>
+    <View
+      style={[styles.withLabel, backgroundColor && { backgroundColor }]}
+      accessible
+      accessibilityLabel={accessibilityLabel}
+    >
       {icon}
       <Text style={[styles.label, { color: textColor }]}>Verificado</Text>
     </View>

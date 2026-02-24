@@ -1,23 +1,26 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, Dimensions, Image } from 'react-native';
+import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, Dimensions } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { MapPin, FeedMapSpeciesFilter } from '../../src/api/feed';
-import { ScreenContainer, EmptyState, LoadingLogo, VerifiedBadge, StatusBadge } from '../../src/components';
+import { ScreenContainer, EmptyState, LoadingLogo, VerifiedBadge, StatusBadge, MatchScoreBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { fetchFeedMap } from '../../src/api/feed';
-import { getPreferences } from '../../src/api/me';
+import { getPreferences, updatePreferences, type PreferencesResponse } from '../../src/api/me';
+import { getMatchScore } from '../../src/api/pets';
+import { useAuthStore } from '../../src/stores/authStore';
 import { useUpdateCityFromLocation } from '../../src/hooks/useUpdateCityFromLocation';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
+import { getSizeLabel } from '../../src/utils/petLabels';
 import { spacing } from '../../src/theme';
 import { Ionicons } from '@expo/vector-icons';
 
-// Pin no mapa: image nativa garante que os pins apareçam (Android). Para pins menores, use um PNG 32x32 ou 48x48, ex.: map_pin_small.png
-const AdopetMarkerIcon = require('../../assets/brand/icon/app_icon_light.png');
+// Pin no mapa: PNG 48x48 (map_pin_small.png) gerado por: pnpm run generate:map-pin. Prop image garante exibição no Android sem custom view.
+const MapPinSmallIcon = require('../../assets/brand/icon/map_pin_small.png');
 
 const DEFAULT_REGION = {
   latitude: -23.5505,
@@ -34,24 +37,79 @@ const SPECIES_OPTIONS: { value: FeedMapSpeciesFilter; label: string }[] = [
 
 const MAP_MIN_HEIGHT = Dimensions.get('window').height * 0.5;
 
+const RADIUS_OPTIONS = [50, 100, 200, 300, 500];
+
+const VALID_SPECIES: FeedMapSpeciesFilter[] = ['BOTH', 'DOG', 'CAT'];
+
 export default function MapScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+  const params = useLocalSearchParams<{ species?: string; from?: string }>();
+  const initialSpecies = VALID_SPECIES.includes((params.species ?? '') as FeedMapSpeciesFilter)
+    ? (params.species as FeedMapSpeciesFilter)
+    : 'BOTH';
   const { colors } = useTheme();
+
+  useLayoutEffect(() => {
+    if (params.from === 'feed') {
+      navigation.setOptions({
+        headerLeft: () => (
+          <TouchableOpacity
+            onPress={() => router.replace('/(tabs)/feed')}
+            style={{ padding: 8, marginLeft: 4 }}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+        ),
+      });
+    }
+  }, [params.from, navigation, router, colors.textPrimary]);
+
   const mapRef = useRef<MapView | null>(null);
   const [apiCenter, setApiCenter] = useState(DEFAULT_REGION);
   const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
   const [locationReady, setLocationReady] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [selectedPin, setSelectedPin] = useState<MapPin | null>(null);
-  const [speciesFilter, setSpeciesFilter] = useState<FeedMapSpeciesFilter>('BOTH');
+  const [speciesFilter, setSpeciesFilter] = useState<FeedMapSpeciesFilter>(initialSpecies);
+  const [radiusKm, setRadiusKm] = useState(300);
+
+  useEffect(() => {
+    const next = VALID_SPECIES.includes((params.species ?? '') as FeedMapSpeciesFilter)
+      ? (params.species as FeedMapSpeciesFilter)
+      : 'BOTH';
+    setSpeciesFilter(next);
+  }, [params.species]);
+
   const hasAnimatedToUser = useRef(false);
+  const userId = useAuthStore((s) => s.user?.id);
+  const queryClient = useQueryClient();
 
   const { data: prefs, refetch: refetchPrefs } = useQuery({
     queryKey: ['me', 'preferences'],
     queryFn: getPreferences,
     staleTime: 5 * 60_000,
+    enabled: !!userId,
   });
-  const radiusKm = prefs?.radiusKm ?? 50;
+
+  useEffect(() => {
+    if (prefs?.radiusKm != null) setRadiusKm(prefs.radiusKm);
+  }, [prefs?.radiusKm]);
+
+  const updateRadiusMutation = useMutation({
+    mutationFn: (newRadiusKm: number) =>
+      updatePreferences({ ...(prefs ?? {}), radiusKm: newRadiusKm }),
+    onSuccess: (data: PreferencesResponse) => {
+      queryClient.setQueryData(['me', 'preferences'], data);
+      queryClient.invalidateQueries({ queryKey: ['feed', 'map'] });
+    },
+  });
+
+  const handleRadiusPress = (km: number) => {
+    setRadiusKm(km);
+    if (userId) updateRadiusMutation.mutate(km);
+  };
 
   const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
     queryKey: ['feed', 'map', apiCenter.latitude, apiCenter.longitude, radiusKm, speciesFilter],
@@ -66,6 +124,13 @@ export default function MapScreen() {
     staleTime: 60_000,
     retry: 5,
     retryDelay: (attemptIndex) => Math.min(2000 * 2 ** attemptIndex, 8000),
+  });
+
+  const { data: matchScoreData } = useQuery({
+    queryKey: ['match-score', selectedPin?.id, userId],
+    queryFn: () => getMatchScore(selectedPin!.id, userId!),
+    enabled: !!selectedPin?.id && !!userId && selectedPin.matchScore != null,
+    staleTime: 2 * 60_000,
   });
 
   const isTimeout =
@@ -131,6 +196,22 @@ export default function MapScreen() {
     locationGranted ? { lat: apiCenter.latitude, lng: apiCenter.longitude } : null,
   );
 
+  const items = data?.items ?? [];
+  // Lista estável e sem duplicatas por id para evitar crash no Fabric (addViewAt / child already has parent).
+  // useMemo deve ficar antes de qualquer early return para não violar as regras dos Hooks.
+  const mapMarkers = useMemo(() => {
+    const seen = new Set<string>();
+    return items.filter((pin) => {
+      const id = pin?.id ?? '';
+      if (seen.has(id)) return false;
+      seen.add(id);
+      const lat = Number(pin.latitude);
+      const lng = Number(pin.longitude);
+      return !Number.isNaN(lat) && !Number.isNaN(lng);
+    });
+  }, [items]);
+  const showEmptyState = !isLoading && !isError && items.length === 0;
+
   if (locationGranted === false) {
     return (
       <ScreenContainer>
@@ -153,9 +234,6 @@ export default function MapScreen() {
       </ScreenContainer>
     );
   }
-
-  const items = data?.items ?? [];
-  const showEmptyState = !isLoading && !isError && items.length === 0;
 
   return (
     <ScreenContainer>
@@ -192,6 +270,29 @@ export default function MapScreen() {
             </TouchableOpacity>
           ))}
         </View>
+        <View style={[styles.chipsRow, { borderBottomColor: colors.background, paddingVertical: spacing.xs }]}>
+          <Text style={[styles.radiusLabel, { color: colors.textSecondary }]}>Raio:</Text>
+            {RADIUS_OPTIONS.map((km) => (
+              <TouchableOpacity
+                key={km}
+                style={[
+                  styles.chip,
+                  { backgroundColor: radiusKm === km ? colors.primary : colors.surface },
+                ]}
+                onPress={() => handleRadiusPress(km)}
+                disabled={updateRadiusMutation.isPending}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: radiusKm === km ? '#fff' : colors.textPrimary },
+                  ]}
+                >
+                  {km} km
+                </Text>
+              </TouchableOpacity>
+            ))}
+        </View>
         <View style={[styles.mapWrap, showEmptyState && styles.mapWrapEmpty]}>
           <MapView
           ref={mapRef}
@@ -202,16 +303,16 @@ export default function MapScreen() {
           loadingEnabled
           onMapReady={() => setMapReady(true)}
         >
-          {items.map((pin, index) => {
+          {mapMarkers.map((pin, index) => {
             const lat = Number(pin.latitude);
             const lng = Number(pin.longitude);
-            if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
-            const markerKey = pin?.id ? String(pin.id) : `pin-${lat}-${lng}-${index}`;
+            const markerKey = `marker-${pin.id}-${index}`;
             return (
               <Marker
                 key={markerKey}
                 coordinate={{ latitude: lat, longitude: lng }}
-                anchor={{ x: 0.5, y: 0.5 }}
+                anchor={{ x: 0.5, y: 1 }}
+                image={MapPinSmallIcon}
                 tracksViewChanges={false}
                 onPress={() => {
                   try {
@@ -220,11 +321,7 @@ export default function MapScreen() {
                     // evita crash se setState falhar em edge cases
                   }
                 }}
-              >
-                <View style={styles.markerWrap}>
-                  <Image source={AdopetMarkerIcon} style={styles.markerImage} resizeMode="contain" />
-                </View>
-              </Marker>
+              />
             );
           })}
         </MapView>
@@ -232,14 +329,8 @@ export default function MapScreen() {
           <View style={[styles.emptyOverlay, { backgroundColor: colors.background }]}>
             <Ionicons name="map-outline" size={40} color={colors.textSecondary} />
             <Text style={[styles.emptyOverlayText, { color: colors.textSecondary }]}>
-              Nenhum pet no raio de {radiusKm} km. Aumente o raio em Preferências ou volte mais tarde.
+              Nenhum pet no raio de {radiusKm} km. Aumente o raio acima ou volte mais tarde.
             </Text>
-            <TouchableOpacity
-              style={[styles.emptyOverlayBtn, { backgroundColor: colors.primary }]}
-              onPress={() => router.push('/preferences')}
-            >
-              <Text style={styles.emptyOverlayBtnText}>Abrir Preferências</Text>
-            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -259,13 +350,30 @@ export default function MapScreen() {
                 <Text style={[styles.selectedCardName, { color: colors.textPrimary }]} numberOfLines={1}>
                   {selectedPin.name ?? 'Pet'}
                 </Text>
+                {selectedPin.matchScore != null && selectedPin.matchScore >= 0 && (
+                  <MatchScoreBadge
+                    data={
+                      matchScoreData?.score != null
+                        ? matchScoreData
+                        : {
+                            score: selectedPin.matchScore,
+                            highlights: [],
+                            concerns: [],
+                            criteriaCount: 1,
+                          }
+                    }
+                    size="small"
+                    showTooltip={true}
+                    contextLabel="com você"
+                  />
+                )}
                 {selectedPin.verified && (
                   <VerifiedBadge size={16} iconBackgroundColor={colors.primary} />
                 )}
               </View>
               <Text style={[styles.selectedCardMeta, { color: colors.textSecondary }]}>
                 {Number(selectedPin.age) === 1 ? '1 ano' : `${selectedPin.age ?? 0} anos`} • {selectedPin.species === 'DOG' ? 'Cachorro' : selectedPin.species === 'CAT' ? 'Gato' : 'Pet'}
-                {selectedPin.size ? ` • ${selectedPin.size}` : ''}
+                {selectedPin.size ? ` • ${getSizeLabel(selectedPin.size)}` : ''}
                 {selectedPin.city ? ` • ${selectedPin.city}` : ''}
               </Text>
               <View style={styles.selectedCardBadges}>
@@ -311,7 +419,7 @@ export default function MapScreen() {
                 style={[styles.selectedCardBtn, { backgroundColor: colors.primary }]}
                 onPress={() => {
                   if (selectedPin?.id) {
-                    router.push(`/pet/${selectedPin.id}`);
+                    router.push(`/pet/${selectedPin.id}?from=map`);
                   }
                   setSelectedPin(null);
                 }}
@@ -379,8 +487,6 @@ export default function MapScreen() {
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: {},
-  markerWrap: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
-  markerImage: { width: 32, height: 32 },
   chipsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -390,6 +496,7 @@ const styles = StyleSheet.create({
   },
   chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: 20 },
   chipText: { fontSize: 14, fontWeight: '600' },
+  radiusLabel: { fontSize: 14, marginRight: spacing.sm, alignSelf: 'center' },
   loadingWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.md },
   loadingText: { fontSize: 16 },
   mapWrap: { position: 'relative', minHeight: 280, height: MAP_MIN_HEIGHT },

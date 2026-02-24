@@ -59,16 +59,20 @@ export interface Pet {
   isDocile?: boolean;
   /** É adestrado */
   isTrained?: boolean;
-  /** Preferência de tutor (para match); apenas para dono/edição */
+  /** Preferência de tutor (para match); apenas para dono/edição. SIM | NAO | INDIFERENTE; vazio = não informar */
   preferredTutorHousingType?: string;
-  preferredTutorHasYard?: boolean;
-  preferredTutorHasOtherPets?: boolean;
-  preferredTutorHasChildren?: boolean;
+  preferredTutorHasYard?: string | null;
+  preferredTutorHasOtherPets?: string | null;
+  preferredTutorHasChildren?: string | null;
   preferredTutorTimeAtHome?: string;
   preferredTutorPetsAllowedAtHome?: string;
   preferredTutorDogExperience?: string;
   preferredTutorCatExperience?: string;
   preferredTutorHouseholdAgrees?: string;
+  /** DAILY | FEW_TIMES_WEEK | RARELY | INDIFERENTE */
+  preferredTutorWalkFrequency?: string;
+  /** Pet tem gastos contínuos (medicação, ração especial) */
+  hasOngoingCosts?: boolean | null;
   distanceKm?: number;
   /** Score de match com o usuário atual (0–100); apenas no feed quando o pet tem preferências de tutor */
   matchScore?: number | null;
@@ -109,6 +113,10 @@ export interface Pet {
     /** ONG | CLINIC | STORE */
     type?: string;
   };
+  /** [Admin lista pendentes] True quando o anúncio tem parceria solicitada mas ainda não confirmada pelo parceiro */
+  hasPendingPartnership?: boolean;
+  /** Pessoas únicas que viram o pet nas últimas 24h (feed, meus anúncios, favoritos, detalhe) */
+  viewCountLast24h?: number;
   /** Dados do tutor (apenas em GET /pets/:id) */
   owner?: {
     id: string;

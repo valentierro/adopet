@@ -15,13 +15,29 @@ export type CreatePetBody = {
   feedingType?: string;
   feedingNotes?: string;
   partnerId?: string;
+  /** IDs dos parceiros (ONG) para parceria no anúncio; badge só após confirmação do parceiro. Preferir em relação a partnerId. */
+  partnerIds?: string[];
+  /** Cidade onde o pet está (para aparecer no mapa; coordenadas obtidas por geocoding na API). */
+  city?: string;
   latitude?: number;
   longitude?: number;
   /** Para testes: URL de imagem placeholder quando cadastro sem fotos. */
   initialPhotoUrl?: string;
+  /** Preferência de tutor (match com adotantes). SIM | NAO | INDIFERENTE; omitido = não informar */
+  preferredTutorHousingType?: string;
+  preferredTutorHasYard?: string | null;
+  preferredTutorHasOtherPets?: string | null;
+  preferredTutorHasChildren?: string | null;
+  preferredTutorTimeAtHome?: string;
+  preferredTutorPetsAllowedAtHome?: string;
+  preferredTutorDogExperience?: string;
+  preferredTutorCatExperience?: string;
+  preferredTutorHouseholdAgrees?: string;
+  preferredTutorWalkFrequency?: string;
+  hasOngoingCosts?: boolean;
 };
 
-export type UpdatePetBody = Partial<CreatePetBody> & { partnerId?: string | null };
+export type UpdatePetBody = Partial<CreatePetBody> & { partnerId?: string | null; partnerIds?: string[] };
 
 export type PetStatus = 'AVAILABLE' | 'IN_PROCESS' | 'ADOPTED';
 
@@ -43,12 +59,42 @@ export async function getMinePets(filters?: MinePetsFilters): Promise<MinePetsPa
   return api.get<MinePetsPage>('/pets/mine', params);
 }
 
+export type MatchCriterion = {
+  label: string;
+  status: 'match' | 'mismatch' | 'neutral';
+  message: string;
+};
+
+export type MatchScoreResponse = {
+  score: number | null;
+  highlights: string[];
+  concerns: string[];
+  criteriaCount: number;
+  /** Todos os critérios avaliados (match, mismatch, neutral) para exibir no modal. */
+  criteria?: MatchCriterion[];
+};
+
+export async function getMatchScore(petId: string, adopterId: string): Promise<MatchScoreResponse> {
+  return api.get<MatchScoreResponse>(`/pets/${petId}/match-score`, { adopterId });
+}
 export async function getPet(id: string): Promise<PetResponse> {
   return api.get<PetResponse>(`/pets/${id}`);
 }
 
-export async function getSimilarPets(petId: string): Promise<PetResponse[]> {
-  return api.get<PetResponse[]>(`/pets/${petId}/similar`);
+/** Registra visualização do pet (ao abrir a página do pet). fromPassedScreen: true quando abre pela tela "Pets que passou" (conta +1 por usuário, uma vez). */
+export async function recordPetView(petId: string, options?: { fromPassedScreen?: boolean }): Promise<{ ok: boolean }> {
+  return api.post<{ ok: boolean }>(`/pets/${petId}/view`, options?.fromPassedScreen === true ? { fromPassedScreen: true } : {});
+}
+
+export type SimilarPetItem = {
+  pet: PetResponse;
+  similarityScore: number;
+  /** Score de match com seu perfil (0–100); presente quando autenticado. Use este valor no card para bater com a tela de detalhe. */
+  matchScore?: number | null;
+};
+
+export async function getSimilarPets(petId: string, limit = 12): Promise<SimilarPetItem[]> {
+  return api.get<SimilarPetItem[]>(`/pets/${petId}/similar`, { limit: String(limit) });
 }
 
 export async function createPet(body: CreatePetBody): Promise<PetResponse> {
@@ -83,11 +129,16 @@ export async function patchPetStatus(
   return api.patch<PetResponse>(`/pets/${id}/status`, body);
 }
 
-export async function confirmAdoption(petId: string): Promise<{ confirmed: boolean }> {
-  return api.post<{ confirmed: boolean }>(`/pets/${petId}/confirm-adoption`, {});
+export async function confirmAdoption(
+  petId: string,
+  options?: { responsibilityTermAccepted?: boolean },
+): Promise<{ confirmed: boolean }> {
+  return api.post<{ confirmed: boolean }>(`/pets/${petId}/confirm-adoption`, {
+    responsibilityTermAccepted: options?.responsibilityTermAccepted === true,
+  });
 }
 
-export type ConversationPartner = { id: string; name: string; username?: string };
+export type ConversationPartner = { id: string; name: string; username?: string; kycVerified?: boolean };
 
 export async function getConversationPartners(petId: string): Promise<ConversationPartner[]> {
   return api.get<ConversationPartner[]>(`/pets/${petId}/conversation-partners`);
@@ -103,4 +154,14 @@ export async function deletePetMedia(petId: string, mediaId: string): Promise<{ 
 
 export async function reorderPetMedia(petId: string, mediaIds: string[]): Promise<PetResponse> {
   return api.patch<PetResponse>(`/pets/${petId}/media/reorder`, { mediaIds });
+}
+
+/** Reenviar anúncio rejeitado para análise (apenas dono). */
+export async function resubmitPublication(petId: string): Promise<PetResponse> {
+  return api.post<PetResponse>(`/pets/${petId}/resubmit-publication`, {});
+}
+
+/** Prorrogar vida útil do anúncio em 60 dias (apenas dono; pet disponível e não expirado). */
+export async function extendListing(petId: string): Promise<PetResponse> {
+  return api.post<PetResponse>(`/pets/${petId}/extend`, {});
 }

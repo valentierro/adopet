@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useState, useEffect } from 'react';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useNavigation } from 'expo-router';
 import { View, Text, TouchableOpacity, FlatList, StyleSheet, Alert, Image } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +18,7 @@ function ServiceRow({
   onToggleSelect,
   onDelete,
   onLongPressRow,
+  isOng,
 }: {
   item: PartnerService;
   colors: { textPrimary: string; textSecondary: string; primary: string };
@@ -25,12 +27,13 @@ function ServiceRow({
   onToggleSelect: () => void;
   onDelete: () => void;
   onLongPressRow?: () => void;
+  isOng?: boolean;
 }) {
   const router = useRouter();
   const surface = (colors as { surface?: string }).surface ?? '#f5f5f5';
   const handlePress = () => {
     if (selectionMode) onToggleSelect();
-    else router.push({ pathname: '/partner-service-edit', params: { id: item.id } });
+    else router.push({ pathname: '/partner-service-edit', params: isOng ? { id: item.id, ong: '1' } : { id: item.id } });
   };
   const handleLongPress = () => {
     if (selectionMode) onToggleSelect();
@@ -55,8 +58,11 @@ function ServiceRow({
         <Text style={[rowStyles.name, { color: colors.textPrimary }]} numberOfLines={1}>{item.name}</Text>
         {(item.priceDisplay || item.description) && (
           <Text style={[rowStyles.sub, { color: colors.textSecondary }]} numberOfLines={1}>
-            {item.priceDisplay || item.description}
+            {isOng ? (item.description || 'Serviço voluntário') : (item.priceDisplay || item.description)}
           </Text>
+        )}
+        {isOng && !item.description && !item.priceDisplay && (
+          <Text style={[rowStyles.sub, { color: colors.textSecondary }]}>Serviço voluntário</Text>
         )}
         {item.validUntil && (
           <Text style={[rowStyles.valid, { color: colors.textSecondary }]}>Válido até {new Date(item.validUntil).toLocaleDateString('pt-BR')}</Text>
@@ -108,10 +114,19 @@ const rowStyles = StyleSheet.create({
 
 export default function PartnerServicesScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+  const params = useLocalSearchParams<{ ong?: string }>();
   const queryClient = useQueryClient();
   const { colors } = useTheme();
+  const isOng = params.ong === '1';
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (isOng) {
+      navigation.setOptions({ title: 'Serviços voluntários da ONG' });
+    }
+  }, [isOng, navigation]);
 
   const { data: services, isLoading } = useQuery({
     queryKey: ['me', 'partner', 'services'],
@@ -206,13 +221,18 @@ export default function PartnerServicesScreen() {
               onToggleSelect={() => toggleSelect(item.id)}
               onDelete={() => confirmDelete(item)}
               onLongPressRow={() => { setSelectionMode(true); setSelectedIds(new Set([item.id])); }}
+              isOng={isOng}
             />
           )}
           contentContainerStyle={[styles.list, list.length === 0 && styles.listEmpty]}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Ionicons name="construct-outline" size={48} color={colors.textSecondary} />
-              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Nenhum serviço cadastrado. Adicione serviços que seu estabelecimento oferece (ex: banho e tosa, consulta veterinária) para que usuários vejam no app.</Text>
+              <Ionicons name={isOng ? 'heart-outline' : 'construct-outline'} size={48} color={colors.textSecondary} />
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                {isOng
+                  ? 'Nenhum serviço voluntário. Adicione os serviços que a ONG oferece gratuitamente (ex: castração, consultas) para exibir na página do parceiro.'
+                  : 'Nenhum serviço cadastrado. Adicione serviços que seu estabelecimento oferece (ex: banho e tosa, consulta veterinária) para que usuários vejam no app.'}
+              </Text>
             </View>
           }
           ListHeaderComponent={
@@ -233,7 +253,7 @@ export default function PartnerServicesScreen() {
         {!selectionMode && (
           <TouchableOpacity
             style={[styles.fab, { backgroundColor: colors.primary }]}
-            onPress={() => router.push('/partner-service-edit')}
+            onPress={() => router.push(isOng ? { pathname: '/partner-service-edit', params: { ong: '1' } } : '/partner-service-edit')}
             activeOpacity={0.8}
           >
             <Ionicons name="add" size={28} color="#fff" />

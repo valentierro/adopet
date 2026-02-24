@@ -4,6 +4,8 @@ import { Transform } from 'class-transformer';
 
 /** Telefone: apenas dígitos, 10 ou 11 caracteres (DDD + número). Ex: 11987654321 */
 const PHONE_REGEX = /^[0-9]{10,11}$/;
+/** CPF (11 dígitos) ou CNPJ (14 dígitos), apenas números */
+const DOCUMENT_REGEX = /^([0-9]{11}|[0-9]{14})$/;
 /** Mín. 6 caracteres, pelo menos uma letra e um número */
 const PASSWORD_REGEX = /^(?=.*[A-Za-z])(?=.*\d).{6,}$/;
 /** Nome de usuário: min 2, max 30, apenas a-z 0-9 . _ */
@@ -32,6 +34,12 @@ export class SignupDto {
   @IsString()
   @Matches(PHONE_REGEX, { message: 'Informe um telefone válido com DDD (10 ou 11 dígitos)' })
   phone: string;
+
+  @ApiProperty({ example: '12345678901', description: 'CPF (11 dígitos) ou CNPJ (14 dígitos)' })
+  @Transform(({ value }) => (typeof value === 'string' ? value.replace(/\D/g, '').slice(0, 14) : value))
+  @IsString()
+  @Matches(DOCUMENT_REGEX, { message: 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos)' })
+  document: string;
 
   @ApiProperty({ example: 'maria.silva', description: 'Nome de usuário único (@nome) para ser encontrado ao indicar adotante' })
   @IsNotEmpty({ message: 'Informe um nome de usuário' })

@@ -13,6 +13,8 @@ export type SignupBody = {
   password: string;
   name: string;
   phone: string;
+  /** CPF (11 dígitos) ou CNPJ (14 dígitos) */
+  document: string;
   username: string;
 };
 

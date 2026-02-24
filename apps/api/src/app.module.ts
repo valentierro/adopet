@@ -1,7 +1,10 @@
 /** Adopet API - NestJS app root module */
 import { Module } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { SentryModule } from '@sentry/nestjs/setup';
+import { SentryGlobalFilter } from '@sentry/nestjs/setup';
 import { SlowRequestLoggerInterceptor } from './common/slow-request-logger.interceptor';
 import { PrismaModule } from './prisma/prisma.module';
 import { HealthModule } from './health/health.module';
@@ -27,13 +30,21 @@ import { PublicModule } from './public/public.module';
 import { PaymentsModule } from './payments/payments.module';
 import { EmailModule } from './email/email.module';
 import { PriorityEngineModule } from './priority-engine/priority-engine.module';
+import { FeatureFlagModule } from './feature-flag/feature-flag.module';
 
 @Module({
   providers: [
+    { provide: APP_FILTER, useClass: SentryGlobalFilter },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_INTERCEPTOR, useClass: SlowRequestLoggerInterceptor },
   ],
   imports: [
+    SentryModule.forRoot(),
     ConfigModule.forRoot({ isGlobal: true }),
+    FeatureFlagModule,
+    ThrottlerModule.forRoot({
+      throttlers: [{ ttl: 60_000, limit: 100 }], // 100 requests per minute per IP
+    }),
     PrismaModule,
     EmailModule,
     HealthModule,

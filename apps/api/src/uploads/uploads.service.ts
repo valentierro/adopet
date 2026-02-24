@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PresignDto } from './dto/presign.dto';
@@ -119,5 +119,31 @@ export class UploadsService {
     const endpoint = this.config.get<string>('S3_ENDPOINT');
     if (endpoint) return `${endpoint}/${this.bucket}/${key}`;
     return key;
+  }
+
+  /** Retorna URL pública (ou construída) para uma chave S3. Usado por admin para exibir documento/selfie do KYC. */
+  getPublicUrl(key: string | null | undefined): string | null {
+    if (!key?.trim()) return null;
+    return this.buildPublicUrl(key.trim());
+  }
+
+  /**
+   * Remove um objeto do bucket S3 pela chave. Usado após decisão de KYC para não reter imagens (redução de risco jurídico).
+   * Não lança erro se a chave for vazia ou se o objeto não existir (S3 retorna 204 em ambos os casos).
+   */
+  async deleteByKey(key: string | null | undefined): Promise<void> {
+    const k = key?.trim();
+    if (!k) return;
+    try {
+      const cmd = new DeleteObjectCommand({
+        Bucket: this.bucket,
+        Key: k,
+      });
+      type WithSend = { send(command: DeleteObjectCommand): Promise<unknown> };
+      await (this.s3 as unknown as WithSend).send(cmd);
+    } catch (err) {
+      // Log mas não falha o fluxo; o importante é ter zerado a referência no banco
+      console.warn(`[UploadsService] deleteByKey failed for key=${k}:`, err);
+    }
   }
 }

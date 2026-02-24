@@ -9,6 +9,7 @@ import { useTheme } from '../src/hooks/useTheme';
 import { getMyPartner, updateMyPartner } from '../src/api/partner';
 import { presign, confirmPartnerLogoUpload } from '../src/api/uploads';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
+import { formatPhoneInput, formatPhoneDisplay, getPhoneDigits } from '../src/utils/phoneMask';
 import { spacing } from '../src/theme';
 
 export default function PartnerEditScreen() {
@@ -31,7 +32,7 @@ export default function PartnerEditScreen() {
       setCity(partner.city ?? '');
       setDescription(partner.description ?? '');
       setWebsite(partner.website ?? '');
-      setPhone(partner.phone ?? '');
+      setPhone(formatPhoneDisplay(partner.phone ?? ''));
       setEmail(partner.email ?? '');
       setAddress(partner.address ?? '');
       setLogoUrl(partner.logoUrl ?? null);
@@ -56,7 +57,7 @@ export default function PartnerEditScreen() {
       city: city.trim() || undefined,
       description: description.trim() || undefined,
       website: website.trim() || undefined,
-      phone: phone.trim() || undefined,
+      phone: getPhoneDigits(phone).trim() || undefined,
       email: email.trim() || undefined,
       address: address.trim() || undefined,
       logoUrl: logoUrl || undefined,
@@ -120,7 +121,7 @@ export default function PartnerEditScreen() {
 
   return (
     <ScreenContainer scroll={false}>
-      <PartnerPanelLayout>
+      <PartnerPanelLayout showHeader={false} showFooter={false}>
         <ScrollView style={styles.scrollWrap} contentContainerStyle={styles.form} showsVerticalScrollIndicator={false}>
           <Text style={labelStyle}>Logo do estabelecimento</Text>
         <Text style={[styles.logoHint, { color: colors.textSecondary }]}>Exibida na página de parceiros para os usuários</Text>
@@ -148,7 +149,7 @@ export default function PartnerEditScreen() {
         <Text style={labelStyle}>Endereço completo</Text>
         <TextInput style={inputStyle} placeholder="Rua, número, bairro, CEP" placeholderTextColor={colors.textSecondary} value={address} onChangeText={setAddress} />
         <Text style={labelStyle}>Telefone</Text>
-        <TextInput style={inputStyle} placeholder="(11) 99999-9999" placeholderTextColor={colors.textSecondary} value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+        <TextInput style={inputStyle} placeholder="(11) 98765-4321" placeholderTextColor={colors.textSecondary} value={phone} onChangeText={(t) => setPhone(formatPhoneInput(t))} keyboardType="phone-pad" maxLength={16} />
         <Text style={labelStyle}>E-mail de contato</Text>
         <TextInput style={inputStyle} placeholder="contato@estabelecimento.com" placeholderTextColor={colors.textSecondary} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
         <Text style={labelStyle}>Site</Text>

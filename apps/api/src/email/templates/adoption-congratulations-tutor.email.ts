@@ -43,6 +43,9 @@ export function getAdoptionCongratulationsTutorHtml(data: AdoptionEmailData, log
                 </tr>
               </table>
               <p style="margin: 0 0 16px 0; font-size: 15px; line-height: 1.6; color: #57534E;">Sua atitude de divulgar a adoção responsável e usar o Adopet ajuda a conectar mais pets a lares amorosos. Cada anúncio conta.</p>
+              <p style="margin: 0 0 8px 0; font-size: 12px; line-height: 1.5; color: #78716C;">O Adopet atua como plataforma de conexão entre doadores e adotantes. O acompanhamento pós-adoção é de responsabilidade de quem anunciou o pet; o app não realiza nem se responsabiliza por esse acompanhamento.</p>
+              <h2 style="margin: 24px 0 12px 0; font-size: 17px; font-weight: 600; color: #1C1917;">Acompanhe a adoção</h2>
+              <p style="margin: 0 0 16px 0; font-size: 14px; line-height: 1.7; color: #57534E;">Manter contato com quem adotou ${data.petName} é uma forma de cuidar do bem-estar do pet. Vale combinar um retorno em algumas semanas: uma foto, uma mensagem ou uma ligação para saber como está a adaptação. Se notar algo que te preocupe ou deixar de ter notícias, você pode denunciar pelo app — após a denúncia, o Adopet pode banir o denunciado se a denúncia for comprovada. Também incentivamos que você registre a ocorrência em órgãos competentes (delegacias, conselhos de proteção animal etc.), que têm poder para tomar medidas legais. O acompanhamento responsável é seu papel como doador.</p>
               <h2 style="margin: 24px 0 12px 0; font-size: 17px; font-weight: 600; color: #1C1917;">Continue fazendo a diferença</h2>
               <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.7; color: #57534E;">Indique o Adopet para amigos que queiram adotar ou que tenham pets para doar. Quanto mais gente usar a plataforma, mais histórias como a de ${data.petName} vamos escrever juntos.</p>
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
@@ -73,6 +76,10 @@ export function getAdoptionCongratulationsTutorText(data: AdoptionEmailData): st
   return `Obrigado, ${data.recipientName}!
 
 A adoção de ${data.petName} foi confirmada. Você deu a ele(a) a chance de um novo lar.
+
+O Adopet atua como plataforma de conexão; o acompanhamento pós-adoção é de sua responsabilidade como quem anunciou — o app não realiza nem se responsabiliza por esse acompanhamento.
+
+Acompanhe a adoção: manter contato com quem adotou ajuda a cuidar do bem-estar do pet. Combine um retorno em algumas semanas (foto ou mensagem) e, se algo te preocupar, use o app para denunciar. Após a denúncia no app, o Adopet pode banir o denunciado se a denúncia for comprovada. Também incentivamos que você registre a ocorrência em órgãos competentes (delegacias, conselhos de proteção animal etc.), que têm poder para tomar medidas legais. O acompanhamento responsável é seu papel como doador.
 
 Continue fazendo a diferença: indique o Adopet para amigos que queiram adotar ou divulgar pets.
 

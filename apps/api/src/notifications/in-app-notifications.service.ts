@@ -10,11 +10,20 @@ export const IN_APP_NOTIFICATION_TYPES = {
   NEW_MESSAGE: 'NEW_MESSAGE',
   NEW_CONVERSATION: 'NEW_CONVERSATION',
   ADOPTION_CONFIRMATION_REQUESTED: 'ADOPTION_CONFIRMATION_REQUESTED',
+  /** Para admins: pet marcado como adotado pelo tutor, aguardando confirmação no painel. */
+  PENDING_ADOPTION_BY_TUTOR: 'PENDING_ADOPTION_BY_TUTOR',
   PET_PUBLICATION_APPROVED: 'PET_PUBLICATION_APPROVED',
   PET_PUBLICATION_REJECTED: 'PET_PUBLICATION_REJECTED',
   VERIFICATION_APPROVED: 'VERIFICATION_APPROVED',
   VERIFICATION_REJECTED: 'VERIFICATION_REJECTED',
+  KYC_APPROVED: 'KYC_APPROVED',
+  KYC_REJECTED: 'KYC_REJECTED',
   PET_FAVORITED: 'PET_FAVORITED',
+  PET_PARTNERSHIP_REQUEST: 'PET_PARTNERSHIP_REQUEST',
+  PET_PARTNERSHIP_CONFIRMED: 'PET_PARTNERSHIP_CONFIRMED',
+  PET_PARTNERSHIP_REJECTED: 'PET_PARTNERSHIP_REJECTED',
+  PET_PARTNERSHIP_CANCELLED_BY_PARTNER: 'PET_PARTNERSHIP_CANCELLED_BY_PARTNER',
+  SATISFACTION_SURVEY: 'SATISFACTION_SURVEY',
 } as const;
 
 export type InAppNotificationType = (typeof IN_APP_NOTIFICATION_TYPES)[keyof typeof IN_APP_NOTIFICATION_TYPES];
@@ -26,6 +35,7 @@ export type InAppNotificationItem = {
   body: string;
   metadata: Record<string, unknown> | null;
   readAt: string | null;
+  archivedAt: string | null;
   createdAt: string;
 };
 
@@ -53,12 +63,30 @@ export class InAppNotificationsService {
     this.pushService.sendToUser(userId, title, body, data).catch(() => {});
   }
 
-  async listByUser(userId: string, limit = 50): Promise<InAppNotificationItem[]> {
-    const list = await this.prisma.inAppNotification.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-    });
+  async listByUser(userId: string, limit = 50, archived = false): Promise<InAppNotificationItem[]> {
+    // Arquivadas: só onde archivedAt não é null. Recentes: onde archivedAt é null (ou inexistente).
+    const where = archived
+      ? { userId, archivedAt: { not: null } }
+      : { userId, archivedAt: null };
+    let list: Awaited<ReturnType<PrismaService['inAppNotification']['findMany']>>;
+    try {
+      list = await this.prisma.inAppNotification.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+      });
+    } catch (err) {
+      // Fallback: se a coluna archivedAt não existir ou der erro, "recentes" retorna todas; "arquivadas" retorna []
+      if (!archived) {
+        list = await this.prisma.inAppNotification.findMany({
+          where: { userId },
+          orderBy: { createdAt: 'desc' },
+          take: limit,
+        });
+      } else {
+        list = [];
+      }
+    }
     return list.map((n) => ({
       id: n.id,
       type: n.type,
@@ -66,14 +94,21 @@ export class InAppNotificationsService {
       body: n.body,
       metadata: n.metadata ? (JSON.parse(n.metadata) as Record<string, unknown>) : null,
       readAt: n.readAt?.toISOString() ?? null,
+      archivedAt: n.archivedAt?.toISOString() ?? null,
       createdAt: n.createdAt.toISOString(),
     }));
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    return this.prisma.inAppNotification.count({
-      where: { userId, readAt: null },
-    });
+    try {
+      return await this.prisma.inAppNotification.count({
+        where: { userId, readAt: null, archivedAt: null },
+      });
+    } catch {
+      return this.prisma.inAppNotification.count({
+        where: { userId, readAt: null },
+      });
+    }
   }
 
   async markAsRead(userId: string, notificationId: string): Promise<void> {
@@ -88,10 +123,69 @@ export class InAppNotificationsService {
   }
 
   async markAllAsRead(userId: string): Promise<{ updated: number }> {
-    const result = await this.prisma.inAppNotification.updateMany({
-      where: { userId, readAt: null },
-      data: { readAt: new Date() },
+    try {
+      const result = await this.prisma.inAppNotification.updateMany({
+        where: { userId, readAt: null, archivedAt: null },
+        data: { readAt: new Date() },
+      });
+      return { updated: result.count };
+    } catch {
+      const result = await this.prisma.inAppNotification.updateMany({
+        where: { userId, readAt: null },
+        data: { readAt: new Date() },
+      });
+      return { updated: result.count };
+    }
+  }
+
+  async archive(userId: string, notificationId: string): Promise<void> {
+    const n = await this.prisma.inAppNotification.findFirst({
+      where: { id: notificationId, userId },
     });
-    return { updated: result.count };
+    if (!n) throw new NotFoundException('Notificação não encontrada');
+    try {
+      await this.prisma.inAppNotification.update({
+        where: { id: notificationId },
+        data: { archivedAt: new Date() },
+      });
+    } catch {
+      // Client antigo sem campo archivedAt: ignora (evita 500)
+    }
+  }
+
+  async archiveMany(userId: string, ids: string[]): Promise<{ archived: number }> {
+    if (ids.length === 0) return { archived: 0 };
+    try {
+      const result = await this.prisma.inAppNotification.updateMany({
+        where: { id: { in: ids }, userId, archivedAt: null },
+        data: { archivedAt: new Date() },
+      });
+      return { archived: result.count };
+    } catch {
+      return { archived: 0 };
+    }
+  }
+
+  async delete(userId: string, notificationId: string): Promise<void> {
+    const n = await this.prisma.inAppNotification.findFirst({
+      where: { id: notificationId, userId },
+    });
+    if (!n) throw new NotFoundException('Notificação não encontrada');
+    await this.prisma.inAppNotification.delete({
+      where: { id: notificationId },
+    });
+  }
+
+  async deleteMany(userId: string, ids: string[]): Promise<{ deleted: number }> {
+    if (ids.length === 0) return { deleted: 0 };
+    try {
+      const result = await this.prisma.inAppNotification.deleteMany({
+        where: { id: { in: ids }, userId },
+      });
+      return { deleted: result.count };
+    } catch (err) {
+      console.warn('[InAppNotifications] deleteMany failed', err);
+      return { deleted: 0 };
+    }
   }
 }

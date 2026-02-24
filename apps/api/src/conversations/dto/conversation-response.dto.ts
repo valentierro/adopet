@@ -17,7 +17,7 @@ export class ConversationListItemDto {
   pet: { id: string; name: string; photos: string[]; adoptionFinalized: boolean };
 
   @ApiProperty()
-  otherUser: { id: string; name: string; avatarUrl?: string };
+  otherUser: { id: string; name: string; avatarUrl?: string; kycVerified?: boolean };
 
   @ApiProperty({ required: false })
   lastMessage?: { content: string; createdAt: string; senderId: string };

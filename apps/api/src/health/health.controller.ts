@@ -1,23 +1,41 @@
-import { Controller, Get, Header } from '@nestjs/common';
+import { Controller, Get, Header, ServiceUnavailableException } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import { PrismaService } from '../prisma/prisma.service';
 
+@SkipThrottle()
 @ApiTags('health')
 @Controller('health')
 export class HealthController {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Get()
   @Header('Cache-Control', 'public, max-age=60')
   @ApiOperation({ summary: 'Health check' })
-  check() {
+  async check() {
+    const version = this.config.get<string>('APP_VERSION')?.trim() || '1.0.0';
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+    } catch {
+      throw new ServiceUnavailableException({
+        status: 'error',
+        database: 'unreachable',
+        timestamp: new Date().toISOString(),
+        service: 'adopet-api',
+        version,
+      });
+    }
     return {
       status: 'ok',
       timestamp: new Date().toISOString(),
       service: 'adopet-api',
-      version: '1.0.0',
+      version,
     };
   }
 

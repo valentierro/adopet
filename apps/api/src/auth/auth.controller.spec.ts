@@ -8,6 +8,7 @@ const PROD_LIKE = {
   password: 'Senha123',
   name: 'João Santos',
   phone: '11987654321',
+  document: '12345678901',
   username: 'joao.santos',
 } as const;
 
@@ -65,6 +66,7 @@ describe('AuthController', () => {
         password: PROD_LIKE.password,
         name: PROD_LIKE.name,
         phone: PROD_LIKE.phone,
+        document: PROD_LIKE.document,
         username: PROD_LIKE.username,
       };
       authService.signup.mockResolvedValue({
@@ -87,6 +89,7 @@ describe('AuthController', () => {
         password: PROD_LIKE.password,
         name: PROD_LIKE.name,
         phone: PROD_LIKE.phone,
+        document: PROD_LIKE.document,
         username: PROD_LIKE.username,
       });
       expect(res).toHaveProperty('message');

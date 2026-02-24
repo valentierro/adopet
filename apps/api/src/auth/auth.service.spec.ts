@@ -15,6 +15,7 @@ const PROD_LIKE = {
   password: 'SenhaSegura123',
   name: 'Maria Silva',
   phone: '11987654321',
+  document: '12345678901',
   username: 'maria.silva',
 } as const;
 
@@ -68,11 +69,12 @@ describe('AuthService', () => {
       password: PROD_LIKE.password,
       name: PROD_LIKE.name,
       phone: PROD_LIKE.phone,
+      document: PROD_LIKE.document,
       username: PROD_LIKE.username,
     };
 
     it('deve rejeitar quando e-mail já existe (valor tipo produção)', async () => {
-      prisma.user.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: '1', email: PROD_LIKE.email });
+      prisma.user.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: '1', email: PROD_LIKE.email }).mockResolvedValueOnce(null);
       prisma.user.findFirst.mockResolvedValue(null);
       await expect(service.signup(validSignupDto)).rejects.toThrow(ConflictException);
       expect(prisma.user.create).not.toHaveBeenCalled();
@@ -109,7 +111,7 @@ describe('AuthService', () => {
     });
 
     it('deve rejeitar quando nome de usuário já existe', async () => {
-      prisma.user.findUnique.mockResolvedValueOnce({ id: '1', username: PROD_LIKE.username });
+      prisma.user.findUnique.mockResolvedValueOnce({ id: '1', username: PROD_LIKE.username }).mockResolvedValueOnce(null).mockResolvedValueOnce(null);
       await expect(
         service.signup({
           ...validSignupDto,

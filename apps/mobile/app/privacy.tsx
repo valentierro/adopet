@@ -35,6 +35,9 @@ export default function PrivacyScreen() {
         <Text style={[styles.body, { color: colors.textSecondary }]}>
           Coletamos: nome, email, telefone (com DDD), cidade, foto de perfil, informações sobre moradia e estilo de vida que você optar por preencher; dados dos pets anunciados (fotos, descrição, etc.); favoritos, conversas e mensagens; preferências de busca e localização quando autorizada; e dados técnicos necessários ao funcionamento do app (ex.: token de notificações).
         </Text>
+        <Text style={[styles.body, { color: colors.textSecondary }, { marginTop: spacing.sm }]}>
+          <Text style={styles.bold}>Verificação de identidade (KYC):</Text> quando você solicita verificação para confirmar adoções, recebemos temporariamente a(s) foto(s) que você envia (selfie com documento). Essas imagens são usadas apenas para análise pela nossa equipe (decisão humana, não automatizada) e são excluídas assim que o processo é finalizado (aprovado ou rejeitado). Não extraímos nem armazenamos dados do documento (ex.: número de CPF ou RG) em banco de dados; não compartilhamos as fotos com terceiros.
+        </Text>
       </View>
 
       <View style={styles.section}>

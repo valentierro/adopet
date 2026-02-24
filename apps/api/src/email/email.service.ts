@@ -28,14 +28,14 @@ export class EmailService {
 
   /**
    * Envia um e-mail. Se SMTP não estiver configurado, não faz nada (útil em dev).
-   * Anexos opcionais: [{ filename: string, content: string | Buffer }].
+   * Anexos opcionais: [{ filename, content, cid? }]. cid = Content-ID para imagens inline (ex.: cid:portal-menu).
    */
   async sendMail(options: {
     to: string;
     subject: string;
     text: string;
     html?: string;
-    attachments?: Array<{ filename: string; content: string | Buffer }>;
+    attachments?: Array<{ filename: string; content: string | Buffer; cid?: string }>;
   }): Promise<void> {
     if (!this.transporter) {
       return;

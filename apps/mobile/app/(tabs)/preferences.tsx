@@ -15,13 +15,18 @@ const SPECIES_OPTIONS: { value: 'DOG' | 'CAT' | 'BOTH'; label: string }[] = [
   { value: 'BOTH', label: 'Cachorros e gatos' },
 ];
 
-const RADIUS_OPTIONS = [10, 25, 50, 100, 200, 300, 400, 500];
 const SIZE_OPTIONS: { value: 'BOTH' | 'small' | 'medium' | 'large' | 'xlarge'; label: string }[] = [
   { value: 'BOTH', label: 'Qualquer' },
   { value: 'small', label: 'Pequeno' },
   { value: 'medium', label: 'Médio' },
   { value: 'large', label: 'Grande' },
   { value: 'xlarge', label: 'Muito grande' },
+];
+
+const SEX_OPTIONS: { value: 'BOTH' | 'male' | 'female'; label: string }[] = [
+  { value: 'BOTH', label: 'Qualquer' },
+  { value: 'male', label: 'Macho' },
+  { value: 'female', label: 'Fêmea' },
 ];
 
 export default function PreferencesScreen() {
@@ -39,18 +44,18 @@ export default function PreferencesScreen() {
   );
 
   const [species, setSpecies] = useState<'DOG' | 'CAT' | 'BOTH'>('BOTH');
-  const [radiusKm, setRadiusKm] = useState(50);
   const [notifyNewPets, setNotifyNewPets] = useState(true);
   const [notifyMessages, setNotifyMessages] = useState(true);
   const [notifyReminders, setNotifyReminders] = useState(true);
   const [notifyListingReminders, setNotifyListingReminders] = useState(true);
   const [sizePref, setSizePref] = useState<'BOTH' | 'small' | 'medium' | 'large' | 'xlarge'>('BOTH');
+  const [sexPref, setSexPref] = useState<'BOTH' | 'male' | 'female'>('BOTH');
 
   useEffect(() => {
     if (prefs) {
       setSpecies(prefs.species);
-      setRadiusKm(prefs.radiusKm);
       setSizePref((prefs.sizePref as 'BOTH' | 'small' | 'medium' | 'large' | 'xlarge') ?? 'BOTH');
+      setSexPref((prefs.sexPref as 'BOTH' | 'male' | 'female') ?? 'BOTH');
       setNotifyNewPets(prefs.notifyNewPets);
       setNotifyMessages(prefs.notifyMessages);
       setNotifyReminders(prefs.notifyReminders);
@@ -70,7 +75,16 @@ export default function PreferencesScreen() {
   });
 
   const handleSave = () => {
-    mutation.mutate({ species, radiusKm, sizePref, notifyNewPets, notifyMessages, notifyReminders, notifyListingReminders });
+    mutation.mutate({
+      species,
+      sizePref,
+      sexPref,
+      notifyNewPets,
+      notifyMessages,
+      notifyReminders,
+      notifyListingReminders,
+      ...(prefs?.radiusKm != null && { radiusKm: prefs.radiusKm }),
+    });
   };
 
   const updateNotificationPref = (
@@ -83,12 +97,13 @@ export default function PreferencesScreen() {
     else setNotifyListingReminders(value);
     mutation.mutate({
       species,
-      radiusKm,
       sizePref,
+      sexPref,
       notifyNewPets: key === 'notifyNewPets' ? value : notifyNewPets,
       notifyMessages: key === 'notifyMessages' ? value : notifyMessages,
       notifyReminders: key === 'notifyReminders' ? value : notifyReminders,
       notifyListingReminders: key === 'notifyListingReminders' ? value : notifyListingReminders,
+      ...(prefs?.radiusKm != null && { radiusKm: prefs.radiusKm }),
     });
   };
 
@@ -102,7 +117,10 @@ export default function PreferencesScreen() {
 
   return (
     <ScreenContainer scroll>
-      <Text style={[styles.section, { color: colors.textSecondary }]}>Espécie</Text>
+      <Text style={[styles.section, { color: colors.textSecondary }]}>
+        Espécie, porte e sexo preferidos são usados no match score.
+      </Text>
+      <Text style={[styles.section, { color: colors.textSecondary, marginTop: spacing.sm }]}>Espécie</Text>
       <View style={styles.optionsRow}>
         {SPECIES_OPTIONS.map((opt) => (
           <TouchableOpacity
@@ -150,33 +168,29 @@ export default function PreferencesScreen() {
         ))}
       </View>
       <Text style={[styles.section, { color: colors.textSecondary, marginTop: spacing.lg }]}>
-        Raio (km)
-      </Text>
-      <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
-        O feed e o mapa mostram apenas pets até esta distância da sua localização.
+        Sexo preferido do pet (match)
       </Text>
       <View style={styles.optionsRow}>
-        {RADIUS_OPTIONS.map((km) => (
+        {SEX_OPTIONS.map((opt) => (
           <TouchableOpacity
-            key={km}
+            key={opt.value}
             style={[
               styles.optionChip,
-              { backgroundColor: radiusKm === km ? colors.primary : colors.surface },
+              { backgroundColor: sexPref === opt.value ? colors.primary : colors.surface },
             ]}
-            onPress={() => setRadiusKm(km)}
+            onPress={() => setSexPref(opt.value)}
           >
             <Text
               style={[
                 styles.optionChipText,
-                { color: radiusKm === km ? '#fff' : colors.textPrimary },
+                { color: sexPref === opt.value ? '#fff' : colors.textPrimary },
               ]}
             >
-              {km} km
+              {opt.label}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
-
       <View style={[styles.notifSection, { backgroundColor: colors.surface }]}>
         <View style={styles.notifSectionHeader}>
           <Ionicons name="notifications-outline" size={22} color={colors.primary} />
@@ -192,10 +206,10 @@ export default function PreferencesScreen() {
             <Ionicons name="paw-outline" size={20} color={colors.primary} style={styles.notifIcon} />
             <View>
               <Text style={[styles.notifLabel, { color: colors.textPrimary }]}>
-                Novos pets na sua região
+                Notificação de novos pets na sua região
               </Text>
               <Text style={[styles.notifDesc, { color: colors.textSecondary }]}>
-                Avisos quando há pets novos no raio das suas preferências
+                Ative para receber avisos quando surgirem pets novos na espécie configurada acima (o raio você define na aba Mapa)
               </Text>
             </View>
           </View>

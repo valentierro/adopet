@@ -9,6 +9,7 @@ import {
 } from '../email/templates/partnership-request.email';
 import type { PublicStatsDto } from './dto/public-stats.dto';
 import type { PartnershipRequestDto } from './dto/partnership-request.dto';
+import type { RecentAdoptionItemDto } from './dto/recent-adoptions.dto';
 
 const PARTNERSHIP_EMAIL_TO = 'parcerias@appadopet.com.br';
 
@@ -29,6 +30,34 @@ export class PublicService {
       }),
     ]);
     return { totalAdoptions, totalUsers, totalPets };
+  }
+
+  /** Últimas adoções realizadas no app (para tela de prova social). Sem dados de tutor/adotante. */
+  async getRecentAdoptions(limit = 30): Promise<RecentAdoptionItemDto[]> {
+    const take = Math.min(Math.max(1, limit), 100);
+    const adoptions = await this.prisma.adoption.findMany({
+      take,
+      orderBy: { adoptedAt: 'desc' },
+      include: {
+        pet: {
+          select: {
+            id: true,
+            name: true,
+            species: true,
+            city: true,
+            media: { orderBy: { sortOrder: 'asc' }, take: 1, select: { url: true } },
+          },
+        },
+      },
+    });
+    return adoptions.map((a) => ({
+      petId: a.pet.id,
+      petName: a.pet.name,
+      species: a.pet.species,
+      adoptedAt: a.adoptedAt.toISOString(),
+      city: a.pet.city ?? undefined,
+      photoUrl: a.pet.media[0]?.url ?? undefined,
+    }));
   }
 
   /** Persiste a solicitação e envia e-mail para parcerias@appadopet.com.br */

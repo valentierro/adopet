@@ -11,9 +11,10 @@ import {
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { PrimaryButton } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -23,9 +24,12 @@ import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { spacing } from '../../src/theme';
 
 const LogoSplash = require('../../assets/brand/logo/logo_splash.png');
+const APP_VERSION = Constants.expoConfig?.version ?? '1.1.0';
 
 export default function LoginScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ redirectPetId?: string }>();
+  const redirectPetId = params.redirectPetId?.trim();
   const queryClient = useQueryClient();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -43,7 +47,11 @@ export default function LoginScreen() {
     try {
       await login(email.trim(), password);
       await queryClient.invalidateQueries({ queryKey: ['me'] });
-      router.replace('/');
+      if (redirectPetId) {
+        router.replace(`/(tabs)/pet/${redirectPetId}`);
+      } else {
+        router.replace('/');
+      }
     } catch (e: unknown) {
       const configMsg = getApiUrlConfigIssue();
       const msg = configMsg ?? getFriendlyErrorMessage(e, 'E-mail ou senha incorretos. Tente novamente.');
@@ -136,6 +144,9 @@ export default function LoginScreen() {
             </Text>
           </View>
         </View>
+        <Text style={[styles.versionText, { color: colors.textSecondary }]}>
+          Versão {APP_VERSION}
+        </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -201,5 +212,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     fontSize: 16,
     borderWidth: 1,
+  },
+  versionText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
   },
 });

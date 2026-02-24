@@ -24,9 +24,11 @@ type PartnerPanelLayoutProps = {
   children: React.ReactNode;
   showHeader?: boolean;
   showFooter?: boolean;
+  /** Mostra o logo da Adopet acima do conteúdo. Default true. Use false na página inicial do portal. */
+  showAppLogo?: boolean;
 };
 
-export function PartnerPanelLayout({ children, showHeader = true, showFooter = true }: PartnerPanelLayoutProps) {
+export function PartnerPanelLayout({ children, showHeader = true, showFooter = true, showAppLogo = true }: PartnerPanelLayoutProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
@@ -45,7 +47,7 @@ export function PartnerPanelLayout({ children, showHeader = true, showFooter = t
 
   return (
     <View style={styles.container}>
-      {showHeader && (
+      {showHeader && showAppLogo && (
         <View style={styles.logoWrap}>
           <Image source={isDark ? LogoDark : LogoLight} style={styles.appLogo} resizeMode="contain" />
         </View>

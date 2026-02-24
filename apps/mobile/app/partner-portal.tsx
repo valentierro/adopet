@@ -1,20 +1,114 @@
 import { useRouter } from 'expo-router';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { Image } from 'expo-image';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, LoadingLogo, PartnerPanelLayout, ProfileMenuFooter } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
-import { getMyPartner } from '../src/api/partner';
+import { useClientConfig } from '../src/hooks/useClientConfig';
+import {
+  getMyPartner,
+  leavePartner,
+  leavePartnerAndRemoveMembers,
+  getMyPartnerPetPartnershipRequests,
+  getMyPartnerPetPartnerships,
+  confirmPetPartnershipRequest,
+  rejectPetPartnershipRequest,
+  cancelPetPartnership,
+} from '../src/api/partner';
+import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
 import { spacing } from '../src/theme';
 
 export default function PartnerPortalScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { colors } = useTheme();
+  const { config: clientConfig } = useClientConfig();
   const { data: partner, isLoading } = useQuery({
     queryKey: ['me', 'partner'],
     queryFn: getMyPartner,
   });
+  const { data: partnershipRequests = [], isLoading: loadingRequests } = useQuery({
+    queryKey: ['me', 'partner', 'pet-partnership-requests'],
+    queryFn: getMyPartnerPetPartnershipRequests,
+    enabled: !!partner,
+  });
+  const { data: partnerships = [], isLoading: loadingPartnerships } = useQuery({
+    queryKey: ['me', 'partner', 'pet-partnerships'],
+    queryFn: getMyPartnerPetPartnerships,
+    enabled: !!partner,
+  });
+  const confirmRequestMutation = useMutation({
+    mutationFn: confirmPetPartnershipRequest,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'pet-partnership-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'pet-partnerships'] });
+    },
+  });
+  const rejectRequestMutation = useMutation({
+    mutationFn: rejectPetPartnershipRequest,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'pet-partnership-requests'] });
+    },
+  });
+  const cancelPartnershipMutation = useMutation({
+    mutationFn: cancelPetPartnership,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'pet-partnerships'] });
+    },
+  });
+
+  const leaveMutation = useMutation({
+    mutationFn: leavePartner,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner'] });
+      router.replace('/partner-portal');
+    },
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível desvincular.'));
+    },
+  });
+
+  const leaveAndRemoveMutation = useMutation({
+    mutationFn: leavePartnerAndRemoveMembers,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner'] });
+      router.replace('/partner-portal');
+    },
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível desvincular e remover membros.'));
+    },
+  });
+
+  const handleLeavePartnership = () => {
+    Alert.alert(
+      'Desvincular minha ONG',
+      'Ao desvincular, a ONG sairá da lista de parceiros e você perderá o acesso ao portal. Os membros da ONG continuarão no app (vinculados à ONG inativa). Deseja continuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Desvincular',
+          style: 'destructive',
+          onPress: () => leaveMutation.mutate(),
+        },
+      ],
+    );
+  };
+
+  const handleLeaveAndRemoveMembers = () => {
+    Alert.alert(
+      'Desvincular e remover todos os membros',
+      'Você e todos os membros da ONG serão desvinculados. A ONG sairá da lista de parceiros. Os ex-membros continuarão no app como usuários comuns (sem vínculo com a ONG). Esta ação não pode ser desfeita. Deseja continuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Desvincular e remover todos',
+          style: 'destructive',
+          onPress: () => leaveAndRemoveMutation.mutate(),
+        },
+      ],
+    );
+  };
 
   if (isLoading && !partner) {
     return (
@@ -66,7 +160,7 @@ export default function PartnerPortalScreen() {
 
   return (
     <ScreenContainer scroll={false}>
-      <PartnerPanelLayout showFooter={false}>
+      <PartnerPanelLayout showFooter={false} showAppLogo={false}>
         <ScrollView
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
@@ -84,7 +178,119 @@ export default function PartnerPortalScreen() {
                 {partner.type === 'ONG' ? 'ONG' : 'Assinatura ativa'}
               </Text>
             </View>
+            {(partner.approvedAt || partner.createdAt) && (
+              <Text style={[styles.partnerSince, { color: colors.textSecondary }]}>
+                Parceria desde {new Date(partner.approvedAt || partner.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+              </Text>
+            )}
+            <TouchableOpacity
+              style={[styles.publicPageBtn, { backgroundColor: colors.primary + '20', borderColor: colors.primary }]}
+              onPress={() => router.push(`/partners/${partner.id}`)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="open-outline" size={20} color={colors.primary} />
+              <Text style={[styles.publicPageBtnText, { color: colors.primary }]}>Ver página pública</Text>
+            </TouchableOpacity>
           </View>
+
+          {(partnershipRequests.length > 0 || loadingRequests) && (
+            <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+                Solicitações de parceria
+                {partnershipRequests.length > 0 ? ` (${partnershipRequests.length})` : ''}
+              </Text>
+              {loadingRequests ? (
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: spacing.md }} />
+              ) : (
+                partnershipRequests.map((req) => (
+                  <View key={req.id} style={[styles.partnershipRow, { borderBottomColor: colors.border }]}>
+                    <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push(`/pet/${req.petId}`)}>
+                      <View style={styles.partnershipRowContent}>
+                        {req.petPhotoUrl ? (
+                          <Image source={{ uri: req.petPhotoUrl }} style={styles.petThumb} contentFit="cover" />
+                        ) : (
+                          <View style={[styles.petThumb, { backgroundColor: colors.border }]} />
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.petName, { color: colors.textPrimary }]} numberOfLines={1}>{req.petName}</Text>
+                          <Text style={[styles.partnershipMeta, { color: colors.textSecondary }]}>
+                            Solicitado por {req.requestedByName}
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                    <View style={styles.partnershipActions}>
+                      <TouchableOpacity
+                        style={[styles.partnershipBtn, { backgroundColor: colors.primary }]}
+                        onPress={() => {
+                          Alert.alert('Aprovar parceria', `Aprovar exibição do selo da ${partner.name} no anúncio de ${req.petName}?`, [
+                            { text: 'Cancelar', style: 'cancel' },
+                            { text: 'Aprovar', onPress: () => confirmRequestMutation.mutate(req.id) },
+                          ]);
+                        }}
+                        disabled={confirmRequestMutation.isPending}
+                      >
+                        <Text style={styles.partnershipBtnText}>Aprovar</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.partnershipBtn, { backgroundColor: colors.error || '#DC2626' }]}
+                        onPress={() => {
+                          Alert.alert('Rejeitar', `Rejeitar parceria no anúncio de ${req.petName}?`, [
+                            { text: 'Cancelar', style: 'cancel' },
+                            { text: 'Rejeitar', style: 'destructive', onPress: () => rejectRequestMutation.mutate(req.id) },
+                          ]);
+                        }}
+                        disabled={rejectRequestMutation.isPending}
+                      >
+                        <Text style={styles.partnershipBtnText}>Rejeitar</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
+          )}
+
+          {(partnerships.length > 0 || loadingPartnerships) && (
+            <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Anúncios em parceria</Text>
+              {loadingPartnerships ? (
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: spacing.md }} />
+              ) : (
+                partnerships.map((pp) => (
+                  <View key={pp.id} style={[styles.partnershipRow, { borderBottomColor: colors.border }]}>
+                    <TouchableOpacity style={{ flex: 1 }} onPress={() => router.push(`/pet/${pp.petId}`)}>
+                      <View style={styles.partnershipRowContent}>
+                        {pp.petPhotoUrl ? (
+                          <Image source={{ uri: pp.petPhotoUrl }} style={styles.petThumb} contentFit="cover" />
+                        ) : (
+                          <View style={[styles.petThumb, { backgroundColor: colors.border }]} />
+                        )}
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.petName, { color: colors.textPrimary }]} numberOfLines={1}>{pp.petName}</Text>
+                          <Text style={[styles.partnershipMeta, { color: colors.textSecondary }]}>
+                            Parceria desde {new Date(pp.confirmedAt).toLocaleDateString('pt-BR')}
+                          </Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.partnershipBtn, { backgroundColor: colors.error || '#DC2626', marginLeft: spacing.sm }]}
+                      onPress={() => {
+                        Alert.alert('Encerrar parceria', `Remover o selo da ${partner.name} do anúncio de ${pp.petName}? O tutor será notificado.`, [
+                          { text: 'Cancelar', style: 'cancel' },
+                          { text: 'Encerrar', style: 'destructive', onPress: () => cancelPartnershipMutation.mutate(pp.id) },
+                        ]);
+                      }}
+                      disabled={cancelPartnershipMutation.isPending}
+                    >
+                      <Text style={styles.partnershipBtnText}>Encerrar</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+            </View>
+          )}
 
           <TouchableOpacity
             style={[styles.menuItem, { borderBottomColor: colors.surface }]}
@@ -95,14 +301,24 @@ export default function PartnerPortalScreen() {
             <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
           </TouchableOpacity>
           {partner.type === 'ONG' ? (
-            <TouchableOpacity
-              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={() => router.push('/partner-members')}
-            >
-              <Ionicons name="people-outline" size={22} color={colors.primary} />
-              <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Membros da ONG</Text>
-              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                onPress={() => router.push('/partner-members')}
+              >
+                <Ionicons name="people-outline" size={22} color={colors.primary} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Membros da ONG</Text>
+                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                onPress={() => router.push({ pathname: '/partner-services', params: { ong: '1' } })}
+              >
+                <Ionicons name="heart-outline" size={22} color={colors.primary} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Serviços voluntários</Text>
+                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+            </>
           ) : null}
           {partner.isPaidPartner ? (
             <>
@@ -114,14 +330,16 @@ export default function PartnerPortalScreen() {
                 <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Cupons de desconto</Text>
                 <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-                onPress={() => router.push('/partner-services')}
-              >
-                <Ionicons name="construct-outline" size={22} color={colors.primary} />
-                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Serviços prestados</Text>
-                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-              </TouchableOpacity>
+              {partner.type !== 'ONG' ? (
+                <TouchableOpacity
+                  style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                  onPress={() => router.push('/partner-services')}
+                >
+                  <Ionicons name="construct-outline" size={22} color={colors.primary} />
+                  <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Serviços prestados</Text>
+                  <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity
                 style={[styles.menuItem, { borderBottomColor: colors.surface }]}
                 onPress={() => router.push('/partner-analytics')}
@@ -147,6 +365,27 @@ export default function PartnerPortalScreen() {
               Obrigado por fazer parte dessa rede. Sua parceria ajuda a conectar mais pets a um lar.
             </Text>
           </View>
+
+          {partner.type === 'ONG' && (
+            <>
+              <TouchableOpacity
+                style={[styles.leaveItem, { borderColor: colors.error || '#DC2626', marginTop: spacing.xl }]}
+                onPress={handleLeavePartnership}
+                disabled={leaveMutation.isPending || leaveAndRemoveMutation.isPending}
+              >
+                <Ionicons name="exit-outline" size={22} color={colors.error || '#DC2626'} />
+                <Text style={[styles.leaveLabel, { color: colors.error || '#DC2626' }]}>Desvincular minha ONG da parceria</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.leaveItem, { borderColor: colors.error || '#DC2626', marginTop: spacing.sm }]}
+                onPress={handleLeaveAndRemoveMembers}
+                disabled={leaveMutation.isPending || leaveAndRemoveMutation.isPending}
+              >
+                <Ionicons name="people-outline" size={22} color={colors.error || '#DC2626'} />
+                <Text style={[styles.leaveLabel, { color: colors.error || '#DC2626' }]}>Desvincular e remover todos os membros</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </ScrollView>
       </PartnerPanelLayout>
       <ProfileMenuFooter />
@@ -173,6 +412,29 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   badgeText: { fontSize: 13, fontWeight: '600' },
+  partnerSince: { fontSize: 13, marginTop: spacing.sm },
+  publicPageBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  publicPageBtnText: { fontSize: 15, fontWeight: '600' },
+  sectionCard: { padding: spacing.md, borderRadius: 12, marginBottom: spacing.lg },
+  sectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: spacing.sm },
+  partnershipRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm, borderBottomWidth: 1 },
+  partnershipRowContent: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  petThumb: { width: 44, height: 44, borderRadius: 8, marginRight: spacing.sm },
+  petName: { fontSize: 15, fontWeight: '600' },
+  partnershipMeta: { fontSize: 12, marginTop: 2 },
+  partnershipActions: { flexDirection: 'row', gap: spacing.xs },
+  partnershipBtn: { paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, borderRadius: 8 },
+  partnershipBtnText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   empty: { padding: spacing.xl },
   emptyTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.sm },
   emptySub: { fontSize: 15, lineHeight: 22, marginBottom: spacing.lg },
@@ -199,4 +461,14 @@ const styles = StyleSheet.create({
   },
   thanksIcon: { marginRight: spacing.sm, marginTop: 2 },
   thanksText: { flex: 1, fontSize: 15, lineHeight: 22, fontStyle: 'italic' },
+  leaveItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+  },
+  leaveLabel: { fontSize: 16, fontWeight: '600' },
 });

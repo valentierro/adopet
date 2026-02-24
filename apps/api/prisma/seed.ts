@@ -114,11 +114,41 @@ function pickCidadePE(): { lat: number; lng: number } {
   };
 }
 
-// URLs externas que funcionam em qualquer ambiente (local + prod), sem depender da API servir estáticos
+// Placeholder de fotos que realmente carregam (placedog/placekitten costumam quebrar)
+const PICSUM_SIZE = 400;
 function seedPhotoUrl(folder: 'dogs' | 'cats', index: number): string {
-  const size = 400 + (index % 5); // 400–404 para variedade
-  if (folder === 'dogs') return `https://placedog.net/${size}/${size}?id=${index}`;
-  return `https://placekitten.com/${size}/${size}?id=${index}`;
+  const seed = folder === 'dogs' ? `dogs-${index}` : `cats-${index}`;
+  return `https://picsum.photos/seed/${seed}/${PICSUM_SIZE}/${PICSUM_SIZE}`;
+}
+
+/** URL de foto placeholder por espécie para anúncios sem foto (picsum.photos carrega de forma confiável). */
+function placeholderPhotoForSpecies(species: string, petId: string): string {
+  const safe = String(petId).replace(/[^a-zA-Z0-9-]/g, '');
+  const seed = (species === 'DOG' ? 'dog-' : 'cat-') + (safe || 'pet');
+  return `https://picsum.photos/seed/${seed}/${PICSUM_SIZE}/${PICSUM_SIZE}`;
+}
+
+/** Atribui uma foto placeholder (cachorro/gato conforme espécie) a todos os pets sem nenhuma mídia. */
+async function assignPlaceholderPhotosToPetsWithoutMedia() {
+  const petsWithoutPhoto = await prisma.pet.findMany({
+    where: { media: { none: {} } },
+    select: { id: true, name: true, species: true },
+  });
+  if (petsWithoutPhoto.length === 0) return;
+  console.log(`Atribuindo fotos a ${petsWithoutPhoto.length} pet(s) sem foto (cachorro/gato conforme espécie)...`);
+  for (const pet of petsWithoutPhoto) {
+    const url = placeholderPhotoForSpecies(pet.species, pet.id);
+    await prisma.petMedia.create({
+      data: {
+        petId: pet.id,
+        url,
+        sortOrder: 0,
+        isPrimary: true,
+      },
+    });
+    console.log(`  ${pet.name} (${pet.species}) → foto adicionada`);
+  }
+  console.log(`Pronto. ${petsWithoutPhoto.length} pet(s) com foto.`);
 }
 
 const SEED_DOGS_PER_USER = 1;
@@ -541,7 +571,7 @@ const PETS = [
     description: 'Cão dócil e brincalhão. Adora crianças e outros pets.',
     latitude: -23.55,
     longitude: -46.63,
-    photos: ['https://placedog.net/400/400?id=1'],
+    photos: [seedPhotoUrl('dogs', 1)],
   },
   {
     name: 'Luna',
@@ -554,7 +584,7 @@ const PETS = [
     description: 'Gata carinhosa, ideal para apartamento.',
     latitude: -23.55,
     longitude: -46.64,
-    photos: ['https://placekitten.com/400/400'],
+    photos: [seedPhotoUrl('cats', 1)],
   },
   {
     name: 'Thor',
@@ -567,7 +597,7 @@ const PETS = [
     description: 'Cão adulto calmo, ótimo companheiro para caminhadas.',
     latitude: -23.56,
     longitude: -46.63,
-    photos: ['https://placedog.net/400/400?id=3'],
+    photos: [seedPhotoUrl('dogs', 3)],
   },
   {
     name: 'Mia',
@@ -580,7 +610,7 @@ const PETS = [
     description: 'Gata independente mas afetuosa. Adora janelas ensolaradas.',
     latitude: -23.54,
     longitude: -46.65,
-    photos: ['https://placekitten.com/401/401'],
+    photos: [seedPhotoUrl('cats', 2)],
   },
 ];
 
@@ -1038,20 +1068,32 @@ async function main() {
     }
   }
 
-  // Feature flags iniciais (aparecem no painel admin; valor inicial pode ser alterado pelo toggle)
+  // Feature flags iniciais (scope GLOBAL; valor pode ser alterado no painel admin)
   const defaultFlags: Array<{ key: string; enabled: boolean; description: string }> = [
     {
       key: 'REQUIRE_EMAIL_VERIFICATION',
       enabled: false,
       description: 'Quando ligada, o cadastro exige confirmação de e-mail antes do login; signup envia link de confirmação.',
     },
+    { key: 'NGO_PRO_UI_ENABLED', enabled: false, description: 'Exibe UI de Ferramentas PRO / Plano ONG no app e portal.' },
+    { key: 'NGO_PRO_BILLING_ENABLED', enabled: false, description: 'Permite checkout/cancel da assinatura ONG PRO.' },
+    { key: 'NGO_PRO_FEATURES_ENABLED', enabled: false, description: 'Habilita uso de CRM, bulk upload e export (requer também assinatura/sponsor ativo).' },
+    { key: 'NGO_SPONSORSHIP_UI_ENABLED', enabled: false, description: 'Exibe seção "Patrocinar ONG" no portal do parceiro comercial.' },
+    { key: 'NGO_SPONSORSHIP_BILLING_ENABLED', enabled: false, description: 'Permite checkout/cancel de patrocínio (parceiro paga PRO para ONG).' },
+    { key: 'DONATIONS_UI_ENABLED', enabled: false, description: 'Exibe tela "Apoiar" (doações) no app.' },
+    { key: 'DONATIONS_BILLING_ENABLED', enabled: false, description: 'Permite criar payment-intent de doação.' },
   ];
   for (const f of defaultFlags) {
-    await prisma.featureFlag.upsert({
-      where: { key: f.key },
-      create: { key: f.key, enabled: f.enabled, description: f.description },
-      update: {}, // não sobrescreve se já existir (preserva valor escolhido no painel)
+    const existing = await prisma.featureFlag.findFirst({
+      where: { key: f.key, scope: 'GLOBAL', cityId: null, partnerId: null },
     });
+    if (existing) {
+      // não sobrescreve (preserva valor do painel)
+    } else {
+      await prisma.featureFlag.create({
+        data: { key: f.key, enabled: f.enabled, description: f.description, scope: 'GLOBAL' },
+      });
+    }
     console.log('Feature flag garantida:', f.key);
   }
 
@@ -1063,6 +1105,9 @@ async function main() {
 
   // ~30 pets em San Francisco (USA) e ~30 em São Paulo capital, todos com fotos
   await seedPetsSanFranciscoAndSaoPaulo();
+
+  // Garante que todo pet sem foto receba uma (cachorro ou gato conforme espécie)
+  await assignPlaceholderPhotosToPetsWithoutMedia();
 
   console.log('Seed concluído.');
   console.log('  Login admin: admin@adopet.com.br / ' + SEED_PASSWORD);

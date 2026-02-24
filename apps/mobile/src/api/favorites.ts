@@ -21,6 +21,9 @@ export type FavoriteItem = {
     createdAt: string;
     city?: string | null;
     partner?: { id: string; name: string; slug: string; logoUrl?: string | null };
+    matchScore?: number | null;
+    /** Pessoas únicas que viram o pet nas últimas 24h. */
+    viewCountLast24h?: number;
   };
 };
 
@@ -65,5 +68,7 @@ export function favoritePetToPet(item: FavoriteItem): Pet {
     verified: (pet as { verified?: boolean })?.verified ?? false,
     city: pet?.city ?? undefined,
     partner: pet?.partner,
+    ...(typeof (pet as { matchScore?: number | null })?.matchScore === 'number' && { matchScore: (pet as { matchScore: number }).matchScore }),
+    ...(typeof (pet as { viewCountLast24h?: number })?.viewCountLast24h === 'number' && (pet as { viewCountLast24h: number }).viewCountLast24h >= 1 && { viewCountLast24h: (pet as { viewCountLast24h: number }).viewCountLast24h }),
   };
 }

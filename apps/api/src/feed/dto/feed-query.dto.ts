@@ -32,6 +32,14 @@ export class FeedQueryDto {
   @IsString()
   cursor?: string;
 
+  @ApiPropertyOptional({ description: 'Quantidade máxima de itens (1–500). Usado ex.: no carrossel da home.', default: 20 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(1)
+  @Max(500)
+  limit?: number;
+
   @ApiPropertyOptional({ description: 'Filtro por espécie: BOTH | DOG | CAT' })
   @IsOptional()
   @IsString()
