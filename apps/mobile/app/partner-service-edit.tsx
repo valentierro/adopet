@@ -36,6 +36,7 @@ export default function PartnerServiceEditScreen() {
   const [priceDisplay, setPriceDisplay] = useState('');
   const [validUntil, setValidUntil] = useState('');
   const [active, setActive] = useState(true);
+  const [showOnMarketplace, setShowOnMarketplace] = useState(true);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
@@ -46,6 +47,7 @@ export default function PartnerServiceEditScreen() {
       setPriceDisplay(existing.priceDisplay ?? '');
       setValidUntil(existing.validUntil ? existing.validUntil.slice(0, 10) : '');
       setActive(existing.active);
+      setShowOnMarketplace(existing.showOnMarketplace ?? true);
       setImageUrl(existing.imageUrl ?? null);
     }
   }, [existing]);
@@ -120,6 +122,7 @@ export default function PartnerServiceEditScreen() {
           validUntil: isOng ? null : (validUntil.trim() || null),
           active,
           imageUrl: imageUrl?.trim() || null,
+          showOnMarketplace,
         },
       });
     } else {
@@ -129,6 +132,7 @@ export default function PartnerServiceEditScreen() {
         priceDisplay: isOng ? undefined : (priceDisplay.trim() || undefined),
         validUntil: isOng ? undefined : (validUntil.trim() || undefined),
         imageUrl: imageUrl?.trim() || undefined,
+        showOnMarketplace,
       });
     }
   };
@@ -194,6 +198,12 @@ export default function PartnerServiceEditScreen() {
           onChangeText={setDescription}
           multiline
         />
+        <TouchableOpacity style={styles.activeRow} onPress={() => setShowOnMarketplace((v) => !v)}>
+          <Text style={[styles.activeLabel, { color: colors.textPrimary }]} numberOfLines={2}>Exibir no marketplace e na página do parceiro</Text>
+          <View style={[styles.checkbox, { borderColor: showOnMarketplace ? colors.primary : colors.textSecondary, backgroundColor: showOnMarketplace ? colors.primary : 'transparent' }]}>
+            {showOnMarketplace ? <Text style={styles.checkmark}>✓</Text> : null}
+          </View>
+        </TouchableOpacity>
         {isEdit && (
           <TouchableOpacity style={styles.activeRow} onPress={() => setActive((a) => !a)}>
             <Text style={[styles.activeLabel, { color: colors.textPrimary }]}>Serviço ativo (visível no app)</Text>

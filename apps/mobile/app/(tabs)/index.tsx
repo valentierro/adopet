@@ -27,6 +27,7 @@ import { useClientConfig } from '../../src/hooks/useClientConfig';
 import { useAuthStore } from '../../src/stores/authStore';
 import { getMe, getTutorStats, getMyAdoptions, getPreferences, getPendingAdoptionConfirmations, getMyNotificationsUnreadCount } from '../../src/api/me';
 import { getAdminStats } from '../../src/api/admin';
+import { getPartnerAnalytics } from '../../src/api/partner';
 import { getMinePets } from '../../src/api/pets';
 import { getFavorites } from '../../src/api/favorites';
 import { getConversations } from '../../src/api/conversations';
@@ -36,6 +37,9 @@ import { spacing } from '../../src/theme';
 
 const LogoLight = require('../../assets/brand/logo/logo_horizontal_light.png');
 const LogoDark = require('../../assets/brand/logo/logo_dark.png');
+const ImgOnfire = require('../../assets/onfire.png');
+const ImgPetshop = require('../../assets/petshop.png');
+const ImgUltimasDoacoes = require('../../assets/ultimas_doacoes.png');
 
 function useDashboardData() {
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -255,6 +259,13 @@ export default function DashboardScreen() {
     enabled: isAdmin,
     staleTime: 60_000,
   });
+  const isNonOngPartnerEarly = !!(user?.partner && user.partner.type !== 'ONG');
+  const { data: partnerAnalytics } = useQuery({
+    queryKey: ['me', 'partner', 'analytics'],
+    queryFn: getPartnerAnalytics,
+    enabled: isNonOngPartnerEarly,
+    staleTime: 60_000,
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -262,7 +273,10 @@ export default function DashboardScreen() {
       if (isAdmin) {
         queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
       }
-    }, [refetchAll, isAdmin, queryClient]),
+      if (isNonOngPartnerEarly) {
+        queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'analytics'] });
+      }
+    }, [refetchAll, isAdmin, isNonOngPartnerEarly, queryClient]),
   );
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [showVerifiedInfoModal, setShowVerifiedInfoModal] = useState(false);
@@ -490,24 +504,10 @@ export default function DashboardScreen() {
     }
   }
 
-  // Parceiro comercial (não ONG): CTA para Portal do parceiro acima de Ofertas dos parceiros
+  // Parceiro comercial (não ONG): não inserir card no grid; o CTA Portal do parceiro fica logo abaixo dos atalhos (para todos os parceiros)
   const isNonOngPartner = isPartnerOrMember && !isOngUser;
   if (isNonOngPartner) {
-    const partnerPortalCard = {
-      id: 'partnerPortal',
-      title: 'Portal do parceiro',
-      subtitle: 'Cupons, serviços e gestão do seu estabelecimento',
-      icon: 'storefront' as keyof typeof Ionicons.glyphMap,
-      route: '/partner-portal',
-      gradient: ['#0d9488', '#0f766e'] as [string, string],
-      fullWidth: true,
-    };
-    const partnersAreaIdx = cardsToShow.findIndex((c) => c.id === 'partnersArea');
-    if (partnersAreaIdx >= 0) {
-      cardsToShow = [...cardsToShow.slice(0, partnersAreaIdx), partnerPortalCard, ...cardsToShow.slice(partnersAreaIdx)];
-    } else {
-      cardsToShow = [...cardsToShow, partnerPortalCard];
-    }
+    // Não adiciona partnerPortalCard ao grid; CTA aparece abaixo de Para seu pet / Pets em alta / Últimas adoções
   }
 
   return (
@@ -652,15 +652,36 @@ export default function DashboardScreen() {
           </View>
         </LinearGradient>
 
-        <View style={styles.sectionTitleRow}>
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Atalhos</Text>
+        <View style={styles.homeShortcutsRow}>
+          <TouchableOpacity
+            onPress={() => router.push('/(tabs)/marketplace')}
+            style={[styles.homeShortcutCard, { backgroundColor: colors.surface }]}
+            activeOpacity={0.8}
+          >
+            <View style={styles.homeShortcutIconWrap}>
+              <Image source={ImgPetshop} style={styles.homeShortcutImg} resizeMode="contain" />
+            </View>
+            <Text style={[styles.homeShortcutLabel, { color: colors.textPrimary }]} numberOfLines={1}>Para seu pet</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.push({ pathname: '/(tabs)/feed', params: { trending: '1' } })}
+            style={[styles.homeShortcutCard, { backgroundColor: colors.surface }]}
+            activeOpacity={0.8}
+          >
+            <View style={styles.homeShortcutIconWrap}>
+              <Image source={ImgOnfire} style={styles.homeShortcutImg} resizeMode="contain" />
+            </View>
+            <Text style={[styles.homeShortcutLabel, { color: colors.textPrimary }]} numberOfLines={1}>Pets em alta</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => router.push('/recent-adoptions')}
-            style={[styles.sectionTitleLinkTouch, { backgroundColor: '#d9770618' }]}
-            activeOpacity={0.7}
+            style={[styles.homeShortcutCard, { backgroundColor: colors.surface }]}
+            activeOpacity={0.8}
           >
-            <Ionicons name="heart" size={16} color="#d97706" style={styles.sectionTitleLinkIcon} />
-            <Text style={[styles.sectionTitleLink, { color: '#d97706' }]}>Últimas adoções</Text>
+            <View style={styles.homeShortcutIconWrap}>
+              <Image source={ImgUltimasDoacoes} style={styles.homeShortcutImg} resizeMode="contain" />
+            </View>
+            <Text style={[styles.homeShortcutLabel, { color: colors.textPrimary }]} numberOfLines={1}>Últimas adoções</Text>
           </TouchableOpacity>
         </View>
 
@@ -709,6 +730,43 @@ export default function DashboardScreen() {
             <View style={[styles.adminDashboardCta, { backgroundColor: 'rgba(217, 119, 6, 0.2)' }]}>
               <Text style={[styles.adminDashboardCtaText, { color: '#b45309' }]}>Abrir painel</Text>
               <Ionicons name="chevron-forward" size={18} color="#b45309" />
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {isNonOngPartner && (
+          <TouchableOpacity
+            style={[styles.adminDashboardBlock, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+            onPress={() => router.push('/partner-portal')}
+            activeOpacity={0.85}
+          >
+            <View style={styles.adminDashboardHeader}>
+              <Ionicons name="storefront" size={22} color={colors.primary} />
+              <Text style={[styles.adminDashboardTitle, { color: colors.textPrimary }]}>Resumo do parceiro</Text>
+            </View>
+            <View style={styles.adminDashboardGrid}>
+              <View style={styles.adminDashboardCell}>
+                <Text style={[styles.adminDashboardCount, { color: colors.primary }]}>
+                  {partnerAnalytics?.profileViews ?? 0}
+                </Text>
+                <Text style={[styles.adminDashboardLabel, { color: colors.textSecondary }]}>Visualizações</Text>
+              </View>
+              <View style={[styles.adminDashboardCell, { borderLeftWidth: 1, borderLeftColor: colors.textSecondary + '30' }]}>
+                <Text style={[styles.adminDashboardCount, { color: colors.primary }]}>
+                  {partnerAnalytics?.couponCopies ?? 0}
+                </Text>
+                <Text style={[styles.adminDashboardLabel, { color: colors.textSecondary }]}>Cupons copiados</Text>
+              </View>
+              <View style={[styles.adminDashboardCell, { borderLeftWidth: 1, borderLeftColor: colors.textSecondary + '30' }]}>
+                <Text style={[styles.adminDashboardCount, { color: colors.primary }]}>
+                  {partnerAnalytics?.marketplaceVisits ?? 0}
+                </Text>
+                <Text style={[styles.adminDashboardLabel, { color: colors.textSecondary }]}>Marketplace</Text>
+              </View>
+            </View>
+            <View style={[styles.adminDashboardCta, { backgroundColor: colors.primary + '25' }]}>
+              <Text style={[styles.adminDashboardCtaText, { color: colors.primary }]}>Ir para o portal de parceiro</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.primary} />
             </View>
           </TouchableOpacity>
         )}
@@ -1236,6 +1294,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   gamificationModalBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  homeShortcutsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+    paddingHorizontal: 2,
+  },
+  homeShortcutCard: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xs,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 3,
+    shadowOpacity: 0.06,
+    elevation: 2,
+  },
+  homeShortcutIconWrap: {
+    width: 52,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  homeShortcutImg: {
+    width: 52,
+    height: 52,
+  },
+  homeShortcutLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   sectionTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1247,6 +1343,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
+  },
+  sectionTitleLinksRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   sectionTitleLinkTouch: {
     flexDirection: 'row',

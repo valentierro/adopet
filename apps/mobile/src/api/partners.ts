@@ -24,6 +24,35 @@ export async function getPartners(type?: 'ONG' | 'CLINIC' | 'STORE', q?: string)
   return api.get<Partner[]>('/partners', params);
 }
 
+/** Marketplace: serviços e descontos de parceiros. Resposta paginada com ordenação. */
+export type MarketplaceItem =
+  | ({ kind: 'service'; partner: Partner } & PartnerServicePublic)
+  | ({ kind: 'coupon'; partner: Partner } & PartnerCouponPublic);
+
+export type MarketplacePage = { items: MarketplaceItem[]; total: number };
+
+export type GetMarketplaceItemsOpts = {
+  limit?: number;
+  offset?: number;
+  sort?: 'name' | 'discount' | 'partner';
+};
+
+export async function getMarketplaceItems(
+  filter: 'services' | 'discounts' | 'products',
+  q?: string,
+  partnerType?: 'CLINIC' | 'STORE' | 'ONG',
+  opts?: GetMarketplaceItemsOpts,
+): Promise<MarketplacePage> {
+  const params: Record<string, string> = { filter };
+  if (q?.trim()) params.q = q.trim();
+  if (partnerType) params.type = partnerType;
+  if (opts?.limit != null) params.limit = String(opts.limit);
+  if (opts?.offset != null) params.offset = String(opts.offset);
+  if (opts?.sort) params.sort = opts.sort;
+  const result = await api.get<MarketplacePage>('/marketplace', params, { skipAuth: true });
+  return result ?? { items: [], total: 0 };
+}
+
 /** Um parceiro por ID (público). Retorna null se não existir. Nunca undefined (React Query). */
 export async function getPartnerById(id: string): Promise<Partner | null> {
   const result = await api.get<Partner | null>(`/partners/${id}`, undefined, { skipAuth: true });
@@ -54,6 +83,14 @@ export async function recordPartnerView(partnerId: string): Promise<void> {
 /** Registra cópia de cupom (analytics, público). */
 export async function recordPartnerCouponCopy(partnerId: string, couponId: string): Promise<void> {
   await api.post<{ ok: boolean }>(`/partners/${partnerId}/coupons/${couponId}/copy`, {}, { skipAuth: true });
+}
+
+/** Registra visita vinda do marketplace (analytics, público). Chamar ao abrir a página do parceiro a partir de um item do marketplace. */
+export async function recordPartnerMarketplaceVisit(
+  partnerId: string,
+  payload: { serviceId?: string; couponId?: string },
+): Promise<void> {
+  await api.post<{ ok: boolean }>(`/partners/${partnerId}/marketplace-visit`, payload, { skipAuth: true });
 }
 
 /** Serviços ativos do parceiro (público – para exibir na página do parceiro). */

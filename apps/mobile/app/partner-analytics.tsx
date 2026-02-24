@@ -21,7 +21,14 @@ export default function PartnerAnalyticsScreen() {
     );
   }
 
-  const analytics = data ?? { profileViews: 0, couponCopies: 0, byCoupon: [] };
+  const analytics = data ?? {
+    profileViews: 0,
+    couponCopies: 0,
+    byCoupon: [],
+    marketplaceVisits: 0,
+    marketplaceByService: [],
+    marketplaceByCoupon: [],
+  };
 
   return (
     <ScreenContainer scroll={false}>
@@ -44,10 +51,19 @@ export default function PartnerAnalyticsScreen() {
           <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>Cupons copiados</Text>
         </View>
       </View>
+      <View style={[styles.cardsRow, { marginTop: 0 }]}>
+        <View style={[styles.metricCard, { backgroundColor: colors.primary + '15', borderColor: colors.primary + '35' }]}>
+          <View style={[styles.metricIconWrap, { backgroundColor: colors.primary + '25' }]}>
+            <Ionicons name="storefront-outline" size={28} color={colors.primary} />
+          </View>
+          <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{analytics.marketplaceVisits}</Text>
+          <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>Visitas pelo marketplace</Text>
+        </View>
+      </View>
 
       {analytics.byCoupon.length > 0 && (
         <>
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary, marginTop: spacing.lg }]}>Por cupom</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary, marginTop: spacing.lg }]}>Por cupom (cópias)</Text>
           <View style={styles.list}>
             {analytics.byCoupon.map((item) => (
               <View key={item.couponId} style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.background }]}>
@@ -59,8 +75,36 @@ export default function PartnerAnalyticsScreen() {
         </>
       )}
 
+      {analytics.marketplaceByService.length > 0 && (
+        <>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary, marginTop: spacing.lg }]}>Marketplace – por serviço</Text>
+          <View style={styles.list}>
+            {analytics.marketplaceByService.map((item) => (
+              <View key={item.serviceId} style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.background }]}>
+                <Text style={[styles.couponCode, { color: colors.primary }]}>{item.name}</Text>
+                <Text style={[styles.couponCount, { color: colors.textPrimary }]}>{item.visits} visita{item.visits !== 1 ? 's' : ''}</Text>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+
+      {analytics.marketplaceByCoupon.length > 0 && (
+        <>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary, marginTop: spacing.lg }]}>Marketplace – por cupom</Text>
+          <View style={styles.list}>
+            {analytics.marketplaceByCoupon.map((item) => (
+              <View key={item.couponId} style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.background }]}>
+                <Text style={[styles.couponCode, { color: colors.primary }]}>{item.code}</Text>
+                <Text style={[styles.couponCount, { color: colors.textPrimary }]}>{item.visits} visita{item.visits !== 1 ? 's' : ''}</Text>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+
       <Text style={[styles.hint, { color: colors.textSecondary }]}>
-          As visualizações são contabilizadas quando um usuário abre a sua página na aba Parceiros. Os cupons copiados são registrados quando alguém toca em "Copiar" no cupom.
+          As visualizações são contabilizadas quando um usuário abre a sua página na aba Parceiros. Os cupons copiados são registrados quando alguém toca em "Copiar" no cupom. As visitas pelo marketplace são contabilizadas quando alguém abre sua página a partir de um serviço ou cupom no marketplace.
         </Text>
         </ScrollView>
       </PartnerPanelLayout>

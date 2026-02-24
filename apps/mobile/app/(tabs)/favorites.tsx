@@ -19,6 +19,7 @@ import {
 import { createConversation } from '../../src/api/conversations';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { getMatchScoreColor } from '../../src/utils/matchScoreColor';
+import { getViewedPetIds } from '../../src/utils/viewedPets';
 import { useAuthStore } from '../../src/stores/authStore';
 import { Ionicons } from '@expo/vector-icons';
 import { spacing } from '../../src/theme';
@@ -68,6 +69,7 @@ type FavoriteRowProps = {
   onRemove: (petId: string) => void;
   gridCellWidth?: number;
   gridIndex?: number;
+  viewedPetIds?: Set<string>;
 };
 
 const FavoriteRow = React.memo(function FavoriteRow({
@@ -79,8 +81,10 @@ const FavoriteRow = React.memo(function FavoriteRow({
   onRemove,
   gridCellWidth = 0,
   gridIndex = 0,
+  viewedPetIds = new Set(),
 }: FavoriteRowProps) {
   if (!item?.pet) return null;
+  const isViewed = viewedPetIds.has(item.petId);
   if (viewMode === 'grid') {
     const pet = favoritePetToPet(item);
     const w = gridCellWidth > 0 ? gridCellWidth : 160;
@@ -90,11 +94,19 @@ const FavoriteRow = React.memo(function FavoriteRow({
         onPress={() => onPressPet(item.petId)}
         activeOpacity={0.85}
       >
-        <Image
-          source={{ uri: pet.photos?.[0] ?? 'https://picsum.photos/seed/pet/400/500' }}
-          style={[styles.gridThumb, { width: w, height: w / aspectRatio }]}
-          contentFit="cover"
-        />
+        <View style={styles.gridThumbWrap}>
+          <Image
+            source={{ uri: pet.photos?.[0] ?? 'https://picsum.photos/seed/pet/400/500' }}
+            style={[styles.gridThumb, { width: w, height: w / aspectRatio }]}
+            contentFit="cover"
+          />
+          {isViewed && (
+            <View style={[styles.viewedBadgeWrap, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+              <Ionicons name="eye-outline" size={12} color="#fff" />
+              <Text style={styles.viewedBadgeText}>Visualizado</Text>
+            </View>
+          )}
+        </View>
         <View style={styles.gridCardInfo}>
           <Text style={[styles.gridCardName, { color: colors.textPrimary }]} numberOfLines={1}>{pet.name}</Text>
           <View style={styles.gridBadgesRow}>
@@ -148,10 +160,18 @@ const FavoriteRow = React.memo(function FavoriteRow({
   }
   return (
     <View style={styles.cardWrap}>
-      <PetCard
-        pet={favoritePetToPet(item)}
-        onPress={() => onPressPet(item.petId)}
-      />
+      <View style={styles.listCardInner}>
+        <PetCard
+          pet={favoritePetToPet(item)}
+          onPress={() => onPressPet(item.petId)}
+        />
+        {isViewed && (
+          <View style={[styles.viewedBadgeWrap, styles.viewedBadgeList, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+            <Ionicons name="eye-outline" size={12} color="#fff" />
+            <Text style={styles.viewedBadgeText}>Visualizado</Text>
+          </View>
+        )}
+      </View>
       <View style={styles.actions}>
         <TouchableOpacity
           style={[styles.chatBtn, { backgroundColor: colors.primary }]}
@@ -240,10 +260,12 @@ export default function FavoritesScreen() {
     });
   }, [items, speciesFilter]);
 
+  const [viewedPetIds, setViewedPetIds] = useState<Set<string>>(new Set());
   useFocusEffect(
     useCallback(() => {
       refetch();
-    }, [refetch]),
+      getViewedPetIds(userId ?? 'guest').then(setViewedPetIds);
+    }, [refetch, userId]),
   );
 
   const removeMutation = useMutation({
@@ -298,9 +320,10 @@ export default function FavoritesScreen() {
         onRemove={handleRemove}
         gridCellWidth={gridCellWidth}
         gridIndex={index}
+        viewedPetIds={viewedPetIds}
       />
     ),
-    [viewMode, colors, handlePressPet, startChat, handleRemove, gridCellWidth],
+    [viewMode, colors, handlePressPet, startChat, handleRemove, gridCellWidth, viewedPetIds],
   );
 
   const rawItemCount = items.length;
@@ -491,7 +514,21 @@ const styles = StyleSheet.create({
   viewModeBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   gridRow: { gap, marginBottom: gap },
   gridCard: { borderRadius: 12, overflow: 'hidden' },
+  gridThumbWrap: { position: 'relative' },
   gridThumb: { borderTopLeftRadius: 12, borderTopRightRadius: 12 },
+  viewedBadgeWrap: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  viewedBadgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  viewedBadgeList: { bottom: 'auto', top: 6, right: 6, left: 'auto' },
   gridCardInfo: { padding: spacing.sm },
   gridCardName: { fontSize: 14, fontWeight: '700' },
   gridCardMeta: { fontSize: 12 },
@@ -516,7 +553,9 @@ const styles = StyleSheet.create({
   gridPartnerBadgeText: { fontSize: 9, fontWeight: '600' },
   gridCardActions: { flexDirection: 'row', gap: spacing.xs, marginTop: spacing.xs },
   gridMiniBtn: { padding: 6, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  listCardInner: { position: 'relative' },
   cardWrap: { marginBottom: spacing.lg },
+  listCardInner: { position: 'relative' },
   actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
   chatBtn: {
     flex: 1,

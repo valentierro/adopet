@@ -75,6 +75,39 @@ export function ListRowSkeleton() {
   );
 }
 
+/** Grid 2 colunas para loading do marketplace (6 cards). */
+export function MarketplaceGridSkeleton({
+  cardWidth,
+  gap = 12,
+}: {
+  cardWidth: number;
+  gap?: number;
+}) {
+  const cardHeight = cardWidth + 56;
+  return (
+    <View style={styles.gridSkeleton}>
+      {[0, 1, 2, 3, 4, 5].map((i) => (
+        <View
+          key={i}
+          style={[
+            styles.gridSkeletonCard,
+            {
+              width: cardWidth,
+              height: cardHeight,
+              marginRight: i % 2 === 0 ? gap : 0,
+              marginBottom: gap,
+            },
+          ]}
+        >
+          <Skeleton width={cardWidth - 16} height={cardWidth - 16} borderRadius={10} style={styles.gridSkeletonImage} />
+          <Skeleton width="80%" height={14} style={{ marginTop: 8, marginHorizontal: 8 }} />
+          <Skeleton width="60%" height={12} style={{ marginTop: 4, marginHorizontal: 8 }} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   feedCard: {
     flex: 1,
@@ -95,5 +128,19 @@ const styles = StyleSheet.create({
   },
   listRowBody: {
     flex: 1,
+  },
+  gridSkeleton: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 8,
+  },
+  gridSkeletonCard: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    paddingTop: 8,
+    alignItems: 'center',
+  },
+  gridSkeletonImage: {
+    alignSelf: 'center',
   },
 });

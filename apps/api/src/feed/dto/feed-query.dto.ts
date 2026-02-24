@@ -120,4 +120,12 @@ export class FeedQueryDto {
   @IsOptional()
   @IsString()
   partnerFilter?: 'all' | 'partners_only' | 'no_partners';
+
+  @ApiPropertyOptional({
+    enum: ['trending'],
+    description: 'Ordenar por engajamento: trending = mais favoritados primeiro',
+  })
+  @IsOptional()
+  @IsString()
+  sortBy?: 'trending';
 }

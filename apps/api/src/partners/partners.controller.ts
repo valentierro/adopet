@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { PartnersService } from './partners.service';
 import type { PartnerPublicDto } from './dto/partner-response.dto';
@@ -46,6 +46,16 @@ export class PartnersController {
     @Param('couponId') couponId: string,
   ): Promise<{ ok: boolean }> {
     await this.partnersService.recordCouponCopy(id, couponId);
+    return { ok: true };
+  }
+
+  @Post(':id/marketplace-visit')
+  @ApiOperation({ summary: 'Registrar visita vinda do marketplace (analytics, público).' })
+  async recordMarketplaceVisit(
+    @Param('id') id: string,
+    @Body() body: { serviceId?: string; couponId?: string },
+  ): Promise<{ ok: boolean }> {
+    await this.partnersService.recordMarketplaceVisit(id, body);
     return { ok: true };
   }
 

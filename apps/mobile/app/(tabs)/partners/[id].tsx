@@ -1,12 +1,12 @@
-import { useEffect, useCallback, useState, useLayoutEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, Image } from 'react-native';
+import { useEffect, useCallback, useRef, useState, useLayoutEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Image, ScrollView } from 'react-native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { ScreenContainer, LoadingLogo, PageIntro, Toast } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
-import { getPartnerById, getPartnerCouponsPublic, getPartnerServicesPublic, recordPartnerView, recordPartnerCouponCopy, type PartnerCouponPublic, type PartnerServicePublic } from '../../../src/api/partners';
+import { getPartnerById, getPartnerCouponsPublic, getPartnerServicesPublic, recordPartnerView, recordPartnerCouponCopy, recordPartnerMarketplaceVisit, type PartnerCouponPublic, type PartnerServicePublic } from '../../../src/api/partners';
 import { spacing } from '../../../src/theme';
 
 function CouponCard({
@@ -14,11 +14,13 @@ function CouponCard({
   c,
   colors,
   onCopied,
+  highlighted,
 }: {
   partnerId: string;
   c: PartnerCouponPublic;
   colors: { textPrimary: string; textSecondary: string; primary: string };
   onCopied?: () => void;
+  highlighted?: boolean;
 }) {
   const discountLabel = c.discountType === 'PERCENT' ? `${c.discountValue}%` : `R$ ${(c.discountValue / 100).toFixed(2)}`;
 
@@ -32,7 +34,10 @@ function CouponCard({
 
   return (
     <TouchableOpacity
-      style={[couponCardStyles.card, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}
+      style={[
+        couponCardStyles.card,
+        { backgroundColor: colors.primary + '12', borderColor: highlighted ? colors.primary : colors.primary + '30', borderWidth: highlighted ? 2 : 1 },
+      ]}
       onPress={handleCopy}
       activeOpacity={0.8}
     >
@@ -84,10 +89,19 @@ const serviceCardStyles = StyleSheet.create({
 });
 
 export default function PartnerDetailScreen() {
-  const { id, fromPet, from: fromParam } = useLocalSearchParams<{ id: string; fromPet?: string; from?: string }>();
+  const { id, fromPet, from: fromParam, highlightServiceId, highlightCouponId } = useLocalSearchParams<{
+    id: string;
+    fromPet?: string;
+    from?: string;
+    highlightServiceId?: string;
+    highlightCouponId?: string;
+  }>();
   const navigation = useNavigation();
   const router = useRouter();
   const { colors } = useTheme();
+  const scrollRef = useRef<ScrollView>(null);
+  const servicesSectionY = useRef<number>(0);
+  const couponsSectionY = useRef<number>(0);
 
   useLayoutEffect(() => {
     if (fromPet) {
@@ -132,11 +146,33 @@ export default function PartnerDetailScreen() {
     }
   }, [partner?.name, navigation]);
 
+  const marketplaceVisitRecorded = useRef(false);
   useEffect(() => {
     if (partner?.id) {
       recordPartnerView(partner.id).catch(() => {});
     }
   }, [partner?.id]);
+
+  useEffect(() => {
+    if (!partner?.id || marketplaceVisitRecorded.current || (!highlightServiceId && !highlightCouponId)) return;
+    marketplaceVisitRecorded.current = true;
+    recordPartnerMarketplaceVisit(partner.id, {
+      ...(highlightServiceId && { serviceId: highlightServiceId }),
+      ...(highlightCouponId && { couponId: highlightCouponId }),
+    }).catch(() => {});
+  }, [partner?.id, highlightServiceId, highlightCouponId]);
+
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const t = setTimeout(() => {
+      if (highlightServiceId && services.length > 0) {
+        scrollRef.current?.scrollTo({ y: Math.max(0, servicesSectionY.current - 48), animated: true });
+      } else if (highlightCouponId && coupons.length > 0) {
+        scrollRef.current?.scrollTo({ y: Math.max(0, couponsSectionY.current - 48), animated: true });
+      }
+    }, 150);
+    return () => clearTimeout(t);
+  }, [highlightServiceId, highlightCouponId, services.length, coupons.length]);
 
   if (isLoading && !partner) {
     return (
@@ -177,8 +213,12 @@ export default function PartnerDetailScreen() {
 
   const hasLocation = !!(partner.address || partner.city);
 
+  const scrollToSection = useCallback((y: number) => {
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 48), animated: true });
+  }, []);
+
   return (
-    <ScreenContainer scroll>
+    <ScreenContainer ref={scrollRef} scroll>
       <View style={[styles.card, { backgroundColor: colors.surface }]}>
         {(partner.logoUrl || hasLocation) ? (
           <View style={styles.logoRow}>
@@ -264,7 +304,13 @@ export default function PartnerDetailScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.section, { paddingHorizontal: spacing.lg }]}>
+      <View
+        style={[styles.section, { paddingHorizontal: spacing.lg }]}
+        onLayout={(e) => {
+          servicesSectionY.current = e.nativeEvent.layout.y;
+          if (highlightServiceId && services.length > 0) scrollToSection(e.nativeEvent.layout.y);
+        }}
+      >
         <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
           {partner.type === 'ONG' ? 'Serviços prestados pela ONG' : 'Serviços'}
         </Text>
@@ -281,7 +327,17 @@ export default function PartnerDetailScreen() {
           </Text>
         ) : (
           services.map((s) => (
-            <View key={s.id} style={[serviceCardStyles.card, { backgroundColor: colors.primary + '12', borderColor: colors.primary + '30' }]}>
+            <View
+              key={s.id}
+              style={[
+                serviceCardStyles.card,
+                {
+                  backgroundColor: colors.primary + '12',
+                  borderColor: highlightServiceId === s.id ? colors.primary : colors.primary + '30',
+                  borderWidth: highlightServiceId === s.id ? 2 : 1,
+                },
+              ]}
+            >
               <View style={serviceCardStyles.cardTop}>
                 {s.imageUrl ? (
                   <Image source={{ uri: s.imageUrl }} style={serviceCardStyles.cardImage} resizeMode="cover" />
@@ -303,7 +359,13 @@ export default function PartnerDetailScreen() {
       </View>
 
       {coupons.length > 0 && (
-        <View style={[styles.section, { paddingHorizontal: spacing.lg }]}>
+        <View
+          style={[styles.section, { paddingHorizontal: spacing.lg }]}
+          onLayout={(e) => {
+            couponsSectionY.current = e.nativeEvent.layout.y;
+            if (highlightCouponId && coupons.length > 0) scrollToSection(e.nativeEvent.layout.y);
+          }}
+        >
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Cupons de desconto</Text>
           <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>Use no estabelecimento</Text>
           {coupons.map((c) => (
@@ -313,6 +375,7 @@ export default function PartnerDetailScreen() {
               c={c}
               colors={colors}
               onCopied={() => setToastMessage('Cupom copiado!')}
+              highlighted={highlightCouponId === c.id}
             />
           ))}
         </View>

@@ -140,6 +140,7 @@ export class PartnersService {
         discountType: dto.discountType,
         discountValue: dto.discountValue,
         validUntil: dto.validUntil ? new Date(dto.validUntil) : null,
+        showOnMarketplace: dto.showOnMarketplace ?? true,
       },
     });
     return this.toCouponDto(coupon);
@@ -153,7 +154,7 @@ export class PartnersService {
       where: { id: couponId, partnerId: partner.id },
     });
     if (!coupon) throw new NotFoundException('Cupom não encontrado');
-    const data: { code?: string; title?: string | null; description?: string | null; discountType?: string; discountValue?: number; validUntil?: Date | null; active?: boolean } = {};
+    const data: { code?: string; title?: string | null; description?: string | null; discountType?: string; discountValue?: number; validUntil?: Date | null; active?: boolean; showOnMarketplace?: boolean } = {};
     if (dto.code !== undefined) data.code = dto.code.trim().toUpperCase();
     if (dto.title !== undefined) data.title = dto.title?.trim() || null;
     if (dto.description !== undefined) data.description = dto.description?.trim() || null;
@@ -161,6 +162,7 @@ export class PartnersService {
     if (dto.discountValue !== undefined) data.discountValue = dto.discountValue;
     if (dto.validUntil !== undefined) data.validUntil = dto.validUntil ? new Date(dto.validUntil) : null;
     if (dto.active !== undefined) data.active = dto.active;
+    if (dto.showOnMarketplace !== undefined) data.showOnMarketplace = dto.showOnMarketplace;
     const updated = await this.prisma.partnerCoupon.update({
       where: { id: couponId },
       data,
@@ -203,6 +205,7 @@ export class PartnersService {
         priceDisplay: dto.priceDisplay?.trim() || null,
         validUntil: dto.validUntil ? new Date(dto.validUntil) : null,
         imageUrl: dto.imageUrl?.trim() || null,
+        showOnMarketplace: dto.showOnMarketplace ?? true,
       },
     });
     return this.toServiceDto(service);
@@ -216,13 +219,14 @@ export class PartnersService {
       where: { id: serviceId, partnerId: partner.id },
     });
     if (!service) throw new NotFoundException('Serviço não encontrado');
-    const data: { name?: string; description?: string | null; priceDisplay?: string | null; validUntil?: Date | null; active?: boolean; imageUrl?: string | null } = {};
+    const data: { name?: string; description?: string | null; priceDisplay?: string | null; validUntil?: Date | null; active?: boolean; imageUrl?: string | null; showOnMarketplace?: boolean } = {};
     if (dto.name !== undefined) data.name = dto.name.trim();
     if (dto.description !== undefined) data.description = dto.description?.trim() || null;
     if (dto.priceDisplay !== undefined) data.priceDisplay = dto.priceDisplay?.trim() || null;
     if (dto.validUntil !== undefined) data.validUntil = dto.validUntil ? new Date(dto.validUntil) : null;
     if (dto.active !== undefined) data.active = dto.active;
     if (dto.imageUrl !== undefined) data.imageUrl = dto.imageUrl?.trim() || null;
+    if (dto.showOnMarketplace !== undefined) data.showOnMarketplace = dto.showOnMarketplace;
     const updated = await this.prisma.partnerService.update({
       where: { id: serviceId },
       data,
@@ -349,13 +353,14 @@ export class PartnersService {
     return partner ? this.toPublicDto(partner) : null;
   }
 
-  /** Cupons ativos de um parceiro (público – para exibir na página do parceiro). */
+  /** Cupons ativos de um parceiro (público – para exibir na página do parceiro). Apenas os com showOnMarketplace. */
   async findActivePublicCoupons(partnerId: string): Promise<PartnerCouponResponseDto[]> {
     const now = new Date();
     const coupons = await this.prisma.partnerCoupon.findMany({
       where: {
         partnerId,
         active: true,
+        showOnMarketplace: true,
         OR: [{ validUntil: null }, { validUntil: { gte: now } }],
       },
       orderBy: { validUntil: 'asc' },
@@ -363,18 +368,129 @@ export class PartnersService {
     return coupons.map((c) => this.toCouponDto(c));
   }
 
-  /** Serviços ativos de um parceiro (público – para exibir na página do parceiro). */
+  /** Serviços ativos de um parceiro (público – para exibir na página do parceiro). Apenas os com showOnMarketplace. */
   async findActivePublicServices(partnerId: string): Promise<PartnerServiceResponseDto[]> {
     const now = new Date();
     const services = await this.prisma.partnerService.findMany({
       where: {
         partnerId,
         active: true,
+        showOnMarketplace: true,
         OR: [{ validUntil: null }, { validUntil: { gte: now } }],
       },
       orderBy: { name: 'asc' },
     });
     return services.map((s) => this.toServiceDto(s));
+  }
+
+  /** Marketplace: serviços e cupons. filter=services|discounts|products; type=CLINIC|STORE|ONG opcional; q=busca; limit/offset=paginação; sort=name|discount|partner. */
+  async getMarketplaceItems(
+    filter: 'services' | 'discounts' | 'products',
+    q?: string,
+    partnerType?: 'CLINIC' | 'STORE' | 'ONG',
+    limit: number = 50,
+    offset: number = 0,
+    sort?: 'name' | 'discount' | 'partner',
+  ): Promise<{
+    items: Array<
+      | { kind: 'service'; partner: PartnerPublicDto } & PartnerServiceResponseDto
+      | { kind: 'coupon'; partner: PartnerPublicDto } & PartnerCouponResponseDto
+    >;
+    total: number;
+  }> {
+    type OutItem =
+      | ({ kind: 'service'; partner: PartnerPublicDto } & PartnerServiceResponseDto)
+      | ({ kind: 'coupon'; partner: PartnerPublicDto } & PartnerCouponResponseDto);
+
+    if (filter === 'products') return { items: [], total: 0 };
+
+    const now = new Date();
+    const partners = await this.prisma.partner.findMany({
+      where: {
+        active: true,
+        ...(partnerType && { type: partnerType }),
+        OR: [
+          { approvedAt: { not: null } },
+          { isPaidPartner: true },
+          { activatedAt: { not: null } },
+        ],
+      },
+      include: {
+        services: {
+          where: {
+            active: true,
+            showOnMarketplace: true,
+            OR: [{ validUntil: null }, { validUntil: { gte: now } }],
+          },
+        },
+        coupons: {
+          where: {
+            active: true,
+            showOnMarketplace: true,
+            OR: [{ validUntil: null }, { validUntil: { gte: now } }],
+          },
+        },
+      },
+    });
+
+    const items: OutItem[] = [];
+
+    for (const p of partners) {
+      const partnerDto = this.toPublicDto(p);
+      for (const s of p.services) {
+        items.push({ kind: 'service', ...this.toServiceDto(s), partner: partnerDto });
+      }
+      for (const c of p.coupons) {
+        items.push({ kind: 'coupon', ...this.toCouponDto(c), partner: partnerDto });
+      }
+    }
+
+    let out: OutItem[] =
+      filter === 'services' ? items.filter((x): x is OutItem => x.kind === 'service') : items.filter((x): x is OutItem => x.kind === 'coupon');
+
+    const term = q?.trim().toLowerCase();
+    if (term) {
+      out = out.filter((x) => {
+        const partnerName = (x.partner.name ?? '').toLowerCase();
+        if (x.kind === 'service') {
+          const name = (x.name ?? '').toLowerCase();
+          const desc = (x.description ?? '').toLowerCase();
+          return partnerName.includes(term) || name.includes(term) || desc.includes(term);
+        }
+        const title = (x.title ?? '').toLowerCase();
+        const code = (x.code ?? '').toLowerCase();
+        const desc = (x.description ?? '').toLowerCase();
+        return partnerName.includes(term) || title.includes(term) || code.includes(term) || desc.includes(term);
+      });
+    }
+
+    if (!sort) {
+      for (let i = out.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [out[i], out[j]] = [out[j], out[i]];
+      }
+    } else if (sort === 'name') {
+      out.sort((a, b) => {
+        const nameA = (a.kind === 'service' ? a.name : a.title || a.code) ?? '';
+        const nameB = (b.kind === 'service' ? b.name : b.title || b.code) ?? '';
+        return nameA.localeCompare(nameB, 'pt-BR');
+      });
+    } else if (sort === 'discount') {
+      out.sort((a, b) => {
+        const valA = a.kind === 'coupon' ? a.discountValue : 0;
+        const valB = b.kind === 'coupon' ? b.discountValue : 0;
+        if (valB !== valA) return valB - valA;
+        const nameA = (a.kind === 'service' ? a.name : a.title || a.code) ?? '';
+        const nameB = (b.kind === 'service' ? b.name : b.title || b.code) ?? '';
+        return nameA.localeCompare(nameB, 'pt-BR');
+      });
+    } else if (sort === 'partner') {
+      out.sort((a, b) => (a.partner.name ?? '').localeCompare(b.partner.name ?? '', 'pt-BR'));
+    }
+
+    const total = out.length;
+    const itemsPage = out.slice(offset, offset + limit);
+    return { items: itemsPage, total };
   }
 
   /** Registra visualização da página do parceiro (público). */
@@ -403,22 +519,73 @@ export class PartnersService {
     });
   }
 
+  /** Registra visita vinda do marketplace (público – quando usuário abre a página do parceiro a partir de um item do marketplace). */
+  async recordMarketplaceVisit(partnerId: string, payload: { serviceId?: string; couponId?: string }): Promise<void> {
+    const partner = await this.prisma.partner.findFirst({
+      where: {
+        id: partnerId,
+        active: true,
+        OR: [{ approvedAt: { not: null } }, { isPaidPartner: true }],
+      },
+    });
+    if (!partner) return;
+    const { serviceId, couponId } = payload;
+    if (serviceId) {
+      const service = await this.prisma.partnerService.findFirst({
+        where: { id: serviceId, partnerId, active: true },
+      });
+      if (!service) return;
+    }
+    if (couponId) {
+      const coupon = await this.prisma.partnerCoupon.findFirst({
+        where: { id: couponId, partnerId, active: true },
+      });
+      if (!coupon) return;
+    }
+    await this.prisma.partnerEvent.create({
+      data: { partnerId, eventType: 'marketplace_visit', serviceId: serviceId ?? null, couponId: couponId ?? null },
+    });
+  }
+
   /** Analytics do parceiro do usuário (portal). Requer assinatura ativa. */
   async getAnalyticsByUserId(userId: string): Promise<{
     profileViews: number;
     couponCopies: number;
     byCoupon: Array<{ couponId: string; code: string; copies: number }>;
+    marketplaceVisits: number;
+    marketplaceByService: Array<{ serviceId: string; name: string; visits: number }>;
+    marketplaceByCoupon: Array<{ couponId: string; code: string; visits: number }>;
   }> {
     const partner = await this.prisma.partner.findUnique({ where: { userId } });
-    if (!partner) return { profileViews: 0, couponCopies: 0, byCoupon: [] };
+    if (!partner) {
+      return {
+        profileViews: 0,
+        couponCopies: 0,
+        byCoupon: [],
+        marketplaceVisits: 0,
+        marketplaceByService: [],
+        marketplaceByCoupon: [],
+      };
+    }
     this.ensurePaidPartner(partner);
 
-    const [profileViews, couponCopies, eventsByCoupon] = await Promise.all([
+    const [profileViews, couponCopies, eventsByCoupon, marketplaceVisits, mvByService, mvByCoupon] = await Promise.all([
       this.prisma.partnerEvent.count({ where: { partnerId: partner.id, eventType: 'profile_view' } }),
       this.prisma.partnerEvent.count({ where: { partnerId: partner.id, eventType: 'coupon_copy' } }),
       this.prisma.partnerEvent.groupBy({
         by: ['couponId'],
         where: { partnerId: partner.id, eventType: 'coupon_copy' },
+        _count: { couponId: true },
+      }),
+      this.prisma.partnerEvent.count({ where: { partnerId: partner.id, eventType: 'marketplace_visit' } }),
+      this.prisma.partnerEvent.groupBy({
+        by: ['serviceId'],
+        where: { partnerId: partner.id, eventType: 'marketplace_visit', serviceId: { not: null } },
+        _count: { serviceId: true },
+      }),
+      this.prisma.partnerEvent.groupBy({
+        by: ['couponId'],
+        where: { partnerId: partner.id, eventType: 'marketplace_visit', couponId: { not: null } },
         _count: { couponId: true },
       }),
     ]);
@@ -441,7 +608,50 @@ export class PartnersService {
       }))
       .sort((a, b) => b.copies - a.copies);
 
-    return { profileViews, couponCopies, byCoupon };
+    const serviceIds = mvByService.map((e) => e.serviceId).filter(Boolean) as string[];
+    const services = serviceIds.length
+      ? await this.prisma.partnerService.findMany({
+          where: { id: { in: serviceIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const byServiceName = Object.fromEntries(services.map((s) => [s.id, s.name]));
+
+    const marketplaceByService = mvByService
+      .filter((e) => e.serviceId)
+      .map((e) => ({
+        serviceId: e.serviceId!,
+        name: byServiceName[e.serviceId!] ?? e.serviceId!,
+        visits: e._count.serviceId,
+      }))
+      .sort((a, b) => b.visits - a.visits);
+
+    const mvCouponIds = mvByCoupon.map((e) => e.couponId).filter(Boolean) as string[];
+    const mvCoupons = mvCouponIds.length
+      ? await this.prisma.partnerCoupon.findMany({
+          where: { id: { in: mvCouponIds } },
+          select: { id: true, code: true },
+        })
+      : [];
+    const mvByCode = Object.fromEntries(mvCoupons.map((c) => [c.id, c.code]));
+
+    const marketplaceByCoupon = mvByCoupon
+      .filter((e) => e.couponId)
+      .map((e) => ({
+        couponId: e.couponId!,
+        code: mvByCode[e.couponId!] ?? e.couponId!,
+        visits: e._count.couponId,
+      }))
+      .sort((a, b) => b.visits - a.visits);
+
+    return {
+      profileViews,
+      couponCopies,
+      byCoupon,
+      marketplaceVisits,
+      marketplaceByService,
+      marketplaceByCoupon,
+    };
   }
 
   private ensureOngAdmin(partner: { type: string; id: string } | null): asserts partner is { type: 'ONG'; id: string } {
@@ -1180,6 +1390,7 @@ export class PartnersService {
     imageUrl: string | null;
     active: boolean;
     validUntil: Date | null;
+    showOnMarketplace: boolean;
     createdAt: Date;
     updatedAt: Date;
   }): PartnerServiceResponseDto {
@@ -1192,6 +1403,7 @@ export class PartnersService {
       imageUrl: s.imageUrl ?? undefined,
       active: s.active,
       validUntil: s.validUntil?.toISOString() ?? undefined,
+      showOnMarketplace: s.showOnMarketplace,
       createdAt: s.createdAt.toISOString(),
       updatedAt: s.updatedAt.toISOString(),
     };
@@ -1208,6 +1420,7 @@ export class PartnersService {
     validFrom: Date;
     validUntil: Date | null;
     active: boolean;
+    showOnMarketplace: boolean;
     createdAt: Date;
     updatedAt: Date;
   }): PartnerCouponResponseDto {
@@ -1225,6 +1438,7 @@ export class PartnersService {
       validFrom: c.validFrom.toISOString(),
       validUntil: c.validUntil?.toISOString() ?? undefined,
       active: c.active,
+      showOnMarketplace: c.showOnMarketplace,
       createdAt: c.createdAt.toISOString(),
       updatedAt: c.updatedAt.toISOString(),
     };

@@ -31,6 +31,9 @@ export class PartnerCouponResponseDto {
   @ApiProperty()
   active: boolean;
 
+  @ApiProperty({ description: 'Exibir no marketplace e na página do parceiro' })
+  showOnMarketplace: boolean;
+
   @ApiProperty()
   createdAt: string;
 

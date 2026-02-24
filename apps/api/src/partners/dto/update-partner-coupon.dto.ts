@@ -45,4 +45,9 @@ export class UpdatePartnerCouponDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @ApiPropertyOptional({ description: 'Exibir no marketplace e na página do parceiro' })
+  @IsOptional()
+  @IsBoolean()
+  showOnMarketplace?: boolean;
 }

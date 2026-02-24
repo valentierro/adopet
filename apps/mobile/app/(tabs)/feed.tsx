@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { useRouter, useNavigation } from 'expo-router';
+import { useRouter, useNavigation, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, FlatList, Pressable, Modal, useWindowDimensions, Dimensions, Alert } from 'react-native';
@@ -18,6 +18,7 @@ import { trackEvent } from '../../src/analytics';
 import { getPreferences, updatePreferences } from '../../src/api/me';
 import { useUpdateCityFromLocation } from '../../src/hooks/useUpdateCityFromLocation';
 import { getMatchScoreColor } from '../../src/utils/matchScoreColor';
+import { getViewedPetIds } from '../../src/utils/viewedPets';
 import { useAuthStore } from '../../src/stores/authStore';
 import { spacing } from '../../src/theme';
 
@@ -153,7 +154,16 @@ export default function FeedScreen() {
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   type ViewMode = 'swipe' | 'grid';
   const isGuest = !userId;
+  const params = useLocalSearchParams<{ trending?: string }>();
+  const sortByTrending = params.trending === '1';
+  const appliedTrendingRef = useRef(false);
   const [viewMode, setViewModeState] = useState<ViewMode>('swipe');
+  useEffect(() => {
+    if (sortByTrending && !appliedTrendingRef.current) {
+      appliedTrendingRef.current = true;
+      setViewModeState('grid');
+    }
+  }, [sortByTrending]);
   const effectiveViewMode: ViewMode = isGuest ? 'grid' : viewMode;
   const [matchTooltipMessage, setMatchTooltipMessage] = useState<string | null>(null);
   const matchTooltipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -166,6 +176,7 @@ export default function FeedScreen() {
   const [showLogoutBanner, setShowLogoutBanner] = useState(false);
   const [showSwipeHint, setShowSwipeHint] = useState(false);
   const swipeHintCheckDoneRef = useRef(false);
+  const [viewedPetIds, setViewedPetIds] = useState<Set<string>>(new Set());
   const hasTriageFilters = Object.keys(triageFilters).some((k) => {
     const v = triageFilters[k as keyof FeedTriageFilters];
     if (v === undefined || v === false) return false;
@@ -248,7 +259,7 @@ export default function FeedScreen() {
   }, [showTriageModal, prefs?.radiusKm]);
 
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
-    queryKey: [...FEED_QUERY_KEY, cursor, prefs?.radiusKm, speciesFilter, partnerFilter, userCoords?.lat, userCoords?.lng, triageFilters],
+    queryKey: [...FEED_QUERY_KEY, cursor, prefs?.radiusKm, speciesFilter, partnerFilter, userCoords?.lat, userCoords?.lng, triageFilters, sortByTrending],
     queryFn: () =>
       fetchFeed({
         ...(userCoords && { lat: userCoords.lat, lng: userCoords.lng }),
@@ -256,6 +267,7 @@ export default function FeedScreen() {
         cursor: cursor ?? undefined,
         species: speciesFilter,
         partnerFilter: partnerFilter !== 'all' ? partnerFilter : undefined,
+        ...(sortByTrending && { sortBy: 'trending' }),
         ...triageFilters,
       }),
     staleTime: 60_000,
@@ -322,6 +334,7 @@ export default function FeedScreen() {
   useFocusEffect(
     useCallback(() => {
       refetch();
+      getViewedPetIds(userId).then(setViewedPetIds);
       if (userId) {
         const storageKey = FEED_MATCH_SCORE_INTRO_SEEN_KEY_PREFIX + userId;
         AsyncStorage.getItem(storageKey).then((seen) => {
@@ -1248,6 +1261,12 @@ export default function FeedScreen() {
                 <Ionicons name={partner.isPaidPartner ? 'star' : 'heart'} size={10} color="#fff" />
               </View>
             )}
+            {viewedPetIds.has(item.id) && (
+              <View style={[styles.viewedBadgeWrap, styles.guestViewedBadgeWrap, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+                <Ionicons name="eye-outline" size={10} color="#fff" />
+                <Text style={styles.viewedBadgeText}>Visualizado</Text>
+              </View>
+            )}
           </View>
         </View>
         <View style={[styles.guestCarouselCardInfo, { backgroundColor: colors.surface }]}>
@@ -1420,6 +1439,12 @@ export default function FeedScreen() {
                           </View>
                         )}
                       </View>
+                      {viewedPetIds.has(item.id) && (
+                        <View style={[styles.viewedBadgeWrap, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+                          <Ionicons name="eye-outline" size={12} color="#fff" />
+                          <Text style={styles.viewedBadgeText}>Visualizado</Text>
+                        </View>
+                      )}
                     </View>
                     <View style={[styles.gridCardInfo, { backgroundColor: colors.surface }]}>
                       <Text style={[styles.gridCardName, { color: colors.textPrimary }]} numberOfLines={1}>{item.name}</Text>
@@ -1555,15 +1580,23 @@ export default function FeedScreen() {
                 onSwipeLeft={handlePass}
                 onPress={() => router.push(`/pet/${currentPet.id}`)}
               >
-                <FeedCard
-                  pet={currentPet}
-                  height={deckHeight > 0 ? deckHeight : undefined}
-                  wrapInTouchable={false}
-                  showActions={false}
-                  onPress={() => router.push(`/pet/${currentPet.id}`)}
-                  onLike={handleLike}
-                  onPass={handlePass}
-                />
+                <View style={styles.swipeCardInner}>
+                  <FeedCard
+                    pet={currentPet}
+                    height={deckHeight > 0 ? deckHeight : undefined}
+                    wrapInTouchable={false}
+                    showActions={false}
+                    onPress={() => router.push(`/pet/${currentPet.id}`)}
+                    onLike={handleLike}
+                    onPass={handlePass}
+                  />
+                  {viewedPetIds.has(currentPet.id) && (
+                    <View style={[styles.viewedBadgeWrap, styles.swipeViewedBadge, { backgroundColor: 'rgba(0,0,0,0.5)' }]} pointerEvents="none">
+                      <Ionicons name="eye-outline" size={14} color="#fff" />
+                      <Text style={styles.viewedBadgeText}>Visualizado</Text>
+                    </View>
+                  )}
+                </View>
               </SwipeableCard>
             ) : null}
             {viewMode === 'swipe' && matchTooltipMessage && !showMatchOverlay && (
@@ -1803,6 +1836,28 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  viewedBadgeWrap: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  viewedBadgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  swipeCardInner: { flex: 1, position: 'relative' },
+  swipeViewedBadge: { bottom: 24, left: 'auto', right: 12, top: 'auto' },
+  guestViewedBadgeWrap: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
   gridCardInfo: { paddingVertical: spacing.sm, paddingHorizontal: spacing.xs },
   gridCardName: { fontSize: 14, fontWeight: '700' },

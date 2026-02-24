@@ -114,6 +114,7 @@ export type PartnerCoupon = {
   validFrom?: string;
   validUntil?: string | null;
   active: boolean;
+  showOnMarketplace: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -129,6 +130,7 @@ export type CreatePartnerCouponBody = {
   discountType: 'PERCENT' | 'FIXED';
   discountValue: number;
   validUntil?: string;
+  showOnMarketplace?: boolean;
 };
 
 export async function createPartnerCoupon(body: CreatePartnerCouponBody): Promise<PartnerCoupon> {
@@ -143,6 +145,7 @@ export type UpdatePartnerCouponBody = {
   discountValue?: number;
   validUntil?: string | null;
   active?: boolean;
+  showOnMarketplace?: boolean;
 };
 
 export async function updatePartnerCoupon(id: string, body: UpdatePartnerCouponBody): Promise<PartnerCoupon> {
@@ -164,6 +167,7 @@ export type PartnerService = {
   imageUrl?: string | null;
   active: boolean;
   validUntil?: string | null;
+  showOnMarketplace: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -178,6 +182,7 @@ export type CreatePartnerServiceBody = {
   priceDisplay?: string;
   validUntil?: string;
   imageUrl?: string;
+  showOnMarketplace?: boolean;
 };
 
 export async function createPartnerService(body: CreatePartnerServiceBody): Promise<PartnerService> {
@@ -191,6 +196,7 @@ export type UpdatePartnerServiceBody = {
   validUntil?: string | null;
   active?: boolean;
   imageUrl?: string | null;
+  showOnMarketplace?: boolean;
 };
 
 export async function updatePartnerService(id: string, body: UpdatePartnerServiceBody): Promise<PartnerService> {
@@ -242,6 +248,9 @@ export type PartnerAnalytics = {
   profileViews: number;
   couponCopies: number;
   byCoupon: Array<{ couponId: string; code: string; copies: number }>;
+  marketplaceVisits: number;
+  marketplaceByService: Array<{ serviceId: string; name: string; visits: number }>;
+  marketplaceByCoupon: Array<{ couponId: string; code: string; visits: number }>;
 };
 
 export async function getPartnerAnalytics(): Promise<PartnerAnalytics> {

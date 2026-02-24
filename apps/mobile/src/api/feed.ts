@@ -42,6 +42,8 @@ export type FeedParams = {
   partnerFilter?: FeedPartnerFilter;
   /** Listar anúncios de um dono (ex.: perfil do tutor) */
   ownerId?: string;
+  /** Ordenar por engajamento: trending = mais favoritados primeiro */
+  sortBy?: 'trending';
 } & FeedTriageFilters;
 
 export async function fetchFeed(params: FeedParams = {}): Promise<FeedResponse> {
@@ -57,6 +59,7 @@ export async function fetchFeed(params: FeedParams = {}): Promise<FeedResponse> 
   if (params.breed?.length) query.breed = params.breed.map((b) => b.trim()).filter(Boolean).join(',');
   if (params.partnerFilter && params.partnerFilter !== 'all') query.partnerFilter = params.partnerFilter;
   if (params.ownerId) query.ownerId = params.ownerId;
+  if (params.sortBy) query.sortBy = params.sortBy;
   if (params.energyLevel) query.energyLevel = params.energyLevel;
   if (params.temperament) query.temperament = params.temperament;
   if (params.goodWithChildren) query.goodWithChildren = params.goodWithChildren;

@@ -32,6 +32,7 @@ export default function PartnerCouponEditScreen() {
   const [discountValue, setDiscountValue] = useState('');
   const [validUntil, setValidUntil] = useState('');
   const [active, setActive] = useState(true);
+  const [showOnMarketplace, setShowOnMarketplace] = useState(true);
 
   useEffect(() => {
     if (existing) {
@@ -42,6 +43,7 @@ export default function PartnerCouponEditScreen() {
       setDiscountValue(String(existing.discountValue));
       setValidUntil(existing.validUntil ? existing.validUntil.slice(0, 10) : '');
       setActive(existing.active);
+      setShowOnMarketplace(existing.showOnMarketplace ?? true);
     }
   }, [existing]);
 
@@ -76,7 +78,7 @@ export default function PartnerCouponEditScreen() {
     if (isEdit && params.id) {
       updateMutation.mutate({
         id: params.id,
-        body: { code: codeTrim, title: title.trim() || undefined, description: description.trim() || undefined, discountType, discountValue: num, validUntil: validUntil.trim() || null, active },
+        body: { code: codeTrim, title: title.trim() || undefined, description: description.trim() || undefined, discountType, discountValue: num, validUntil: validUntil.trim() || null, active, showOnMarketplace },
       });
     } else {
       createMutation.mutate({
@@ -86,6 +88,7 @@ export default function PartnerCouponEditScreen() {
         discountType,
         discountValue: num,
         validUntil: validUntil.trim() || undefined,
+        showOnMarketplace,
       });
     }
   };
@@ -127,6 +130,12 @@ export default function PartnerCouponEditScreen() {
         <TextInput style={inputStyle} placeholder="2025-12-31" placeholderTextColor={colors.textSecondary} value={validUntil} onChangeText={setValidUntil} />
         <Text style={labelStyle}>Descrição (opcional)</Text>
         <TextInput style={[inputStyle, styles.textArea]} placeholder="Ex: Válido para compras acima de R$ 50" placeholderTextColor={colors.textSecondary} value={description} onChangeText={setDescription} multiline />
+        <TouchableOpacity style={styles.activeRow} onPress={() => setShowOnMarketplace((v) => !v)}>
+          <Text style={[styles.activeLabel, { color: colors.textPrimary }]} numberOfLines={2}>Exibir no marketplace e na página do parceiro</Text>
+          <View style={[styles.checkbox, { borderColor: showOnMarketplace ? colors.primary : colors.textSecondary, backgroundColor: showOnMarketplace ? colors.primary : 'transparent' }]}>
+            {showOnMarketplace ? <Text style={styles.checkmark}>✓</Text> : null}
+          </View>
+        </TouchableOpacity>
         {isEdit && (
           <TouchableOpacity style={styles.activeRow} onPress={() => setActive((a) => !a)}>
             <Text style={[styles.activeLabel, { color: colors.textPrimary }]}>Cupom ativo</Text>

@@ -33,6 +33,7 @@ import { setPetPublication } from '../../../src/api/admin';
 import { getVerificationStatus } from '../../../src/api/verification';
 import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
 import { getMatchScoreColor } from '../../../src/utils/matchScoreColor';
+import { addViewedPetId } from '../../../src/utils/viewedPets';
 import { trackEvent } from '../../../src/analytics';
 import { spacing } from '../../../src/theme';
 import { Ionicons } from '@expo/vector-icons';
@@ -170,8 +171,11 @@ export default function PetDetailsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (id) refetchPet();
-    }, [id, refetchPet]),
+      if (id) {
+        refetchPet();
+        addViewedPetId(id, userId);
+      }
+    }, [id, refetchPet, userId]),
   );
   const { data: favoritesData } = useQuery({
     queryKey: ['favorites'],

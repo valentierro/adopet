@@ -14,7 +14,7 @@ export { PageIntro } from './PageIntro';
 export { VerifiedBadge } from './VerifiedBadge';
 export { UsuarioVerificadoModal } from './UsuarioVerificadoModal';
 export { TutorLevelBadge } from './TutorLevelBadge';
-export { Skeleton, FeedSkeleton, ListRowSkeleton } from './Skeleton';
+export { Skeleton, FeedSkeleton, ListRowSkeleton, MarketplaceGridSkeleton } from './Skeleton';
 export { PartnerPanelLayout } from './PartnerPanelLayout';
 export { OfflineBanner } from './OfflineBanner';
 export { ProfileMenuFooter } from './ProfileMenuFooter';

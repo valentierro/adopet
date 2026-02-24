@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, MinLength, MaxLength } from 'class-validator';
+import { IsString, IsOptional, MinLength, MaxLength, IsBoolean } from 'class-validator';
 
 export class CreatePartnerServiceDto {
   @ApiProperty({ example: 'Banho e tosa', description: 'Nome do serviço' })
@@ -30,4 +30,9 @@ export class CreatePartnerServiceDto {
   @IsString()
   @MaxLength(2000)
   imageUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Exibir no marketplace e na página do parceiro', default: true })
+  @IsOptional()
+  @IsBoolean()
+  showOnMarketplace?: boolean;
 }

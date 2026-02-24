@@ -214,6 +214,7 @@ export class FeedService {
       isTrained: queryIsTrained,
       ownerId: queryOwnerId,
       limit,
+      sortBy: querySortBy,
     } = query;
     const pageSize = Math.min(limit ?? DEFAULT_PAGE_SIZE, 500);
 
@@ -404,18 +405,27 @@ export class FeedService {
       withinRadius = withinRadius.filter((s) => !s.hasPartner);
     }
 
-    /** Ordena em 3 níveis: (1) parceiros pagos, (2) parceiros não pagos, (3) sem parceria; dentro de cada nível, maior match score primeiro. */
-    withinRadius.sort((a, b) => {
-      const tier = (s: { isPaidPartner: boolean; hasPartner: boolean }) =>
-        s.isPaidPartner ? 0 : s.hasPartner ? 1 : 2;
-      const ta = tier(a);
-      const tb = tier(b);
-      if (ta !== tb) return ta - tb;
-      const diff = b.matchScoreNorm - a.matchScoreNorm;
-      if (diff !== 0) return diff;
-      if (b.score !== a.score) return b.score - a.score;
-      return b.pet.id.localeCompare(a.pet.id);
-    });
+    /** Ordenação: trending = por favoritos (desc); senão por tier de parceria + match score. */
+    if (querySortBy === 'trending') {
+      withinRadius.sort((a, b) => {
+        const favA = favByPetId[a.pet.id] ?? 0;
+        const favB = favByPetId[b.pet.id] ?? 0;
+        if (favB !== favA) return favB - favA;
+        return b.pet.id.localeCompare(a.pet.id);
+      });
+    } else {
+      withinRadius.sort((a, b) => {
+        const tier = (s: { isPaidPartner: boolean; hasPartner: boolean }) =>
+          s.isPaidPartner ? 0 : s.hasPartner ? 1 : 2;
+        const ta = tier(a);
+        const tb = tier(b);
+        if (ta !== tb) return ta - tb;
+        const diff = b.matchScoreNorm - a.matchScoreNorm;
+        if (diff !== 0) return diff;
+        if (b.score !== a.score) return b.score - a.score;
+        return b.pet.id.localeCompare(a.pet.id);
+      });
+    }
 
     let startIndex = 0;
     if (cursor) {

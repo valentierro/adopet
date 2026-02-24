@@ -222,35 +222,37 @@ model PartnerMember {
 }
 
 model PartnerCoupon {
-  id          String   @id @default(uuid())
-  partnerId   String
-  partner     Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  code        String   // código do cupom (ex: ADOPET10)
-  title       String?  // título exibido (ex: "10% em ração")
-  description String?
-  discountType String  @default("PERCENT") // PERCENT | FIXED
-  discountValue Decimal @db.Decimal(10, 2) // percentual (10) ou valor fixo em centavos (1000 = R$ 10)
-  validFrom   DateTime @default(now())
-  validUntil  DateTime?
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                 String   @id @default(uuid())
+  partnerId          String
+  partner            Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  code               String   // código do cupom (ex: ADOPET10)
+  title              String?  // título exibido (ex: "10% em ração")
+  description        String?
+  discountType       String   @default("PERCENT") // PERCENT | FIXED
+  discountValue      Decimal  @db.Decimal(10, 2) // percentual (10) ou valor fixo em centavos (1000 = R$ 10)
+  validFrom          DateTime @default(now())
+  validUntil         DateTime?
+  active             Boolean  @default(true)
+  showOnMarketplace  Boolean  @default(true) // se false, não aparece no marketplace nem na página do parceiro
+  createdAt          DateTime @default(now())
+  updatedAt         DateTime @updatedAt
   @@index([partnerId])
   @@index([partnerId, active])
 }
 
 model PartnerService {
-  id          String    @id @default(uuid())
-  partnerId   String
-  partner     Partner   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  name        String    // ex: "Banho e tosa"
-  description String?
-  priceDisplay String?  // ex: "A partir de R$ 50" ou "Sob consulta"
-  imageUrl    String?   // foto do serviço (opcional)
-  active      Boolean   @default(true)
-  validUntil  DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                 String    @id @default(uuid())
+  partnerId          String
+  partner            Partner   @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  name               String    // ex: "Banho e tosa"
+  description        String?
+  priceDisplay       String?   // ex: "A partir de R$ 50" ou "Sob consulta"
+  imageUrl           String?   // foto do serviço (opcional)
+  active             Boolean   @default(true)
+  validUntil         DateTime?
+  showOnMarketplace  Boolean   @default(true) // se false, não aparece no marketplace nem na página do parceiro
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
   @@index([partnerId])
   @@index([partnerId, active])
 }
@@ -259,8 +261,9 @@ model PartnerEvent {
   id        String   @id @default(uuid())
   partnerId String
   partner   Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
-  eventType String   // profile_view | coupon_copy
-  couponId  String?  // preenchido quando eventType = coupon_copy
+  eventType String   // profile_view | coupon_copy | marketplace_visit
+  couponId  String?  // preenchido quando eventType = coupon_copy ou marketplace_visit (clique em cupom)
+  serviceId String?  // preenchido quando eventType = marketplace_visit (clique em serviço)
   createdAt DateTime @default(now())
   @@index([partnerId])
   @@index([partnerId, createdAt])

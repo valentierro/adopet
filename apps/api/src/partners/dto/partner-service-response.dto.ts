@@ -25,6 +25,9 @@ export class PartnerServiceResponseDto {
   @ApiPropertyOptional()
   validUntil?: string | null;
 
+  @ApiProperty({ description: 'Exibir no marketplace e na página do parceiro' })
+  showOnMarketplace: boolean;
+
   @ApiProperty()
   createdAt: string;
 

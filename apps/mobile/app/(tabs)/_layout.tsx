@@ -260,6 +260,16 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="marketplace"
+        options={{
+          href: null,
+          title: 'Para seu pet',
+          headerTitle: () => <HeaderLogo />,
+          headerTitleAlign: 'center',
+          ...backScreenOptions,
+        }}
+      />
+      <Tabs.Screen
         name="partners/[id]"
         options={{
           href: null,

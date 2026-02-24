@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsIn, MinLength, MaxLength, IsNumber, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsIn, MinLength, MaxLength, IsNumber, Min, Max, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreatePartnerCouponDto {
@@ -37,4 +37,9 @@ export class CreatePartnerCouponDto {
   @IsOptional()
   @IsString()
   validUntil?: string;
+
+  @ApiPropertyOptional({ description: 'Exibir no marketplace e na página do parceiro', default: true })
+  @IsOptional()
+  @IsBoolean()
+  showOnMarketplace?: boolean;
 }
