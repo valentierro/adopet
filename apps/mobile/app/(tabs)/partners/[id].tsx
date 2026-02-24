@@ -174,6 +174,10 @@ export default function PartnerDetailScreen() {
     return () => clearTimeout(t);
   }, [highlightServiceId, highlightCouponId, services.length, coupons.length]);
 
+  const scrollToSection = useCallback((y: number) => {
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 48), animated: true });
+  }, []);
+
   if (isLoading && !partner) {
     return (
       <ScreenContainer>
@@ -212,10 +216,6 @@ export default function PartnerDetailScreen() {
   };
 
   const hasLocation = !!(partner.address || partner.city);
-
-  const scrollToSection = useCallback((y: number) => {
-    scrollRef.current?.scrollTo({ y: Math.max(0, y - 48), animated: true });
-  }, []);
 
   return (
     <ScreenContainer ref={scrollRef} scroll>

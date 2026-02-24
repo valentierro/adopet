@@ -465,44 +465,7 @@ export default function DashboardScreen() {
   let cardsToShow = isPartnerOrMember || isAdmin
     ? cardsWithConditional.filter((c) => c.id !== 'partnerOng' && c.id !== 'partnerComercial')
     : cardsWithConditional;
-  // Home diferenciada para ONG: sempre exibe Minha ONG, Anúncios da ONG e Adoções pela ONG (não depende de flag)
-  if (isPartnerOrMember && isOngUser) {
-    const ongCards = [
-      {
-        id: 'ongPortal',
-        title: 'Minha ONG',
-        subtitle: 'Portal do parceiro, solicitações e anúncios em parceria',
-        icon: 'business' as keyof typeof Ionicons.glyphMap,
-        route: '/partner-portal',
-        gradient: ['#0d9488', '#0f766e'] as [string, string],
-        fullWidth: true,
-      },
-      {
-        id: 'ongMyPets',
-        title: 'Anúncios da ONG',
-        subtitle: 'Pets em parceria com a sua instituição',
-        icon: 'megaphone' as keyof typeof Ionicons.glyphMap,
-        route: '/partner-my-pets',
-        gradient: ['#0d9488', '#0f766e'] as [string, string],
-        fullWidth: true,
-      },
-      {
-        id: 'ongAdoptions',
-        title: 'Adoções pela ONG',
-        subtitle: 'Pets da ONG que encontraram lar',
-        icon: 'heart-circle' as keyof typeof Ionicons.glyphMap,
-        route: '/partner-ong-adoptions',
-        gradient: ['#0d9488', '#0f766e'] as [string, string],
-        fullWidth: true,
-      },
-    ];
-    const idx = cardsToShow.findIndex((c) => c.id === 'partnersArea');
-    if (idx >= 0) {
-      cardsToShow = [...cardsToShow.slice(0, idx), ...ongCards, ...cardsToShow.slice(idx)];
-    } else {
-      cardsToShow = [...cardsToShow, ...ongCards];
-    }
-  }
+  // ONG: os 3 CTAs (Minha ONG, Anúncios da ONG, Adoções pela ONG) ficam logo abaixo dos atalhos, não no grid
 
   // Parceiro comercial (não ONG): não inserir card no grid; o CTA Portal do parceiro fica logo abaixo dos atalhos (para todos os parceiros)
   const isNonOngPartner = isPartnerOrMember && !isOngUser;
@@ -684,6 +647,41 @@ export default function DashboardScreen() {
             <Text style={[styles.homeShortcutLabel, { color: colors.textPrimary }]} numberOfLines={1}>Últimas adoções</Text>
           </TouchableOpacity>
         </View>
+
+        {isOngUser && (
+          <View style={styles.homeShortcutsRow}>
+            <TouchableOpacity
+              onPress={() => router.push('/partner-portal')}
+              style={[styles.homeShortcutCard, styles.ongShortcutCard, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.homeShortcutIconWrap, { backgroundColor: colors.primary + '30' }]}>
+                <Ionicons name="business" size={26} color={colors.primary} />
+              </View>
+              <Text style={[styles.homeShortcutLabel, { color: colors.textPrimary }]} numberOfLines={1}>Minha ONG</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/partner-my-pets')}
+              style={[styles.homeShortcutCard, styles.ongShortcutCard, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.homeShortcutIconWrap, { backgroundColor: colors.primary + '30' }]}>
+                <Ionicons name="megaphone" size={26} color={colors.primary} />
+              </View>
+              <Text style={[styles.homeShortcutLabel, { color: colors.textPrimary }]} numberOfLines={1}>Anúncios da ONG</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/partner-ong-adoptions')}
+              style={[styles.homeShortcutCard, styles.ongShortcutCard, { backgroundColor: colors.primary + '18', borderColor: colors.primary + '40' }]}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.homeShortcutIconWrap, { backgroundColor: colors.primary + '30' }]}>
+                <Ionicons name="heart-circle" size={26} color={colors.primary} />
+              </View>
+              <Text style={[styles.homeShortcutLabel, { color: colors.textPrimary }]} numberOfLines={1}>Adoções pela ONG</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {isAdmin && (
           <TouchableOpacity
@@ -1331,6 +1329,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  ongShortcutCard: {
+    borderWidth: 1,
   },
   sectionTitleRow: {
     flexDirection: 'row',
