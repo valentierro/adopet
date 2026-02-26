@@ -49,3 +49,6 @@ apps/api/api/index.d.ts
 
 # Misc
 *.local
+
+# Legacy submodule (removido - projeto usa Expo em apps/mobile)
+AdoPet/
