@@ -1,0 +1,74 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Adopet API",
+    "description": "API para adoção de pets no Brasil",
+    "version": "1.0"
+  },
+  "servers": [
+    { "url": "http://localhost:3000", "description": "Local (desenvolvimento)" },
+    { "url": "https://api.appadopet.com.br", "description": "Produção" }
+  ],
+  "tags": [
+    { "name": "health" },
+    { "name": "auth" },
+    { "name": "me" },
+    { "name": "feed" },
+    { "name": "pets" },
+    { "name": "swipes" },
+    { "name": "favorites" },
+    { "name": "conversations" },
+    { "name": "messages" }
+  ],
+  "paths": {
+    "/v1/health": {
+      "get": {
+        "tags": ["health"],
+        "summary": "Healthcheck",
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/v1/auth/login": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Login",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/v1/auth/signup": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Cadastro",
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object" } } } },
+        "responses": { "201": { "description": "Created" } }
+      }
+    },
+    "/v1/feed": {
+      "get": {
+        "tags": ["feed"],
+        "summary": "Feed de pets",
+        "parameters": [{ "name": "cursor", "in": "query", "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/v1/feed/map": {
+      "get": {
+        "tags": ["feed"],
+        "summary": "Pins do mapa",
+        "parameters": [
+          { "name": "lat", "in": "query", "required": true, "schema": { "type": "number" } },
+          { "name": "lng", "in": "query", "required": true, "schema": { "type": "number" } },
+          { "name": "radiusKm", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "OK" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "security": [{ "bearerAuth": [] }]
+  }
+}

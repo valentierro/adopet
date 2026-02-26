@@ -4,21 +4,13 @@ Documentação OpenAPI da Adopet em HTML que permite **Try it out** — executar
 
 ## Como usar
 
-1. **Suba a API** (`pnpm dev:api` ou `./scripts/dev-api.sh`)
+1. **Local (com API rodando):** Abra `docs/swagger/index.html` no navegador. Ele detecta localhost e carrega o spec de `http://localhost:3000/api/docs-json`. Use **Authorize** para colar o JWT e **Try it out** para executar chamadas.
 
-2. **Abra** `docs/swagger/index.html` no navegador  
-   - Por padrão, carrega o spec de `http://localhost:3000/api/docs-json`
-   - Use **Authorize** para colar seu JWT
-   - Clique em **Try it out** em qualquer endpoint e **Execute**
+2. **GitHub Pages:** O Swagger usa automaticamente `openapi.json` (spec estático na mesma pasta), evitando erro de mixed-content e localhost inacessível.
 
-3. **Para spec estático (offline/GitHub Pages):**
-   ```bash
-   pnpm openapi:fetch   # gera docs/swagger/openapi.json
-   ```
-   Depois abra `index.html?url=./openapi.json`
+3. **Atualizar o spec completo:** Rode `pnpm openapi:fetch` com a API em execução para gerar `openapi.json` atualizado com todos os endpoints. Faça commit e push para atualizar a doc no GitHub Pages.
 
-4. **Para apontar à produção:**
-   Abra `index.html?url=https://api.appadopet.com.br/api/docs-json`
+4. **URL manual:** Use `?url=URL` para carregar outro spec (ex: `?url=https://api.appadopet.com.br/api/docs-json`).
 
 ## Alternativa: Swagger embutido
 

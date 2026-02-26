@@ -12,9 +12,16 @@
   <script>
     (function () {
       const params = new URLSearchParams(location.search);
-      // Padrão: spec da API local (Try it out funciona quando a API está rodando)
-      const defaultUrl = 'http://localhost:3000/api/docs-json';
-      const url = params.get('url') || defaultUrl;
+      let defaultUrl;
+      if (params.get('url')) {
+        defaultUrl = params.get('url');
+      } else if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+        defaultUrl = 'http://localhost:3000/api/docs-json';
+      } else {
+        // GitHub Pages / produção: spec estático (evita mixed-content e localhost inacessível)
+        defaultUrl = './openapi.json';
+      }
+      const url = defaultUrl;
       const ui = SwaggerUIBundle({
         url: url,
         dom_id: '#swagger-ui',
