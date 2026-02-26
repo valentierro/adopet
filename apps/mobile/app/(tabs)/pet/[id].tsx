@@ -303,6 +303,10 @@ export default function PetDetailsScreen() {
 
   const [tutorModalVisible, setTutorModalVisible] = useState(false);
   const [showCompleteProfileModal, setShowCompleteProfileModal] = useState(false);
+  const [showMatchScoreModal, setShowMatchScoreModal] = useState(false);
+  const [matchSectionExpanded, setMatchSectionExpanded] = useState(true);
+  const [mismatchSectionExpanded, setMismatchSectionExpanded] = useState(true);
+  const [neutralSectionExpanded, setNeutralSectionExpanded] = useState(false);
 
   const handleConversar = async () => {
     if (!profileComplete) {
@@ -378,6 +382,108 @@ export default function PetDetailsScreen() {
           ) : null}
         </Pressable>
       </Modal>
+
+      {showMatchScoreModal && matchScoreData && matchScoreData.score != null && (() => {
+        const criteria = matchScoreData.criteria ?? [];
+        const matchItems = criteria.length > 0
+          ? criteria.filter((c) => c.status === 'match').map((c) => c.message)
+          : (matchScoreData.highlights ?? []);
+        const mismatchItems = criteria.length > 0
+          ? criteria.filter((c) => c.status === 'mismatch').map((c) => c.message)
+          : (matchScoreData.concerns ?? []);
+        const neutralItems = criteria.length > 0
+          ? criteria.filter((c) => c.status === 'neutral').map((c) => c.message)
+          : [];
+        const hex = getMatchScoreColor(matchScoreData.score);
+        return (
+          <Modal visible transparent animationType="fade" onRequestClose={() => setShowMatchScoreModal(false)}>
+            <Pressable style={styles.modalOverlay} onPress={() => setShowMatchScoreModal(false)}>
+              <Pressable style={[styles.modalCard, styles.matchScoreModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+                <View style={[styles.matchScoreModalHeader, { backgroundColor: hex + '20' }]}>
+                  <View style={styles.matchScoreModalHeaderInner}>
+                    <Ionicons name="speedometer-outline" size={40} color={hex} style={styles.matchScoreModalHeaderIcon} />
+                    <Text style={[styles.matchScoreModalScore, { color: hex }]}>{matchScoreData.score}%</Text>
+                    <Text style={[styles.matchScoreModalSubtitle, { color: colors.textSecondary }]}>compatibilidade com você</Text>
+                  </View>
+                </View>
+                <ScrollView style={styles.matchScoreModalScroll} contentContainerStyle={styles.matchScoreModalScrollContent} showsVerticalScrollIndicator={true} bounces={true}>
+                  {matchItems.length > 0 ? (
+                    <View style={styles.matchScoreModalSection}>
+                      <TouchableOpacity
+                        style={styles.matchScoreModalSectionHeader}
+                        onPress={() => setMatchSectionExpanded((e) => !e)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.matchScoreModalSectionTitle, { color: hex }]}>Pontos em comum</Text>
+                        <Text style={[styles.matchScoreModalSectionCount, { color: colors.textSecondary }]}>{matchItems.length}</Text>
+                        <Ionicons name={matchSectionExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                      {matchSectionExpanded && matchItems.map((msg, i) => (
+                        <View key={i} style={styles.matchScoreModalRow}>
+                          <View style={styles.matchScoreModalRowIcon}>
+                            <Ionicons name="checkmark-circle" size={18} color={hex} />
+                          </View>
+                          <Text style={[styles.matchScoreModalItem, { color: colors.textPrimary }]}>{String(msg).replace(/\n/g, ' ')}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                  {mismatchItems.length > 0 ? (
+                    <View style={styles.matchScoreModalSection}>
+                      <TouchableOpacity
+                        style={styles.matchScoreModalSectionHeader}
+                        onPress={() => setMismatchSectionExpanded((e) => !e)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.matchScoreModalSectionTitle, { color: colors.textSecondary }]}>Pontos de atenção</Text>
+                        <Text style={[styles.matchScoreModalSectionCount, { color: colors.textSecondary }]}>{mismatchItems.length}</Text>
+                        <Ionicons name={mismatchSectionExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                      {mismatchSectionExpanded && mismatchItems.map((msg, i) => (
+                        <View key={i} style={styles.matchScoreModalRow}>
+                          <View style={styles.matchScoreModalRowIcon}>
+                            <Ionicons name="information-circle-outline" size={18} color={colors.textSecondary} />
+                          </View>
+                          <Text style={[styles.matchScoreModalItem, { color: colors.textSecondary }]}>{String(msg).replace(/\n/g, ' ')}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                  {neutralItems.length > 0 ? (
+                    <View style={styles.matchScoreModalSection}>
+                      <TouchableOpacity
+                        style={styles.matchScoreModalSectionHeader}
+                        onPress={() => setNeutralSectionExpanded((e) => !e)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.matchScoreModalSectionTitle, { color: colors.textSecondary }]}>Não informado no perfil</Text>
+                        <Text style={[styles.matchScoreModalSectionCount, { color: colors.textSecondary }]}>{neutralItems.length}</Text>
+                        <Ionicons name={neutralSectionExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                      {neutralSectionExpanded && neutralItems.map((msg, i) => (
+                        <View key={i} style={styles.matchScoreModalRow}>
+                          <View style={styles.matchScoreModalRowIcon}>
+                            <Ionicons name="help-circle-outline" size={18} color={colors.textSecondary} />
+                          </View>
+                          <Text style={[styles.matchScoreModalItem, { color: colors.textSecondary }]}>{String(msg).replace(/\n/g, ' ')}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                </ScrollView>
+                <TouchableOpacity
+                  style={[styles.matchScoreModalCloseBtn, { backgroundColor: hex }]}
+                  onPress={() => setShowMatchScoreModal(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.matchScoreModalCloseText}>Fechar</Text>
+                </TouchableOpacity>
+              </Pressable>
+            </Pressable>
+          </Modal>
+        );
+      })()}
+
       <Text style={[styles.name, { color: colors.textPrimary }]}>{pet.name}</Text>
       <Text style={[styles.meta, { color: colors.textSecondary }]}>
         {speciesLabel[String(pet.species).toLowerCase()] ?? pet.species}
@@ -400,7 +506,16 @@ export default function PetDetailsScreen() {
           <StatusBadge label={`${pet.distanceKm.toFixed(1)} km`} variant="neutral" />
         )}
         {userId && matchScoreData && matchScoreData.score != null && (
-          <MatchScoreBadge data={matchScoreData} contextLabel="com você" />
+          <TouchableOpacity
+            onPress={() => setShowMatchScoreModal(true)}
+            activeOpacity={0.8}
+            style={styles.matchBadgeTouchable}
+            accessibilityLabel={`Match ${matchScoreData.score}% com você. Toque para ver detalhes.`}
+            accessibilityRole="button"
+          >
+            <MatchScoreBadge data={matchScoreData} contextLabel="com você" />
+            <Ionicons name="chevron-down" size={14} color="#fff" style={styles.matchBadgeChevron} />
+          </TouchableOpacity>
         )}
       </View>
       {(pet as { city?: string | null }).city && (
@@ -1094,6 +1209,14 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     marginBottom: spacing.sm,
   },
+  matchBadgeTouchable: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  matchBadgeChevron: {
+    marginLeft: 2,
+  },
   partnerBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1307,6 +1430,96 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     alignItems: 'center',
   },
+  matchScoreModalCard: {
+    maxWidth: 340,
+    width: '100%',
+    alignItems: 'stretch',
+    maxHeight: '85%',
+  },
+  matchScoreModalHeader: {
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    borderRadius: 12,
+    marginBottom: spacing.md,
+    width: '100%',
+  },
+  matchScoreModalHeaderInner: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  matchScoreModalHeaderIcon: {
+    marginBottom: spacing.sm,
+  },
+  matchScoreModalScore: {
+    fontSize: 48,
+    fontWeight: '700',
+  },
+  matchScoreModalSubtitle: {
+    fontSize: 13,
+    marginTop: 4,
+  },
+  matchScoreModalScroll: {
+    flexGrow: 1,
+    flexShrink: 1,
+    maxHeight: 320,
+    marginBottom: spacing.sm,
+    alignSelf: 'stretch',
+  },
+  matchScoreModalScrollContent: {
+    paddingBottom: spacing.sm,
+  },
+  matchScoreModalSection: {
+    marginBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+    paddingBottom: spacing.sm,
+    alignItems: 'flex-start',
+    width: '100%',
+  },
+  matchScoreModalSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  matchScoreModalSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+  },
+  matchScoreModalSectionCount: {
+    fontSize: 13,
+  },
+  matchScoreModalRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm,
+    width: '100%',
+  },
+  matchScoreModalRowIcon: {
+    width: 22,
+    marginRight: spacing.sm,
+  },
+  matchScoreModalItem: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'left',
+  },
+  matchScoreModalCloseBtn: {
+    alignSelf: 'stretch',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  matchScoreModalCloseText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -1501,5 +1714,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     marginTop: spacing.xl,
+  },
+  matchScoreModalCard: {
+    maxWidth: 340,
+    alignSelf: 'stretch',
+  },
+  matchScoreModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+    borderRadius: 12,
+    marginBottom: spacing.md,
   },
 });

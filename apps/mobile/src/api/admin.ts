@@ -123,6 +123,38 @@ export async function updateUserKyc(
   return api.patch<{ message: string }>(`/admin/users/${userId}/kyc`, { status, rejectionReason });
 }
 
+export type ApprovedKycItem = {
+  userId: string;
+  name: string;
+  email: string;
+  username?: string | null;
+  kycVerifiedAt: string;
+};
+
+/** [Admin] Listar usuários com KYC aprovado (sem fotos). q = busca por nome, email ou username. */
+export async function getApprovedKyc(q?: string): Promise<ApprovedKycItem[]> {
+  const params = q?.trim() ? { q: q.trim() } : undefined;
+  return api.get<ApprovedKycItem[]>('/admin/approved-kyc', params);
+}
+
+/** [Admin] Revogar KYC aprovado. Usuário volta ao estado inicial e pode solicitar novamente. */
+export async function revokeUserKyc(userId: string, reason: string): Promise<{ message: string }> {
+  return api.post<{ message: string }>(`/admin/users/${userId}/kyc/revoke`, { reason: reason || 'Verificação revogada pela equipe.' });
+}
+
+/** [Admin] Aprovar ou rejeitar KYC em massa. rejectionReason obrigatório ao rejeitar. */
+export async function bulkUpdateKyc(
+  userIds: string[],
+  status: 'VERIFIED' | 'REJECTED',
+  rejectionReason?: string,
+): Promise<{ processed: number; errors: string[] }> {
+  return api.post<{ processed: number; errors: string[] }>('/admin/kyc/bulk', {
+    userIds,
+    status,
+    rejectionReason,
+  });
+}
+
 export type PendingAdoptionByTutorItem = {
   petId: string;
   petName: string;

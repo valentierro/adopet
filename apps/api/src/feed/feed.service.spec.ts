@@ -6,6 +6,7 @@ import { BlocksService } from '../moderation/blocks.service';
 import { VerificationService } from '../verification/verification.service';
 import { MatchEngineService } from '../match-engine/match-engine.service';
 import { PetViewService } from '../pets/pet-view.service';
+import { PetPartnershipService } from '../pet-partnership/pet-partnership.service';
 
 describe('FeedService', () => {
   let service: FeedService;
@@ -78,6 +79,7 @@ describe('FeedService', () => {
         { provide: VerificationService, useValue: verification },
         { provide: MatchEngineService, useValue: { getMatchScoresForAdopter: jest.fn().mockResolvedValue({}) } },
         { provide: PetViewService, useValue: { getViewCountsLast24h: jest.fn().mockResolvedValue({}) } },
+        { provide: PetPartnershipService, useValue: { getConfirmedPartnersByPetIds: jest.fn().mockResolvedValue(new Map()) } },
       ],
     }).compile();
     service = module.get<FeedService>(FeedService);
@@ -389,6 +391,88 @@ describe('FeedService', () => {
       expect(call.where.sex).toBeUndefined();
       expect(call.where.size).toBeUndefined();
       expect(call.where.breed).toBeUndefined();
+    });
+
+    it('aceita radiusKm junto com species e sex sem quebrar o fluxo', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      const res = await service.getFeed({
+        ...baseQuery,
+        radiusKm: 100,
+        species: 'DOG',
+        sex: 'male',
+      });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            species: { equals: 'DOG', mode: 'insensitive' },
+            sex: 'male',
+          }),
+        }),
+      );
+      expect(res.items).toEqual([]);
+      expect(res.nextCursor).toBeNull();
+      expect(res.totalCount).toBe(0);
+    });
+
+    it('combina species + sex + size + energy + temperament + goodWith* de forma consistente', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({
+        ...baseQuery,
+        species: 'CAT',
+        sex: 'female',
+        size: 'small',
+        energyLevel: 'LOW',
+        temperament: 'CALM',
+        goodWithChildren: 'YES',
+        goodWithDogs: 'NO',
+      });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            species: { equals: 'CAT', mode: 'insensitive' },
+            sex: 'female',
+            size: 'small',
+            energyLevel: 'LOW',
+            temperament: 'CALM',
+            goodWithChildren: 'YES',
+            goodWithDogs: 'NO',
+          }),
+        }),
+      );
+    });
+
+    it('ao remover filtros (não passar), where não inclui esses campos', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({
+        ...baseQuery,
+        species: 'DOG',
+      });
+      const call = prisma.pet.findMany.mock.calls[0][0];
+      expect(call.where.species).toBeDefined();
+      expect(call.where.sex).toBeUndefined();
+      expect(call.where.size).toBeUndefined();
+      expect(call.where.energyLevel).toBeUndefined();
+      expect(call.where.temperament).toBeUndefined();
+      expect(call.where.goodWithChildren).toBeUndefined();
+    });
+
+    it('combina hasSpecialNeeds + isDocile + isTrained corretamente', async () => {
+      prisma.pet.findMany.mockResolvedValue([]);
+      await service.getFeed({
+        ...baseQuery,
+        hasSpecialNeeds: true,
+        isDocile: true,
+        isTrained: true,
+      });
+      expect(prisma.pet.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            hasSpecialNeeds: true,
+            isDocile: true,
+            isTrained: true,
+          }),
+        }),
+      );
     });
   });
 });

@@ -21,7 +21,7 @@ import { spacing } from '../../src/theme';
 /** URL para doação/apoio ao app (pode usar deep link de volta ao app no futuro). */
 const DONATION_URL = 'https://appadopet.com.br/#apoie';
 
-const APP_VERSION = Constants.expoConfig?.version ?? '1.1.0';
+const APP_VERSION = Constants.expoConfig?.version ?? '1.1.1';
 
 const HOUSING_LABEL: Record<string, string> = { CASA: 'Casa', APARTAMENTO: 'Apartamento' };
 const TIME_AT_HOME_LABEL: Record<string, string> = { MOST_DAY: 'Maior parte do dia', HALF_DAY: 'Metade do dia', LITTLE: 'Pouco tempo' };
@@ -60,6 +60,22 @@ export default function ProfileScreen() {
   const [menuApoioExpanded, setMenuApoioExpanded] = useState(false);
   const [menuAdminExpanded, setMenuAdminExpanded] = useState(false);
 
+  const queryClient = useQueryClient();
+  const { data: user, isLoading, refetch: refetchMe } = useQuery({
+    queryKey: ['me'],
+    queryFn: getMe,
+    staleTime: 60_000,
+  });
+  useEffect(() => {
+    if (user) setUser(user);
+  }, [user, setUser]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refetchMe();
+    }, [refetchMe]),
+  );
+
   useFocusEffect(
     useCallback(() => {
       setMenuContaExpanded(false);
@@ -71,13 +87,6 @@ export default function ProfileScreen() {
       setMenuAdminExpanded(false);
     }, []),
   );
-
-  const queryClient = useQueryClient();
-  const { data: user, isLoading, refetch: refetchMe } = useQuery({
-    queryKey: ['me'],
-    queryFn: getMe,
-    staleTime: 60_000,
-  });
   const { data: verificationStatus, refetch: refetchVerification } = useQuery({
     queryKey: ['verification-status'],
     queryFn: getVerificationStatus,
@@ -255,7 +264,7 @@ export default function ProfileScreen() {
       </TouchableOpacity>
       <View style={styles.nameRow}>
         <Text style={[styles.name, { color: colors.textPrimary }]}>{user?.name ?? 'Carregando...'}</Text>
-        {(user?.verified || user?.kycStatus === 'VERIFIED') && (
+        {user?.kycStatus === 'VERIFIED' && (
           <VerifiedBadge size={18} showLabel backgroundColor={colors.primary} />
         )}
       </View>
@@ -285,6 +294,16 @@ export default function ProfileScreen() {
           <Text style={[styles.verificationHint, styles.kycBlockDisclaimer, { color: colors.textSecondary }]}>
             O selo "Verificado" indica que o perfil ou anúncio passou por análise da equipe Adopet (fotos e dados). O Adopet não garante identidade, posse do animal ou sucesso da adoção. O encontro responsável com o tutor continua essencial.
           </Text>
+        </View>
+      ) : null}
+      {user?.kycStatus !== 'VERIFIED' && user?.kycStatus !== 'PENDING' && !user?.partner ? (
+        <View style={[styles.kycBlockWrap, { backgroundColor: colors.primary + '18' }]}>
+          <View style={[styles.kycPendingRow, { marginBottom: spacing.sm, backgroundColor: 'transparent' }]}>
+            <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} style={styles.kycPendingIcon} />
+            <Text style={[styles.kycPendingText, { color: colors.primary }]}>Verificação de identidade (KYC)</Text>
+            <Text style={[styles.kycPendingSubtext, { color: colors.textSecondary }]}>Submeta a selfie para liberar adoções</Text>
+          </View>
+          <SecondaryButton title="Solicitar verificação" onPress={() => router.push('/kyc')} />
         </View>
       ) : null}
       {user?.partnerMemberships && user.partnerMemberships.length > 0 ? (

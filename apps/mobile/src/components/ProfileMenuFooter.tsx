@@ -5,7 +5,7 @@ import { spacing } from '../theme';
 
 export function ProfileMenuFooter() {
   const { colors } = useTheme();
-  const version = Constants.expoConfig?.version ?? '1.0.40';
+  const version = Constants.expoConfig?.version ?? '1.1.1';
 
   return (
     <View style={styles.wrap}>

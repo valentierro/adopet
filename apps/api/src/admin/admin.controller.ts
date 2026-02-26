@@ -115,6 +115,12 @@ export class AdminController {
     return this.adminService.getPendingKyc();
   }
 
+  @Get('approved-kyc')
+  @ApiOperation({ summary: '[Admin] Listar usuários com KYC aprovado (sem fotos). q= busca por nome, email ou username.' })
+  async getApprovedKyc(@Query('q') q?: string) {
+    return this.adminService.getApprovedKyc(q);
+  }
+
   @Patch('users/:userId/kyc')
   @ApiOperation({ summary: '[Admin] Aprovar ou rejeitar KYC do usuário (status PENDING). Decisão humana; análise feita pela equipe.' })
   async updateUserKyc(
@@ -123,6 +129,25 @@ export class AdminController {
     @Body() body: { status: 'VERIFIED' | 'REJECTED'; rejectionReason?: string },
   ): Promise<{ message: string }> {
     return this.adminService.updateUserKyc(userId, body.status, adminUser.id, body.rejectionReason);
+  }
+
+  @Post('users/:userId/kyc/revoke')
+  @ApiOperation({ summary: '[Admin] Revogar KYC aprovado. Usuário volta ao estado inicial e pode solicitar novamente.' })
+  async revokeUserKyc(
+    @CurrentUser() adminUser: { id: string },
+    @Param('userId') userId: string,
+    @Body() body: { reason: string },
+  ): Promise<{ message: string }> {
+    return this.adminService.revokeUserKyc(userId, adminUser.id, body.reason ?? '');
+  }
+
+  @Post('kyc/bulk')
+  @ApiOperation({ summary: '[Admin] Aprovar ou rejeitar KYC em massa. Rejeitar exige rejectionReason (mesma para todos).' })
+  async bulkUpdateKyc(
+    @CurrentUser() adminUser: { id: string },
+    @Body() body: { userIds: string[]; status: 'VERIFIED' | 'REJECTED'; rejectionReason?: string },
+  ): Promise<{ processed: number; errors: string[] }> {
+    return this.adminService.bulkUpdateKyc(body.userIds, body.status, adminUser.id, body.rejectionReason);
   }
 
   @Get('users')

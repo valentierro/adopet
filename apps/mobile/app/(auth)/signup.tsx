@@ -35,7 +35,7 @@ import { submitKyc } from '../../src/api/me';
 import { checkEmailAvailable, checkDocumentAvailable } from '../../src/api/auth';
 
 const LogoSplash = require('../../assets/brand/logo/logo_splash.png');
-const APP_VERSION = Constants.expoConfig?.version ?? '1.1.0';
+const APP_VERSION = Constants.expoConfig?.version ?? '1.1.1';
 
 /** Mín. 6 caracteres, pelo menos uma letra e um número */
 const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d).{6,}$/;

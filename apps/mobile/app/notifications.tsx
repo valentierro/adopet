@@ -238,6 +238,9 @@ export default function NotificationsScreen() {
           break;
         case 'KYC_APPROVED':
         case 'KYC_REJECTED':
+        case 'KYC_REVOKED':
+          queryClient.invalidateQueries({ queryKey: ['me'] });
+          queryClient.invalidateQueries({ queryKey: ['me', 'kyc-status'] });
           router.push('/kyc');
           break;
         case 'VERIFICATION_APPROVED':
@@ -257,7 +260,7 @@ export default function NotificationsScreen() {
           break;
       }
     },
-    [selectionMode, markReadMutation, router],
+    [selectionMode, markReadMutation, router, queryClient],
   );
 
   const toggleSelectAll = useCallback(() => {

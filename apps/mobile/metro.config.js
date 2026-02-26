@@ -32,6 +32,13 @@ const originalResolveRequest = config.resolver.resolveRequest;
 const reactNativeMapsWebShim = path.resolve(projectRoot, 'shims/react-native-maps.web.js');
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   const name = typeof moduleName === 'string' ? moduleName : '';
+  // Resolver @expo/metro-runtime no monorepo pnpm (evita "not found" e code 1006)
+  if (name === '@expo/metro-runtime' || name.startsWith('@expo/metro-runtime/')) {
+    try {
+      const resolved = require.resolve(name, { paths: [projectRoot, monorepoRoot] });
+      if (resolved) return { filePath: resolved, type: 'sourceFile' };
+    } catch (_) {}
+  }
   if (platform === 'web' && (name === 'react-native-maps' || name.startsWith('react-native-maps/'))) {
     return { filePath: reactNativeMapsWebShim, type: 'sourceFile' };
   }

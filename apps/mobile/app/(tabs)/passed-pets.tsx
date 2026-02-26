@@ -272,6 +272,7 @@ export default function PassedPetsScreen() {
                       >
                         <Ionicons name="speedometer-outline" size={10} color="#fff" />
                         <Text style={styles.gridMatchBadgeText}>{pet.matchScore}%</Text>
+                        <Ionicons name="chevron-down" size={10} color="#fff" style={styles.gridMatchBadgeChevron} />
                       </TouchableOpacity>
                     )}
                     {pet.partner && (
@@ -353,6 +354,7 @@ export default function PassedPetsScreen() {
                       >
                         <Ionicons name="speedometer-outline" size={12} color="#fff" />
                         <Text style={styles.listMatchBadgeText}>{pet.matchScore}%</Text>
+                        <Ionicons name="chevron-down" size={12} color="#fff" style={styles.listMatchBadgeChevron} />
                       </TouchableOpacity>
                     )}
                     {pet.partner && (
@@ -518,6 +520,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   listMatchBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  listMatchBadgeChevron: { marginLeft: 2 },
   partnerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -571,6 +574,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   gridMatchBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  gridMatchBadgeChevron: { marginLeft: 2 },
   gridPartnerBadge: {
     flexDirection: 'row',
     alignItems: 'center',

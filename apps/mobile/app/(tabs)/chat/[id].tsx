@@ -13,6 +13,7 @@ import {
   Image,
   Modal,
   Pressable,
+  ScrollView,
 } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
@@ -31,6 +32,7 @@ import { createReport } from '../../../src/api/reports';
 import { blockUser } from '../../../src/api/blocks';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFriendlyErrorMessage, isKycRequiredError, isKycNotCompleteError, getApiErrorBodyMessage } from '../../../src/utils/errorMessage';
+import { getMatchScoreColor } from '../../../src/utils/matchScoreColor';
 import { trackEvent } from '../../../src/analytics';
 import { LoadingLogo, PrimaryButton, SecondaryButton, Toast, MatchScoreBadge, VerifiedBadge } from '../../../src/components';
 import { getMe } from '../../../src/api/me';
@@ -81,6 +83,50 @@ const USER_REPORT_REASONS = [
   { label: 'Outro', value: 'OTHER' },
 ];
 
+/** Checklist obrigatório para o tutor antes de confirmar adoção (resguarda o app e informa responsabilidades). */
+const ADOPTION_CHECKLIST_ITEMS: { key: string; label: string }[] = [
+  {
+    key: 'platform',
+    label:
+      'Entendo que o Adopet é uma plataforma de conexão entre tutores e interessados, e não se responsabiliza pela adoção em si, pela entrega do pet ou por quaisquer danos decorrentes.',
+  },
+  {
+    key: 'followup',
+    label:
+      'Comprometo-me a acompanhar o bem-estar do pet após a adoção e a manter contato com o adotante para esclarecer dúvidas sobre cuidados, saúde e adaptação.',
+  },
+  {
+    key: 'delivery',
+    label:
+      'Confirmo que realizei (ou que será feita em data combinada) a entrega do pet e que o adotante demonstrou condições adequadas para recebê-lo.',
+  },
+  {
+    key: 'process',
+    label:
+      'Estou ciente de que o adotante receberá um pedido para confirmar a adoção no app e que a adoção seguirá para validação da equipe Adopet.',
+  },
+];
+
+/** Checklist que o tutor deve marcar antes de confirmar adoção. Resguarda o app e informa responsabilidades. */
+const TUTOR_ADOPTION_CHECKLIST = [
+  {
+    id: 'liability',
+    text: 'Entendo que o Adopet é uma plataforma de conexão e não se responsabiliza pela adoção em si, pela entrega do pet ou por quaisquer danos decorrentes.',
+  },
+  {
+    id: 'followup',
+    text: 'Comprometo-me a acompanhar o bem-estar do pet após a adoção e manter contato com o adotante para esclarecer dúvidas sobre cuidados, saúde e adaptação.',
+  },
+  {
+    id: 'delivery',
+    text: 'Confirmo que realizei (ou realizarei em data combinada) a entrega do pet e que o adotante demonstrou condições adequadas para recebê-lo.',
+  },
+  {
+    id: 'process',
+    text: 'Estou ciente de que o adotante receberá um pedido para confirmar a adoção no app e que a adoção seguirá para validação da equipe Adopet.',
+  },
+];
+
 export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -92,6 +138,12 @@ export default function ChatRoomScreen() {
   const [fullScreenImageUri, setFullScreenImageUri] = useState<string | null>(null);
   const [savingPhoto, setSavingPhoto] = useState(false);
   const [reminderToast, setReminderToast] = useState<string | null>(null);
+  const [showMatchScoreModal, setShowMatchScoreModal] = useState(false);
+  const [matchSectionExpanded, setMatchSectionExpanded] = useState(true);
+  const [mismatchSectionExpanded, setMismatchSectionExpanded] = useState(true);
+  const [neutralSectionExpanded, setNeutralSectionExpanded] = useState(false);
+  const [showAdoptionChecklistModal, setShowAdoptionChecklistModal] = useState(false);
+  const [adoptionChecklist, setAdoptionChecklist] = useState<Record<string, boolean>>({});
 
   const resolveImageUri = useCallback((imageUrl: string) => {
     return imageUrl.startsWith('http')
@@ -544,14 +596,20 @@ export default function ChatRoomScreen() {
               ) : null}
             </View>
             {matchScoreData?.score != null ? (
-              <View style={styles.chatInfoBarMatch}>
+              <TouchableOpacity
+                style={styles.chatInfoBarMatch}
+                onPress={() => setShowMatchScoreModal(true)}
+                activeOpacity={0.8}
+                accessibilityLabel={`Match ${matchScoreData.score}% ${isTutorView ? 'com este adotante' : 'com você'}. Toque para ver detalhes.`}
+                accessibilityRole="button"
+              >
                 <MatchScoreBadge
                   data={matchScoreData}
                   size="medium"
-                  showTooltip={true}
                   contextLabel={isTutorView ? 'com este adotante' : 'com você'}
                 />
-              </View>
+                <Ionicons name="chevron-down" size={14} color={getMatchScoreColor(matchScoreData.score)} style={styles.chatMatchBadgeChevron} />
+              </TouchableOpacity>
             ) : null}
           </View>
         </View>
@@ -618,17 +676,8 @@ export default function ChatRoomScreen() {
                     );
                     return;
                   }
-                  Alert.alert(
-                    'Confirmar adoção',
-                    `Marcar este pet como adotado para ${otherUserName}? O anúncio sairá do feed e a pessoa receberá um pedido para confirmar a adoção no app.`,
-                    [
-                      { text: 'Cancelar', style: 'cancel' },
-                      {
-                        text: 'Confirmar',
-                        onPress: () => tutorConfirmAdoptionMutation.mutate(),
-                      },
-                    ],
-                  );
+                  setAdoptionChecklist({});
+                  setShowAdoptionChecklistModal(true);
                 }}
                 disabled={tutorConfirmAdoptionMutation.isPending}
               >
@@ -843,6 +892,191 @@ export default function ChatRoomScreen() {
         </Pressable>
       </Pressable>
     </Modal>
+
+      {showAdoptionChecklistModal && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setShowAdoptionChecklistModal(false)}>
+          <Pressable style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]} onPress={() => setShowAdoptionChecklistModal(false)}>
+            <Pressable
+              style={[styles.modalCard, styles.matchScoreModalCard, { backgroundColor: colors.surface, maxHeight: '85%' }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={[styles.matchScoreModalHeader, { backgroundColor: colors.primary + '20' }]}>
+                <Ionicons name="checkmark-done-outline" size={36} color={colors.primary} />
+                <Text style={[styles.matchScoreModalScore, { color: colors.primary, fontSize: 20 }]}>Antes de confirmar</Text>
+                <Text style={[styles.matchScoreModalSubtitle, { color: colors.textSecondary }]}>
+                  Marque todos os itens para prosseguir
+                </Text>
+              </View>
+              <ScrollView style={styles.matchScoreModalScroll} contentContainerStyle={styles.matchScoreModalScrollContent} showsVerticalScrollIndicator>
+                {ADOPTION_CHECKLIST_ITEMS.map((item) => (
+                  <TouchableOpacity
+                    key={item.key}
+                    style={[styles.adoptionChecklistRow, { borderColor: colors.textSecondary + '40' }]}
+                    onPress={() =>
+                      setAdoptionChecklist((prev) => ({ ...prev, [item.key]: !prev[item.key] }))
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <View
+                      style={[
+                        styles.adoptionChecklistBox,
+                        {
+                          borderColor: adoptionChecklist[item.key] ? colors.primary : colors.textSecondary + '60',
+                          backgroundColor: adoptionChecklist[item.key] ? colors.primary : 'transparent',
+                        },
+                      ]}
+                    >
+                      {adoptionChecklist[item.key] && (
+                        <Ionicons name="checkmark" size={16} color="#fff" />
+                      )}
+                    </View>
+                    <Text style={[styles.adoptionChecklistLabel, { color: colors.textPrimary }]}>{item.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <View style={styles.adoptionChecklistActions}>
+                <TouchableOpacity
+                  style={[styles.adoptionChecklistBtn, { borderColor: colors.textSecondary }]}
+                  onPress={() => setShowAdoptionChecklistModal(false)}
+                >
+                  <Text style={{ color: colors.textSecondary }}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.adoptionChecklistBtn,
+                    {
+                      backgroundColor: colors.primary,
+                      borderWidth: 0,
+                      opacity:
+                        ADOPTION_CHECKLIST_ITEMS.every((i) => adoptionChecklist[i.key]) ? 1 : 0.5,
+                    },
+                  ]}
+                  disabled={
+                    !ADOPTION_CHECKLIST_ITEMS.every((i) => adoptionChecklist[i.key]) ||
+                    tutorConfirmAdoptionMutation.isPending
+                  }
+                  onPress={() => {
+                    if (!ADOPTION_CHECKLIST_ITEMS.every((i) => adoptionChecklist[i.key])) return;
+                    setShowAdoptionChecklistModal(false);
+                    setAdoptionChecklist({});
+                    tutorConfirmAdoptionMutation.mutate();
+                  }}
+                >
+                  {tutorConfirmAdoptionMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={{ color: '#fff', fontWeight: '600' }}>Confirmar adoção para {otherUserName}</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
+
+      {showMatchScoreModal && matchScoreData && matchScoreData.score != null && (() => {
+        const criteria = matchScoreData.criteria ?? [];
+        const matchItems = criteria.length > 0
+          ? criteria.filter((c) => c.status === 'match').map((c) => c.message)
+          : (matchScoreData.highlights ?? []);
+        const mismatchItems = criteria.length > 0
+          ? criteria.filter((c) => c.status === 'mismatch').map((c) => c.message)
+          : (matchScoreData.concerns ?? []);
+        const neutralItems = criteria.length > 0
+          ? criteria.filter((c) => c.status === 'neutral').map((c) => c.message)
+          : [];
+        const hex = getMatchScoreColor(matchScoreData.score);
+        return (
+          <Modal visible transparent animationType="fade" onRequestClose={() => setShowMatchScoreModal(false)}>
+            <Pressable style={styles.modalOverlay} onPress={() => setShowMatchScoreModal(false)}>
+              <Pressable style={[styles.modalCard, styles.matchScoreModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+                <View style={[styles.matchScoreModalHeader, { backgroundColor: hex + '20' }]}>
+                  <View style={styles.matchScoreModalHeaderInner}>
+                    <Ionicons name="speedometer-outline" size={40} color={hex} style={styles.matchScoreModalHeaderIcon} />
+                    <Text style={[styles.matchScoreModalScore, { color: hex }]}>{matchScoreData.score}%</Text>
+                    <Text style={[styles.matchScoreModalSubtitle, { color: colors.textSecondary }]}>
+                      {isTutorView ? 'compatibilidade com este adotante' : 'compatibilidade com você'}
+                    </Text>
+                  </View>
+                </View>
+                <ScrollView style={styles.matchScoreModalScroll} contentContainerStyle={styles.matchScoreModalScrollContent} showsVerticalScrollIndicator={true} bounces={true}>
+                  {matchItems.length > 0 ? (
+                    <View style={styles.matchScoreModalSection}>
+                      <TouchableOpacity
+                        style={styles.matchScoreModalSectionHeader}
+                        onPress={() => setMatchSectionExpanded((e) => !e)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.matchScoreModalSectionTitle, { color: hex }]}>Pontos em comum</Text>
+                        <Text style={[styles.matchScoreModalSectionCount, { color: colors.textSecondary }]}>{matchItems.length}</Text>
+                        <Ionicons name={matchSectionExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                      {matchSectionExpanded && matchItems.map((msg, i) => (
+                        <View key={i} style={styles.matchScoreModalRow}>
+                          <View style={styles.matchScoreModalRowIcon}>
+                            <Ionicons name="checkmark-circle" size={18} color={hex} />
+                          </View>
+                          <Text style={[styles.matchScoreModalItem, { color: colors.textPrimary }]}>{String(msg).replace(/\n/g, ' ')}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                  {mismatchItems.length > 0 ? (
+                    <View style={styles.matchScoreModalSection}>
+                      <TouchableOpacity
+                        style={styles.matchScoreModalSectionHeader}
+                        onPress={() => setMismatchSectionExpanded((e) => !e)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.matchScoreModalSectionTitle, { color: colors.textSecondary }]}>Pontos de atenção</Text>
+                        <Text style={[styles.matchScoreModalSectionCount, { color: colors.textSecondary }]}>{mismatchItems.length}</Text>
+                        <Ionicons name={mismatchSectionExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                      {mismatchSectionExpanded && mismatchItems.map((msg, i) => (
+                        <View key={i} style={styles.matchScoreModalRow}>
+                          <View style={styles.matchScoreModalRowIcon}>
+                            <Ionicons name="information-circle-outline" size={18} color={colors.textSecondary} />
+                          </View>
+                          <Text style={[styles.matchScoreModalItem, { color: colors.textSecondary }]}>{String(msg).replace(/\n/g, ' ')}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                  {neutralItems.length > 0 ? (
+                    <View style={styles.matchScoreModalSection}>
+                      <TouchableOpacity
+                        style={styles.matchScoreModalSectionHeader}
+                        onPress={() => setNeutralSectionExpanded((e) => !e)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[styles.matchScoreModalSectionTitle, { color: colors.textSecondary }]}>Não informado no perfil</Text>
+                        <Text style={[styles.matchScoreModalSectionCount, { color: colors.textSecondary }]}>{neutralItems.length}</Text>
+                        <Ionicons name={neutralSectionExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                      {neutralSectionExpanded && neutralItems.map((msg, i) => (
+                        <View key={i} style={styles.matchScoreModalRow}>
+                          <View style={styles.matchScoreModalRowIcon}>
+                            <Ionicons name="help-circle-outline" size={18} color={colors.textSecondary} />
+                          </View>
+                          <Text style={[styles.matchScoreModalItem, { color: colors.textSecondary }]}>{String(msg).replace(/\n/g, ' ')}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                </ScrollView>
+                <TouchableOpacity
+                  style={[styles.matchScoreModalCloseBtn, { backgroundColor: hex }]}
+                  onPress={() => setShowMatchScoreModal(false)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.matchScoreModalCloseText}>Fechar</Text>
+                </TouchableOpacity>
+              </Pressable>
+            </Pressable>
+          </Modal>
+        );
+      })()}
+
     <Toast message={reminderToast} onHide={() => setReminderToast(null)} />
     </>
   );
@@ -953,7 +1187,125 @@ const styles = StyleSheet.create({
   chatInfoBarPetName: { fontSize: 14, marginTop: 1, fontWeight: '500' },
   chatInfoBarBasicInfo: { fontSize: 12, marginTop: 1, opacity: 0.95 },
   chatInfoBarProfileLine: { fontSize: 11, marginTop: 2, opacity: 0.9 },
-  chatInfoBarMatch: { marginLeft: spacing.xs },
+  chatInfoBarMatch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: spacing.xs,
+    gap: 2,
+  },
+  chatMatchBadgeChevron: { marginLeft: 2 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: 16,
+    padding: spacing.xl,
+    alignItems: 'center',
+  },
+  matchScoreModalCard: {
+    maxWidth: 340,
+    width: '100%',
+    alignItems: 'stretch',
+    maxHeight: '85%',
+  },
+  matchScoreModalHeader: {
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    borderRadius: 12,
+    marginBottom: spacing.md,
+    width: '100%',
+  },
+  matchScoreModalHeaderInner: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  matchScoreModalHeaderIcon: { marginBottom: spacing.sm },
+  matchScoreModalScore: { fontSize: 48, fontWeight: '700' },
+  matchScoreModalSubtitle: { fontSize: 13, marginTop: 4 },
+  matchScoreModalScroll: {
+    flexGrow: 1,
+    flexShrink: 1,
+    maxHeight: 320,
+    marginBottom: spacing.sm,
+    alignSelf: 'stretch',
+  },
+  matchScoreModalScrollContent: {
+    paddingBottom: spacing.sm,
+  },
+  matchScoreModalSection: {
+    marginBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.06)',
+    paddingBottom: spacing.sm,
+    alignItems: 'flex-start',
+    width: '100%',
+  },
+  matchScoreModalSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+  },
+  matchScoreModalSectionTitle: { fontSize: 14, fontWeight: '600', flex: 1 },
+  matchScoreModalSectionCount: { fontSize: 13 },
+  matchScoreModalRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm,
+    width: '100%',
+  },
+  matchScoreModalRowIcon: { width: 22, marginRight: spacing.sm },
+  matchScoreModalItem: { flex: 1, fontSize: 14, lineHeight: 20, textAlign: 'left' },
+  adoptionChecklistRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderBottomWidth: 1,
+    gap: spacing.sm,
+  },
+  adoptionChecklistBox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adoptionChecklistLabel: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  adoptionChecklistActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    marginTop: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  adoptionChecklistBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  matchScoreModalCloseBtn: {
+    alignSelf: 'stretch',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  matchScoreModalCloseText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   bubble: {
     maxWidth: '80%',
     padding: spacing.sm,

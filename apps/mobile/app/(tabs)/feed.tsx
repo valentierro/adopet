@@ -149,6 +149,8 @@ export default function FeedScreen() {
   const [triageFilters, setTriageFilters] = useState<FeedTriageFilters>({});
   const [showTriageModal, setShowTriageModal] = useState(false);
   const [triageModalRadiusKm, setTriageModalRadiusKm] = useState(300);
+  /** Raio para visitantes (sem prefs): aplicado ao feed quando não há userId */
+  const [guestRadiusKm, setGuestRadiusKm] = useState<number>(300);
   const [deckHeight, setDeckHeight] = useState<number>(0);
   const [changingFilter, setChangingFilter] = useState(false);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -255,15 +257,20 @@ export default function FeedScreen() {
   });
 
   useEffect(() => {
-    if (showTriageModal) setTriageModalRadiusKm(prefs?.radiusKm ?? 300);
-  }, [showTriageModal, prefs?.radiusKm]);
+    if (showTriageModal) {
+      if (userId && prefs?.radiusKm != null) setTriageModalRadiusKm(prefs.radiusKm);
+      else if (!userId) setTriageModalRadiusKm(guestRadiusKm);
+      else setTriageModalRadiusKm(300);
+    }
+  }, [showTriageModal, prefs?.radiusKm, userId, guestRadiusKm]);
 
+  const effectiveRadiusKm = userId ? (prefs?.radiusKm ?? 300) : guestRadiusKm;
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
-    queryKey: [...FEED_QUERY_KEY, cursor, prefs?.radiusKm, speciesFilter, partnerFilter, userCoords?.lat, userCoords?.lng, triageFilters, sortByTrending],
+    queryKey: [...FEED_QUERY_KEY, cursor, effectiveRadiusKm, speciesFilter, partnerFilter, userCoords?.lat, userCoords?.lng, triageFilters, sortByTrending],
     queryFn: () =>
       fetchFeed({
         ...(userCoords && { lat: userCoords.lat, lng: userCoords.lng }),
-        radiusKm: prefs?.radiusKm ?? 300,
+        radiusKm: effectiveRadiusKm,
         cursor: cursor ?? undefined,
         species: speciesFilter,
         partnerFilter: partnerFilter !== 'all' ? partnerFilter : undefined,
@@ -340,19 +347,24 @@ export default function FeedScreen() {
         AsyncStorage.getItem(storageKey).then((seen) => {
           if (seen !== '1') setShowMatchScoreIntroModal(true);
         });
-      } else {
-        AsyncStorage.getItem(ONBOARDING_SLIDES_SEEN_KEY).then((onboardingSeen) => {
-          if (onboardingSeen === '1' || onboardingSeen === 'true') {
-            setShowOnboardingSlidesSheet(false);
-            AsyncStorage.getItem(GUEST_WELCOME_SHEET_SEEN_KEY).then((welcomeSeen) => {
-              setShowGuestWelcomeSheet(welcomeSeen !== '1' && welcomeSeen !== 'true');
-            });
           } else {
-            setShowOnboardingSlidesSheet(true);
-            setShowGuestWelcomeSheet(false);
+            AsyncStorage.getItem(ONBOARDING_SLIDES_SEEN_KEY)
+              .then((onboardingSeen) => {
+                if (onboardingSeen === '1' || onboardingSeen === 'true') {
+                  setShowOnboardingSlidesSheet(false);
+                  AsyncStorage.getItem(GUEST_WELCOME_SHEET_SEEN_KEY).then((welcomeSeen) => {
+                    setShowGuestWelcomeSheet(welcomeSeen !== '1' && welcomeSeen !== 'true');
+                  });
+                } else {
+                  setShowOnboardingSlidesSheet(true);
+                  setShowGuestWelcomeSheet(false);
+                }
+              })
+              .catch(() => {
+                setShowOnboardingSlidesSheet(true);
+                setShowGuestWelcomeSheet(false);
+              });
           }
-        });
-      }
     }, [refetch, userId]),
   );
 
@@ -975,7 +987,7 @@ export default function FeedScreen() {
           <Pressable style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]} onPress={() => setShowTriageModal(false)}>
             <Pressable style={[styles.triageModalContent, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
               <Text style={[styles.triageModalTitle, { color: colors.textPrimary }]}>Filtros do feed</Text>
-              {userId ? (
+              {userCoords ? (
                 <>
                   <Text style={[styles.triageLabel, { color: colors.textSecondary }]}>Raio (km)</Text>
                   <View style={styles.triageRow}>
@@ -1156,25 +1168,29 @@ export default function FeedScreen() {
                   style={[styles.triageModalBtn, { backgroundColor: colors.primary }]}
                   disabled={updateRadiusMutation.isPending}
                   onPress={() => {
-                    const currentRadius = prefs?.radiusKm ?? 300;
-                    const radiusChanged = userId && triageModalRadiusKm !== currentRadius;
                     const closeAndApplyFilters = () => {
                       setShowTriageModal(false);
                       setCursor(null);
                       setAccumulatedItems(null);
                       setChangingFilter(true);
                     };
-                    if (radiusChanged) {
-                      updateRadiusMutation.mutate(triageModalRadiusKm, {
-                        onSuccess: closeAndApplyFilters,
-                        onError: () => {
-                          closeAndApplyFilters();
-                          Alert.alert('Erro', 'Não foi possível salvar o raio. Tente novamente.');
-                        },
-                      });
+                    if (userId) {
+                      const currentRadius = prefs?.radiusKm ?? 300;
+                      const radiusChanged = triageModalRadiusKm !== currentRadius;
+                      if (radiusChanged) {
+                        updateRadiusMutation.mutate(triageModalRadiusKm, {
+                          onSuccess: closeAndApplyFilters,
+                          onError: () => {
+                            closeAndApplyFilters();
+                            Alert.alert('Erro', 'Não foi possível salvar o raio. Tente novamente.');
+                          },
+                        });
+                        return;
+                      }
                     } else {
-                      closeAndApplyFilters();
+                      setGuestRadiusKm(triageModalRadiusKm);
                     }
+                    closeAndApplyFilters();
                   }}
                 >
                   <Text style={{ color: '#fff', fontWeight: '600' }}>

@@ -1,6 +1,6 @@
 {
   "name": "mobile",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "main": "index.js",
   "expo": {
@@ -17,6 +17,8 @@
   "scripts": {
     "postinstall": "node scripts/patch-expo-router-getDevServer.js",
     "dev": "expo start",
+    "dev:logs": "EXPO_DEBUG=1 DEBUG=* expo start",
+    "dev:ios-logs": "npx react-native log-ios",
     "dev:clear": "expo start --clear",
     "reset-cache": "node scripts/patch-expo-router-getDevServer.js && rm -rf .expo node_modules/.cache 2>/dev/null; expo start --clear",
     "android": "expo run:android",
@@ -38,7 +40,7 @@
     "@react-navigation/native": "^7.1.28",
     "@react-navigation/native-stack": "^7.12.0",
     "@sentry/react-native": "^7.12.1",
-    "@shopify/flash-list": "^2.2.2",
+    "@shopify/flash-list": "^2.0.2",
     "@tanstack/query-async-storage-persister": "^5.59.0",
     "@tanstack/react-query": "^5.59.0",
     "@tanstack/react-query-persist-client": "^5.59.0",

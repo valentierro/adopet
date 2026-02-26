@@ -142,6 +142,14 @@ describe('computeMatchScore', () => {
     expect(result.concerns.some((c) => c.includes('concordem') || c.includes('casa'))).toBe(true);
   });
 
+  it('householdAgrees: adotante YES quando pet prefere DISCUSSING dá match', () => {
+    const adopter: AdopterProfile = { householdAgreesToAdoption: 'YES' };
+    const pet: PetTutorPreferences = { preferredTutorHouseholdAgrees: 'DISCUSSING' };
+    const result = computeMatchScore(adopter, pet);
+    expect(result.score).toBe(100);
+    expect(result.highlights.some((h) => h.includes('concordam') || h.includes('supera'))).toBe(true);
+  });
+
   it('score fica entre 0 e 100', () => {
     const adopter: AdopterProfile = { housingType: 'CASA', hasYard: true, hasOtherPets: true };
     const pet: PetTutorPreferences = {

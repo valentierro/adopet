@@ -8,13 +8,21 @@ const KEY_REFRESH = 'adopet_refresh_token';
 const isWeb = Platform.OS === 'web';
 
 export async function getStoredAccessToken(): Promise<string | null> {
-  if (isWeb) return AsyncStorage.getItem(KEY_ACCESS);
-  return SecureStore.getItemAsync(KEY_ACCESS);
+  try {
+    if (isWeb) return await AsyncStorage.getItem(KEY_ACCESS);
+    return await SecureStore.getItemAsync(KEY_ACCESS);
+  } catch {
+    return null;
+  }
 }
 
 export async function getStoredRefreshToken(): Promise<string | null> {
-  if (isWeb) return AsyncStorage.getItem(KEY_REFRESH);
-  return SecureStore.getItemAsync(KEY_REFRESH);
+  try {
+    if (isWeb) return await AsyncStorage.getItem(KEY_REFRESH);
+    return await SecureStore.getItemAsync(KEY_REFRESH);
+  } catch {
+    return null;
+  }
 }
 
 export async function setStoredTokens(access: string, refresh: string): Promise<void> {
@@ -31,16 +39,30 @@ export async function setStoredTokens(access: string, refresh: string): Promise<
   ]);
 }
 
+/** Timeout para clear no iOS — SecureStore pode travar. */
+const CLEAR_TIMEOUT_MS = 3000;
+
+/** Remove tokens do storage. Nunca lança — falhas no iOS SecureStore são ignoradas. */
 export async function clearStoredTokens(): Promise<void> {
-  if (isWeb) {
+  const clear = async () => {
+    if (isWeb) {
+      await Promise.all([
+        AsyncStorage.removeItem(KEY_ACCESS),
+        AsyncStorage.removeItem(KEY_REFRESH),
+      ]);
+      return;
+    }
     await Promise.all([
-      AsyncStorage.removeItem(KEY_ACCESS),
-      AsyncStorage.removeItem(KEY_REFRESH),
+      SecureStore.deleteItemAsync(KEY_ACCESS),
+      SecureStore.deleteItemAsync(KEY_REFRESH),
     ]);
-    return;
+  };
+  try {
+    await Promise.race([
+      clear(),
+      new Promise<void>((resolve) => setTimeout(resolve, CLEAR_TIMEOUT_MS)),
+    ]);
+  } catch {
+    // iOS SecureStore pode falhar após logout; ignorar para evitar crash
   }
-  await Promise.all([
-    SecureStore.deleteItemAsync(KEY_ACCESS),
-    SecureStore.deleteItemAsync(KEY_REFRESH),
-  ]);
 }

@@ -548,6 +548,99 @@ export class AdminService {
     };
   }
 
+  /** Lista usuários com KYC aprovado (sem fotos). Busca opcional por nome, email ou username. */
+  async getApprovedKyc(q?: string): Promise<
+    Array<{ userId: string; name: string; email: string; username?: string | null; kycVerifiedAt: string }>
+  > {
+    const search = q?.trim();
+    const where = {
+      kycStatus: 'VERIFIED' as const,
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search, mode: 'insensitive' as const } },
+              { email: { contains: search, mode: 'insensitive' as const } },
+              { username: { contains: search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+    const users = await this.prisma.user.findMany({
+      where,
+      select: { id: true, name: true, email: true, username: true, kycVerifiedAt: true },
+      orderBy: { kycVerifiedAt: 'desc' },
+    });
+    return users.map((u) => ({
+      userId: u.id,
+      name: u.name,
+      email: u.email,
+      username: u.username ?? null,
+      kycVerifiedAt: u.kycVerifiedAt?.toISOString() ?? '',
+    }));
+  }
+
+  /** Revoga o KYC aprovado de um usuário. Volta ao estado inicial (sem KYC); usuário pode solicitar novamente. Notifica in-app com a justificativa. */
+  async revokeUserKyc(userId: string, adminUserId: string, reason: string): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, kycStatus: true, name: true },
+    });
+    if (!user) throw new NotFoundException('Usuário não encontrado.');
+    if (user.kycStatus !== 'VERIFIED') {
+      throw new BadRequestException(
+        `KYC do usuário não está aprovado (status atual: ${user.kycStatus ?? 'nunca enviou'}).`,
+      );
+    }
+    const reasonTrim = reason?.trim() || 'Verificação revogada pela equipe.';
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        kycStatus: null,
+        kycVerifiedAt: null,
+        kycRejectedAt: null,
+        kycRejectionReason: null,
+        kycDecidedBy: adminUserId,
+        kycDecidedAt: new Date(),
+      },
+    });
+    await this.inAppNotificationsService
+      .create(
+        userId,
+        IN_APP_NOTIFICATION_TYPES.KYC_REVOKED,
+        'Verificação de identidade revogada',
+        `Sua verificação de identidade foi revogada: ${reasonTrim} Você pode solicitar novamente em Perfil → Verificação de identidade.`,
+        undefined,
+        { screen: 'kyc' },
+      )
+      .catch((e) => console.warn('[AdminService] KYC revoked in-app notification failed', e));
+    return { message: 'KYC revogado. O usuário foi notificado e pode solicitar novamente.' };
+  }
+
+  /** Aprovar ou rejeitar KYC em massa. Para rejeitar, rejectionReason é obrigatório (mesma justificativa para todos). Envia in-app por usuário. */
+  async bulkUpdateKyc(
+    userIds: string[],
+    status: 'VERIFIED' | 'REJECTED',
+    adminUserId: string,
+    rejectionReason?: string,
+  ): Promise<{ processed: number; errors: string[] }> {
+    if (status === 'REJECTED' && !rejectionReason?.trim()) {
+      throw new BadRequestException('Informe o motivo da rejeição para notificar os solicitantes.');
+    }
+    const ids = [...new Set(userIds)].filter(Boolean);
+    const errors: string[] = [];
+    let processed = 0;
+    for (const userId of ids) {
+      try {
+        await this.updateUserKyc(userId, status, adminUserId, rejectionReason);
+        processed++;
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        errors.push(`${userId}: ${msg}`);
+      }
+    }
+    return { processed, errors };
+  }
+
   /** Retorna o id do usuário "Sistema" usado em adoções auto-aprovadas após 48h. Cria se não existir. */
   async getOrCreateSystemUser(): Promise<string> {
     const email =

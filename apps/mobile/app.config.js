@@ -3,7 +3,7 @@
 const baseExpo = {
   name: 'Adopet',
   slug: 'adopet',
-  version: '1.1.0',
+  version: '1.1.1',
   orientation: 'portrait',
   icon: './assets/brand/icon/app_icon_light.png',
   userInterfaceStyle: 'automatic',
@@ -30,8 +30,8 @@ const baseExpo = {
       backgroundColor: '#FFFFFF',
     },
     package: 'br.com.adopet.app',
-    // Último publicado na Play Store: 50. Cada novo upload precisa de versionCode maior.
-    versionCode: 50,
+    // Último publicado na Play Store: 52. Cada novo upload precisa de versionCode maior.
+    versionCode: 52,
     intentFilters: [
       {
         action: 'VIEW',

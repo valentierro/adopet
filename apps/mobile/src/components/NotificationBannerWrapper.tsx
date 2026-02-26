@@ -42,6 +42,7 @@ function routeForNotification(router: ReturnType<typeof useRouter>, n: InAppNoti
       break;
     case 'KYC_APPROVED':
     case 'KYC_REJECTED':
+    case 'KYC_REVOKED':
       router.push('/kyc');
       break;
     case 'VERIFICATION_APPROVED':
@@ -100,10 +101,14 @@ export function NotificationBannerWrapper() {
 
   const handleBannerPress = useCallback(
     (n: InAppNotificationItem) => {
+      if (n.type === 'KYC_REVOKED' || n.type === 'KYC_APPROVED' || n.type === 'KYC_REJECTED') {
+        queryClient.invalidateQueries({ queryKey: ['me'] });
+        queryClient.invalidateQueries({ queryKey: ['me', 'kyc-status'] });
+      }
       routeForNotification(router, n);
       handleClose(n.id);
     },
-    [router, handleClose],
+    [router, handleClose, queryClient],
   );
 
   const goToNotifications = useCallback(() => {

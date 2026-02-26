@@ -47,7 +47,7 @@ const REASONS = [
   null,
 ];
 
-function pick<T>(arr: T[]): T {
+function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
@@ -126,6 +126,28 @@ function placeholderPhotoForSpecies(species: string, petId: string): string {
   const safe = String(petId).replace(/[^a-zA-Z0-9-]/g, '');
   const seed = (species === 'DOG' ? 'dog-' : 'cat-') + (safe || 'pet');
   return `https://picsum.photos/seed/${seed}/${PICSUM_SIZE}/${PICSUM_SIZE}`;
+}
+
+/** URL de logo placeholder para parceiros (picsum.photos por slug para consistência). */
+function seedPartnerLogoUrl(slug: string): string {
+  const safe = String(slug).replace(/[^a-zA-Z0-9-]/g, '');
+  return `https://picsum.photos/seed/partner-${safe || 'logo'}/200/200`;
+}
+
+/** Atribui logo placeholder a todos os parceiros sem logoUrl. */
+async function assignPlaceholderLogosToPartners() {
+  const partnersWithoutLogo = await prisma.partner.findMany({
+    where: { OR: [{ logoUrl: null }, { logoUrl: '' }] },
+    select: { id: true, name: true, slug: true },
+  });
+  if (partnersWithoutLogo.length === 0) return;
+  console.log(`Atribuindo logos a ${partnersWithoutLogo.length} parceiro(s) sem logo...`);
+  for (const p of partnersWithoutLogo) {
+    const logoUrl = seedPartnerLogoUrl(p.slug);
+    await prisma.partner.update({ where: { id: p.id }, data: { logoUrl } });
+    console.log(`  ${p.name} → logo adicionada`);
+  }
+  console.log(`Pronto. ${partnersWithoutLogo.length} parceiro(s) com logo.`);
 }
 
 /** Atribui uma foto placeholder (cachorro/gato conforme espécie) a todos os pets sem nenhuma mídia. */
@@ -697,7 +719,7 @@ const SEED_PARTNERS_COMERCIAL: Array<{
   },
 ];
 
-/** Cupons de exemplo por slug do parceiro (comercial). */
+/** Cupons de exemplo por slug do parceiro (comercial + ONG). */
 const SEED_COUPONS: Array<{
   partnerSlug: string;
   code: string;
@@ -707,15 +729,32 @@ const SEED_COUPONS: Array<{
   discountValue: number;
   validUntilDays?: number;
 }> = [
+  // Clínica Vet Recife
   { partnerSlug: 'clinica-vet-recife', code: 'ADOPET15', title: '15% na primeira consulta', description: 'Válido para novos clientes', discountType: 'PERCENT', discountValue: 15, validUntilDays: 90 },
   { partnerSlug: 'clinica-vet-recife', code: 'BANHO10', title: '10% em banho e tosa', discountType: 'PERCENT', discountValue: 10, validUntilDays: 60 },
+  { partnerSlug: 'clinica-vet-recife', code: 'VACINA20', title: '20% em vacinas', description: 'V8, V10 e antirrábica', discountType: 'PERCENT', discountValue: 20, validUntilDays: 90 },
+  { partnerSlug: 'clinica-vet-recife', code: 'CASTRACAO50', title: 'R$ 50 de desconto em castração', description: 'Para pets adotados via Adopet', discountType: 'FIXED', discountValue: 5000, validUntilDays: 180 },
+  { partnerSlug: 'clinica-vet-recife', code: 'CHECKUP30', title: '30% em check-up completo', discountType: 'PERCENT', discountValue: 30, validUntilDays: 60 },
+  // Pet Shop Animais Felizes
   { partnerSlug: 'pet-shop-animais-felizes', code: 'RACAO20', title: '20% em ração', description: 'Marcas selecionadas', discountType: 'PERCENT', discountValue: 20, validUntilDays: 120 },
   { partnerSlug: 'pet-shop-animais-felizes', code: 'FRETE0', title: 'Frete grátis', description: 'Compras acima de R$ 99', discountType: 'FIXED', discountValue: 0, validUntilDays: 60 },
+  { partnerSlug: 'pet-shop-animais-felizes', code: 'PRIMEIRACOMPRA15', title: '15% na primeira compra', description: 'Para novos clientes', discountType: 'PERCENT', discountValue: 15, validUntilDays: 90 },
+  { partnerSlug: 'pet-shop-animais-felizes', code: 'BRINQUEDOS25', title: '25% em brinquedos', discountType: 'PERCENT', discountValue: 25, validUntilDays: 45 },
+  { partnerSlug: 'pet-shop-animais-felizes', code: 'REMEDIO10', title: '10% em medicamentos', description: 'Vermífugos e antipulgas', discountType: 'PERCENT', discountValue: 10, validUntilDays: 90 },
+  // Clínica Vet Amigo (seed)
   { partnerSlug: 'clinica-vet-amigo-seed', code: 'SEED10', title: '10% em qualquer serviço', description: 'Cupom de teste (seed)', discountType: 'PERCENT', discountValue: 10, validUntilDays: 365 },
   { partnerSlug: 'clinica-vet-amigo-seed', code: 'SEED20REAIS', title: 'R$ 20 de desconto', discountType: 'FIXED', discountValue: 2000, validUntilDays: 365 },
+  { partnerSlug: 'clinica-vet-amigo-seed', code: 'BANHOTOSA15', title: '15% em banho e tosa', discountType: 'PERCENT', discountValue: 15, validUntilDays: 365 },
+  { partnerSlug: 'clinica-vet-amigo-seed', code: 'CONSULTA50', title: 'R$ 50 na consulta', description: 'Consulta de rotina', discountType: 'FIXED', discountValue: 5000, validUntilDays: 365 },
+  // ONGs (parceiros podem oferecer descontos em parceiros comerciais ou serviços próprios)
+  { partnerSlug: 'instituto-amor-de-patas', code: 'ADOPETONG5', title: '5% em doações', description: 'Apoie nossa ONG', discountType: 'PERCENT', discountValue: 5, validUntilDays: 365 },
+  { partnerSlug: 'instituto-amor-de-patas', code: 'CASTRAÇÃO20', title: '20% em castração', description: 'Parceria com clínicas conveniadas', discountType: 'PERCENT', discountValue: 20, validUntilDays: 180 },
+  { partnerSlug: 'patinhas-pernambuco', code: 'PATINHAS10', title: '10% em ração', description: 'Para tutores de pets adotados', discountType: 'PERCENT', discountValue: 10, validUntilDays: 120 },
+  { partnerSlug: 'patinhas-pernambuco', code: 'BANHOGRATIS', title: 'Banho grátis', description: 'Primeiro banho para pet adotado', discountType: 'FIXED', discountValue: 0, validUntilDays: 365 },
+  { partnerSlug: 'lar-temporario-pe', code: 'LAR5', title: '5% em medicamentos', description: 'Parceria com farmácias veterinárias', discountType: 'PERCENT', discountValue: 5, validUntilDays: 90 },
 ];
 
-/** Serviços prestados por parceiro (slug) para exibir na página do parceiro. */
+/** Serviços prestados por parceiro (slug) para exibir na página do parceiro e marketplace. */
 const SEED_SERVICES: Array<{
   partnerSlug: string;
   name: string;
@@ -723,13 +762,30 @@ const SEED_SERVICES: Array<{
   priceDisplay?: string;
   validUntilDays?: number;
 }> = [
+  // Clínica Vet Recife
   { partnerSlug: 'clinica-vet-recife', name: 'Consulta veterinária', description: 'Consulta clínica para cães e gatos', priceDisplay: 'A partir de R$ 80' },
   { partnerSlug: 'clinica-vet-recife', name: 'Banho e tosa', description: 'Banho completo e tosa higiênica', priceDisplay: 'A partir de R$ 50' },
   { partnerSlug: 'clinica-vet-recife', name: 'Vacinação', description: 'Aplicação de vacinas (V8, V10, antirrábica)', priceDisplay: 'Sob consulta' },
+  { partnerSlug: 'clinica-vet-recife', name: 'Castração', description: 'Cirurgia de castração para cães e gatos', priceDisplay: 'A partir de R$ 150' },
+  { partnerSlug: 'clinica-vet-recife', name: 'Exames laboratoriais', description: 'Hemograma, parasitológico e bioquímicos', priceDisplay: 'Sob consulta' },
+  { partnerSlug: 'clinica-vet-recife', name: 'Internação', description: 'Internação com acompanhamento 24h', priceDisplay: 'Diária sob consulta' },
+  // Pet Shop Animais Felizes
   { partnerSlug: 'pet-shop-animais-felizes', name: 'Banho', description: 'Banho para cães e gatos', priceDisplay: 'A partir de R$ 35' },
   { partnerSlug: 'pet-shop-animais-felizes', name: 'Hidratação', description: 'Hidratação capilar para pets', priceDisplay: 'R$ 25' },
+  { partnerSlug: 'pet-shop-animais-felizes', name: 'Tosa', description: 'Tosa completa ou higiênica', priceDisplay: 'A partir de R$ 45' },
+  { partnerSlug: 'pet-shop-animais-felizes', name: 'Cortar unhas', description: 'Manicure pet', priceDisplay: 'R$ 15' },
+  { partnerSlug: 'pet-shop-animais-felizes', name: 'Day care', description: 'Hotel para pets durante o dia', priceDisplay: 'R$ 50/dia' },
+  // Clínica Vet Amigo (seed)
   { partnerSlug: 'clinica-vet-amigo-seed', name: 'Consulta', description: 'Consulta de rotina (seed)', priceDisplay: 'Sob consulta' },
   { partnerSlug: 'clinica-vet-amigo-seed', name: 'Banho e tosa', description: 'Banho + tosa (seed)', priceDisplay: 'A partir de R$ 45', validUntilDays: 365 },
+  { partnerSlug: 'clinica-vet-amigo-seed', name: 'Vacinação', description: 'Aplicação de vacinas', priceDisplay: 'Sob consulta', validUntilDays: 365 },
+  { partnerSlug: 'clinica-vet-amigo-seed', name: 'Castração', description: 'Cirurgia de castração', priceDisplay: 'A partir de R$ 120', validUntilDays: 365 },
+  // ONGs (serviços sociais ou parcerias)
+  { partnerSlug: 'instituto-amor-de-patas', name: 'Orientação para adoção', description: 'Conversa com nossa equipe sobre adoção responsável', priceDisplay: 'Gratuito' },
+  { partnerSlug: 'instituto-amor-de-patas', name: 'Castração social', description: 'Castração com preço popular para baixa renda', priceDisplay: 'Sob análise' },
+  { partnerSlug: 'patinhas-pernambuco', name: 'Banho beneficente', description: 'Banho a preço social, renda para a ONG', priceDisplay: 'R$ 20' },
+  { partnerSlug: 'patinhas-pernambuco', name: 'Evento de adoção', description: 'Visite nossos eventos presenciais', priceDisplay: 'Gratuito' },
+  { partnerSlug: 'lar-temporario-pe', name: 'Visita ao lar temporário', description: 'Agende visita para conhecer nossos pets', priceDisplay: 'Gratuito' },
 ];
 
 async function seedPartners() {
@@ -856,6 +912,112 @@ async function seedPartnerServices() {
     });
     console.log('Serviço criado:', s.name, 'para', s.partnerSlug);
   }
+}
+
+/** Valores válidos para preferências de tutor do pet (match score). */
+const PET_PREF_HOUSING = ['CASA', 'APARTAMENTO', 'INDIFERENTE'] as const;
+const PET_PREF_SIM_NAO = ['SIM', 'NAO', 'INDIFERENTE'] as const;
+const PET_PREF_TIME = ['MOST_DAY', 'HALF_DAY', 'LITTLE', 'INDIFERENTE'] as const;
+const PET_PREF_PETS_ALLOWED = ['YES', 'NO', 'UNSURE'] as const;
+const PET_PREF_EXPERIENCE = ['NEVER', 'HAD_BEFORE', 'HAVE_NOW'] as const;
+const PET_PREF_HOUSEHOLD = ['YES', 'DISCUSSING'] as const;
+const PET_PREF_WALK = ['DAILY', 'FEW_TIMES_WEEK', 'RARELY', 'INDIFERENTE'] as const;
+const PET_ENERGY = ['LOW', 'MEDIUM', 'HIGH'] as const;
+const PET_GOOD_WITH = ['YES', 'NO', 'UNKNOWN'] as const;
+const PET_TEMPERAMENT = ['CALM', 'PLAYFUL', 'SHY', 'SOCIABLE', 'INDEPENDENT'] as const;
+
+/** Preenche preferências de tutor nos pets aleatoriamente (para testar match score). ~70% dos pets recebem preferências. */
+async function seedPetPreferencesForMatch() {
+  const pets = await prisma.pet.findMany({
+    where: { publicationStatus: 'APPROVED', status: 'AVAILABLE' },
+    select: { id: true, name: true, species: true },
+  });
+  if (pets.length === 0) return;
+  let updated = 0;
+  for (const pet of pets) {
+    if (Math.random() > 0.7) continue; // 70% recebem preferências
+    const data: Record<string, unknown> = {};
+    if (Math.random() < 0.6) data.preferredTutorHousingType = pick(PET_PREF_HOUSING);
+    if (Math.random() < 0.5) data.preferredTutorHasYard = pick(PET_PREF_SIM_NAO);
+    if (Math.random() < 0.5) data.preferredTutorHasOtherPets = pick(PET_PREF_SIM_NAO);
+    if (Math.random() < 0.5) data.preferredTutorHasChildren = pick(PET_PREF_SIM_NAO);
+    if (Math.random() < 0.5) data.preferredTutorTimeAtHome = pick(PET_PREF_TIME);
+    if (Math.random() < 0.4) data.preferredTutorPetsAllowedAtHome = pick(PET_PREF_PETS_ALLOWED);
+    if (Math.random() < 0.5) data.preferredTutorDogExperience = pick(PET_PREF_EXPERIENCE);
+    if (Math.random() < 0.5) data.preferredTutorCatExperience = pick(PET_PREF_EXPERIENCE);
+    if (Math.random() < 0.5) data.preferredTutorHouseholdAgrees = pick(PET_PREF_HOUSEHOLD);
+    if (Math.random() < 0.5) data.preferredTutorWalkFrequency = pick(PET_PREF_WALK);
+    if (Math.random() < 0.3) data.hasOngoingCosts = Math.random() < 0.5;
+    if (Math.random() < 0.6) data.energyLevel = pick(PET_ENERGY);
+    if (pet.species === 'DOG' && Math.random() < 0.4) data.goodWithDogs = pick(PET_GOOD_WITH);
+    if (Math.random() < 0.4) data.goodWithCats = pick(PET_GOOD_WITH);
+    if (Math.random() < 0.5) data.goodWithChildren = pick(PET_GOOD_WITH);
+    if (Math.random() < 0.5) data.temperament = pick(PET_TEMPERAMENT);
+    if (Object.keys(data).length === 0) continue;
+    await prisma.pet.update({ where: { id: pet.id }, data: data as object });
+    updated++;
+  }
+  console.log(`Preferências de tutor preenchidas em ${updated} pet(s) para testar match score.`);
+}
+
+/** Valores válidos para perfil de usuário (match score). */
+const USER_HOUSING = ['CASA', 'APARTAMENTO'] as const;
+const USER_TIME = ['MOST_DAY', 'HALF_DAY', 'LITTLE'] as const;
+const USER_PETS_ALLOWED = ['YES', 'NO', 'UNSURE'] as const;
+const USER_EXPERIENCE = ['NEVER', 'HAD_BEFORE', 'HAVE_NOW'] as const;
+const USER_HOUSEHOLD = ['YES', 'DISCUSSING'] as const;
+const USER_ACTIVITY = ['LOW', 'MEDIUM', 'HIGH'] as const;
+const USER_PET_AGE = ['PUPPY', 'ADULT', 'SENIOR', 'ANY'] as const;
+const USER_WALK = ['DAILY', 'FEW_TIMES_WEEK', 'RARELY', 'NOT_APPLICABLE'] as const;
+const USER_BUDGET = ['LOW', 'MEDIUM', 'HIGH'] as const;
+const PREF_SIZE = ['BOTH', 'small', 'medium', 'large', 'xlarge'] as const;
+const PREF_SEX = ['BOTH', 'male', 'female'] as const;
+const PREF_SPECIES = ['DOG', 'CAT', 'BOTH'] as const;
+
+/** Preenche perfis de usuário e UserPreferences aleatoriamente (para testar match score). */
+async function seedUserProfilesForMatch() {
+  const users = await prisma.user.findMany({
+    where: { deactivatedAt: null },
+    select: { id: true, name: true },
+  });
+  if (users.length === 0) return;
+  let userUpdated = 0;
+  let prefsUpdated = 0;
+  for (const user of users) {
+    const data: Record<string, unknown> = {};
+    if (Math.random() < 0.6) data.housingType = pick(USER_HOUSING);
+    if (Math.random() < 0.5) data.hasYard = Math.random() < 0.5;
+    if (Math.random() < 0.5) data.hasOtherPets = Math.random() < 0.4;
+    if (Math.random() < 0.5) data.hasChildren = Math.random() < 0.3;
+    if (Math.random() < 0.5) data.timeAtHome = pick(USER_TIME);
+    if (Math.random() < 0.5) data.petsAllowedAtHome = pick(USER_PETS_ALLOWED);
+    if (Math.random() < 0.5) data.dogExperience = pick(USER_EXPERIENCE);
+    if (Math.random() < 0.5) data.catExperience = pick(USER_EXPERIENCE);
+    if (Math.random() < 0.5) data.householdAgreesToAdoption = pick(USER_HOUSEHOLD);
+    if (Math.random() < 0.5) data.activityLevel = pick(USER_ACTIVITY);
+    if (Math.random() < 0.5) data.preferredPetAge = pick(USER_PET_AGE);
+    if (Math.random() < 0.6) data.commitsToVetCare = Math.random() < 0.95;
+    if (Math.random() < 0.5) data.walkFrequency = pick(USER_WALK);
+    if (Math.random() < 0.5) data.monthlyBudgetForPet = pick(USER_BUDGET);
+    if (Object.keys(data).length > 0) {
+      await prisma.user.update({ where: { id: user.id }, data: data as object });
+      userUpdated++;
+    }
+    // UserPreferences (sizePref, sexPref, species)
+    const prefsData: { sizePref?: string; sexPref?: string; species?: string } = {};
+    if (Math.random() < 0.5) prefsData.sizePref = pick(PREF_SIZE);
+    if (Math.random() < 0.5) prefsData.sexPref = pick(PREF_SEX);
+    if (Math.random() < 0.3) prefsData.species = pick(PREF_SPECIES);
+    if (Object.keys(prefsData).length > 0) {
+      await prisma.userPreferences.upsert({
+        where: { userId: user.id },
+        update: prefsData,
+        create: { userId: user.id, species: prefsData.species ?? 'BOTH', radiusKm: 50, ...prefsData },
+      });
+      prefsUpdated++;
+    }
+  }
+  console.log(`Perfis preenchidos em ${userUpdated} usuário(s), preferências em ${prefsUpdated} para testar match score.`);
 }
 
 /**
@@ -1056,7 +1218,7 @@ async function main() {
   try {
     // Usuário parceiro comercial para testar portal (parceiro@adopet.com.br)
     await seedParceiroComercialUser();
-    // Cupons e serviços dos parceiros comerciais (visíveis na página do parceiro)
+    // Cupons e serviços dos parceiros comerciais (visíveis na página do parceiro e marketplace)
     await seedPartnerCoupons();
     await seedPartnerServices();
   } catch (e: unknown) {
@@ -1108,6 +1270,13 @@ async function main() {
 
   // Garante que todo pet sem foto receba uma (cachorro ou gato conforme espécie)
   await assignPlaceholderPhotosToPetsWithoutMedia();
+
+  // Logos de parceiros sem logo
+  await assignPlaceholderLogosToPartners();
+
+  // Preferências de pets e perfis de usuários para testar match score
+  await seedPetPreferencesForMatch();
+  await seedUserProfilesForMatch();
 
   console.log('Seed concluído.');
   console.log('  Login admin: admin@adopet.com.br / ' + SEED_PASSWORD);

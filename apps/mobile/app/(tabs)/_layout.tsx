@@ -59,6 +59,7 @@ export default function TabsLayout() {
   const { data: conversationsData } = useQuery({
     queryKey: ['conversations'],
     queryFn: getConversations,
+    enabled: !isGuest,
   });
   const { data: adminStats } = useQuery({
     queryKey: ['admin', 'stats'],

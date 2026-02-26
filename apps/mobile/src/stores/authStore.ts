@@ -8,6 +8,10 @@ import {
   setStoredTokens,
   clearStoredTokens,
 } from '../storage/tokens';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { queryClient } from '../queryClient';
+
+const QUERY_CACHE_KEY = 'ADOPET_QUERY_CACHE';
 
 export type User = {
   id: string;
@@ -62,9 +66,12 @@ type AuthState = {
   isHydrated: boolean;
   /** Flag para o feed exibir toast "Você saiu da sua conta" após logout (limpa após exibir). */
   showLogoutToast: boolean;
+  /** Exibir modal "Sessão expirada" antes de redirecionar para tela de convidado (apenas quando expira por inatividade). */
+  sessionExpiredModalVisible: boolean;
   setTokens: (access: string, refresh: string) => void;
   setUser: (user: User | null) => void;
   setShowLogoutToast: (value: boolean) => void;
+  setSessionExpiredModalVisible: (value: boolean) => void;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string, phone: string, username: string) => Promise<void>;
   partnerSignup: (body: partnerApi.PartnerSignupBody) => Promise<void>;
@@ -82,6 +89,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: false,
   isHydrated: false,
   showLogoutToast: false,
+  sessionExpiredModalVisible: false,
 
   setTokens: (access: string, refresh: string) => {
     set({ accessToken: access, refreshToken: refresh });
@@ -91,6 +99,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setUser: (user: User | null) => set({ user }),
 
   setShowLogoutToast: (value: boolean) => set({ showLogoutToast: value }),
+  setSessionExpiredModalVisible: (value: boolean) => set({ sessionExpiredModalVisible: value }),
 
   login: async (email: string, password: string) => {
     set({ isLoading: true, user: null });
@@ -167,14 +176,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
-    const { refreshToken } = get();
+    const refreshToken = get().refreshToken;
+    // Limpar state primeiro para UI refletir logout imediatamente (evita crash em race conditions)
+    set({ accessToken: null, refreshToken: null, user: null, sessionExpiredModalVisible: false });
     if (refreshToken) {
       try {
         await authApi.logout(refreshToken);
       } catch {}
     }
-    await clearStoredTokens();
-    set({ accessToken: null, refreshToken: null, user: null });
+    try {
+      await clearStoredTokens();
+    } catch {
+      // clearStoredTokens já engole erros; fallback extra
+    }
+    // Limpar cache do React Query para evitar dados do usuário anterior ao reabrir o app
+    try {
+      queryClient.clear();
+      await AsyncStorage.removeItem(QUERY_CACHE_KEY);
+    } catch {
+      // ignora falha ao limpar cache
+    }
   },
 
   /** Retorna true se renovou; false se falhou por token inválido/expirado (fez logout); 'network' se falhou por rede (não desloga). */
@@ -195,13 +216,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   hydrate: async () => {
-    const access = await getStoredAccessToken();
-    const refresh = await getStoredRefreshToken();
-    set({
-      accessToken: access,
-      refreshToken: refresh,
-      isHydrated: true,
-    });
+    try {
+      const access = await getStoredAccessToken();
+      const refresh = await getStoredRefreshToken();
+      set({
+        accessToken: access,
+        refreshToken: refresh,
+        isHydrated: true,
+      });
+    } catch {
+      set({ accessToken: null, refreshToken: null, isHydrated: true });
+    }
   },
 
   getAccessToken: () => get().accessToken,

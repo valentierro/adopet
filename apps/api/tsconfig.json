@@ -7,6 +7,7 @@
     "experimentalDecorators": true,
     "allowSyntheticDefaultImports": true,
     "target": "ES2021",
+    "lib": ["ES2021"],
     "sourceMap": true,
     "outDir": "./dist",
     "baseUrl": "./",
@@ -22,5 +23,6 @@
       "@prisma/client": ["./node_modules/.prisma/client"]
     },
     "preserveSymlinks": true
-  }
+  },
+  "exclude": ["node_modules", "dist", "test"]
 }

@@ -273,6 +273,11 @@ export function computeMatchScore(
       const msg = 'Pet prefere que todos em casa já concordem com a adoção.';
       concerns.push(msg);
       criteria.push({ label: LABEL.householdAgrees, status: 'mismatch', message: msg });
+    } else if (preferred === 'DISCUSSING' && adopterVal === 'YES') {
+      earnedWeight += 1;
+      const msg = 'Concordância em casa: todos concordam (atende e supera a preferência do pet).';
+      highlights.push(msg);
+      criteria.push({ label: LABEL.householdAgrees, status: 'match', message: msg });
     } else {
       earnedWeight += 0.5;
       criteria.push({ label: LABEL.householdAgrees, status: 'neutral', message: 'Preferência do pet e seu perfil não batem totalmente; considerado neutro.' });

@@ -9,7 +9,7 @@ import { ScreenContainer, PrimaryButton, SecondaryButton } from '../../src/compo
 import { useTheme } from '../../src/hooks/useTheme';
 import { spacing } from '../../src/theme';
 
-const APP_VERSION = Constants.expoConfig?.version ?? '1.1.0';
+const APP_VERSION = Constants.expoConfig?.version ?? '1.1.1';
 
 const LogoSplash = require('../../assets/brand/logo/logo_splash.png');
 

@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PrimaryButton, LoadingLogo } from '../src/components';
@@ -45,6 +46,13 @@ export default function KycScreen() {
     queryKey: ['me', 'kyc-status'],
     queryFn: getKycStatus,
   });
+
+  useFocusEffect(
+    useCallback(() => {
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'kyc-status'] });
+    }, [queryClient]),
+  );
 
   const uploadImageFromUri = useCallback(async (uri: string, label: string): Promise<string> => {
     const ext = uri.split('.').pop()?.toLowerCase() || 'jpg';

@@ -3,10 +3,10 @@ import { Stack, useRouter } from 'expo-router';
 import { TouchableOpacity, AppState, Alert, type AppStateStatus } from 'react-native';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
-import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { queryClient } from '../src/queryClient';
 import * as SplashScreen from 'expo-splash-screen';
 import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
 import { AppWithOfflineBanner } from '../src/components/AppWithOfflineBanner';
@@ -41,24 +41,20 @@ const profileMenuHeaderOptions = {
 
 const isExpoGo = Constants.appOwnership === 'expo';
 const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN ?? process.env.SENTRY_DSN ?? '';
-if (!isExpoGo && SENTRY_DSN) {
-  const Sentry = require('@sentry/react-native');
-  Sentry.init({
-    dsn: SENTRY_DSN,
-    enabled: true,
-    tracesSampleRate: 0.2,
-    _experiments: { profilesSampleRate: 0.1 },
-  });
+const useSentry = !isExpoGo && !!SENTRY_DSN;
+if (useSentry) {
+  try {
+    const Sentry = require('@sentry/react-native');
+    Sentry.init({
+      dsn: SENTRY_DSN,
+      enabled: true,
+      tracesSampleRate: 0.2,
+      _experiments: { profilesSampleRate: 0.1 },
+    });
+  } catch (_) {
+    // Sentry pode falhar no iOS se não estiver buildado corretamente
+  }
 }
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 2 * 60 * 1000,
-      gcTime: 5 * 60 * 1000,
-    },
-  },
-});
 
 const asyncStoragePersister = createAsyncStoragePersister({
   storage: AsyncStorage,
@@ -72,6 +68,8 @@ function RootLayout() {
   const refreshTokens = useAuthStore((s) => s.refreshTokens);
   const accessToken = useAuthStore((s) => s.accessToken);
   const userId = useAuthStore((s) => s.user?.id);
+  const sessionExpiredModalVisible = useAuthStore((s) => s.sessionExpiredModalVisible);
+  const setSessionExpiredModalVisible = useAuthStore((s) => s.setSessionExpiredModalVisible);
   const sessionExpiredShownRef = useRef(false);
   const {
     forceUpdate,
@@ -91,9 +89,31 @@ function RootLayout() {
     setAuthProvider(getAccessToken, refreshTokens, () => {
       if (sessionExpiredShownRef.current) return;
       sessionExpiredShownRef.current = true;
-      router.replace('/(tabs)/feed');
+      useAuthStore.getState().setSessionExpiredModalVisible(true);
     });
-  }, [getAccessToken, refreshTokens, router, accessToken]);
+  }, [getAccessToken, refreshTokens, accessToken]);
+
+  // Modal "Sessão expirada": exibir quando a sessão expirar por inatividade e redirecionar ao fechar
+  const sessionExpiredAlertShownRef = useRef(false);
+  useEffect(() => {
+    if (!sessionExpiredModalVisible || sessionExpiredAlertShownRef.current) return;
+    sessionExpiredAlertShownRef.current = true;
+    Alert.alert(
+      'Sessão expirada',
+      'Sua sessão expirou por inatividade. Faça login novamente para continuar.',
+      [
+        {
+          text: 'OK',
+          onPress: () => {
+            sessionExpiredAlertShownRef.current = false;
+            setSessionExpiredModalVisible(false);
+            router.replace('/(tabs)/feed');
+          },
+        },
+      ],
+      { cancelable: false }
+    );
+  }, [sessionExpiredModalVisible, setSessionExpiredModalVisible, router]);
 
   useEffect(() => {
     setOnFeatureDisabled(() => {
@@ -104,8 +124,8 @@ function RootLayout() {
     return () => setOnFeatureDisabled(null);
   }, [router]);
 
-  // Renovar token ao voltar ao app e a cada 10 min em foreground (sessão só expira se inativo)
-  const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 min (access token dura 15 min)
+  // Renovar token ao voltar ao app e a cada 5 min em foreground (access token dura 15 min; refresh antecipado evita expirar durante uso)
+  const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 min
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
     const refreshIfLoggedIn = () => {
@@ -196,4 +216,12 @@ function RootLayout() {
   );
 }
 
-export default isExpoGo ? RootLayout : require('@sentry/react-native').wrap(RootLayout);
+export default useSentry
+  ? (() => {
+      try {
+        return require('@sentry/react-native').wrap(RootLayout);
+      } catch {
+        return RootLayout;
+      }
+    })()
+  : RootLayout;

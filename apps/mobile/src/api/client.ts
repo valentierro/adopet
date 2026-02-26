@@ -41,7 +41,7 @@ let sessionExpiredFired = false;
 
 export function setAuthProvider(
   getToken: () => string | null,
-  onRefresh: () => Promise<boolean>,
+  onRefresh: () => Promise<boolean | 'network'>,
   onExpired?: () => void,
 ) {
   tokenGetter = getToken;
