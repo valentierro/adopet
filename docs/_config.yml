@@ -1,0 +1,19 @@
+# Configuração para GitHub Pages (Jekyll)
+title: Adopet - Documentação
+description: Documentação do app Adopet para manutenção e onboarding
+theme: jekyll-theme-cayman
+# Ou use: remote_theme: pages-themes/cayman@v0.2.0
+
+# Navegação
+nav:
+  - index: Início
+  - getting-started: Configuração
+  - architecture: Arquitetura
+  - backend: Backend
+  - mobile-app: App mobile
+  - api-reference: Referência da API
+  - database: Banco de dados
+  - flows: Fluxos
+  - deployment: Deploy
+  - maintenance: Manutenção
+  - glossary: Glossário

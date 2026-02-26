@@ -2,9 +2,11 @@
 
 Este documento descreve como um pet passa a ser considerado **adotado** no Adopet e o que acontece no app.
 
+> **Há dois fluxos de adoção:** (1) tutor marca como adotado manualmente em "Meus anúncios" (este doc); (2) fluxo via chat com confirmação do adotante, checklist e KYC — ver [Fluxos do app](flows.md#fluxo-de-adoção-via-chat).
+
 ## Visão geral
 
-A adoção é **registrada manualmente pelo tutor** (dono do anúncio). Não há confirmação automática pelo adotante nem integração com processos externos: quando o tutor conclui a adoção fora do app (ou após combinar com o adotante), ele marca o pet como "Adotado" no app.
+A adoção pode ser **registrada manualmente pelo tutor** em "Meus anúncios" → Editar → Status "Adotado". Ou pelo fluxo via chat, em que o tutor confirma a adoção para alguém na conversa e o adotante aceita o termo (e faz KYC se necessário).
 
 ## Passo a passo
 

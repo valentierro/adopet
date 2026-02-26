@@ -21,7 +21,8 @@
     "build": "pnpm -r run build",
     "build:admin": "pnpm --filter adopet-admin-web run build",
     "infra:up": "docker compose -f infra/docker-compose.yml up -d",
-    "infra:down": "docker compose -f infra/docker-compose.yml down"
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "openapi:fetch": "./scripts/fetch-openapi.sh"
   },
   "devDependencies": {
     "prettier": "^3.2.5"
