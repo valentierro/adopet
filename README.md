@@ -2,158 +2,210 @@
 
 Monorepo do **Adopet** — app de adoção de pets no Brasil.
 
-## Documentação de fluxos
-
-- [**Fluxo de adoção**](docs/ADOPTION_FLOW.md) — como um pet é marcado como adotado e o que acontece no feed, mapa e pontuação do tutor.
-
 ## Estrutura
 
 ```
 adopet/
 ├── apps/
 │   ├── mobile/     # App React Native (Expo)
-│   └── api/        # API NestJS
+│   ├── api/        # API NestJS
+│   └── admin-web/  # Painel admin (opcional)
 ├── packages/
 │   └── shared/     # Tipos, schemas Zod e utils compartilhados
-├── assets/
-│   └── brand/      # Branding oficial (logo, ícone, splash)
-├── infra/          # Docker Compose (PostgreSQL, Redis)
-├── pnpm-workspace.yaml
+├── assets/brand/   # Logo, ícone, splash
+├── infra/          # Docker Compose (PostgreSQL, Redis, MinIO)
+├── scripts/        # Scripts de setup e operações
 └── package.json
 ```
 
 ## Requisitos
 
 - **Node.js** >= 18
-- **pnpm** >= 9 (ou use Corepack: `corepack enable && corepack prepare pnpm@latest --activate`)
-- **Docker** e **Docker Compose** (para infraestrutura local)
+- **pnpm** >= 9 (Corepack: `corepack enable`)
+- **Docker** e **Docker Compose** (opcional: use `--cloud` com Neon/Vercel)
 
-### Erro "Failed to create cache directory"
+---
 
-Se o pnpm (Corepack) reclamar de permissão em `~/.cache/node/corepack/v1`, use cache dentro do projeto. **Na raiz do monorepo**, rode numa mesma linha:
+## Setup
 
+### Automático (recomendado)
+
+**Mac/Linux:**
 ```bash
-export COREPACK_HOME="$(pwd)/.cache/corepack" && pnpm install
+./setup.sh              # Com Docker (PostgreSQL local)
+./setup.sh --cloud      # Sem Docker (Neon, API na Vercel)
 ```
 
-Ou use o script que já define a variável (na raiz do projeto):
+**Windows:**
+```powershell
+.\setup.ps1             # Com Docker
+.\setup.ps1 -Cloud      # Sem Docker
+```
+
+O setup instala dependências, sobe o PostgreSQL (se local), aplica migrations e executa o seed. No modo `--cloud`, apenas instala deps e cria os `.env` — configure depois com suas credenciais.
+
+### Manual
 
 ```bash
-./scripts/pnpm-with-cache.sh --version
+pnpm install
+pnpm --filter @adopet/shared build
+./scripts/env-setup.sh
+# Se usar Docker:
+./scripts/infra-up.sh
+./scripts/migrate.sh
+./scripts/seed.sh
+```
+
+### Cache do pnpm
+
+Se houver erro de permissão no cache:
+```bash
+export COREPACK_HOME="$(pwd)/.cache/corepack"
 ./scripts/pnpm-with-cache.sh install
 ```
 
-Ou defina a variável manualmente e use o pnpm em seguida:
+---
+
+## Rodando o projeto
+
+### Backend (API)
 
 ```bash
-export COREPACK_HOME="$(pwd)/.cache/corepack"
-pnpm --version
-pnpm install
+./scripts/dev-api.sh
+# ou: pnpm dev:api
 ```
 
-Para não precisar do `export` toda vez neste projeto, adicione no `~/.zshrc`:
+- **API:** http://localhost:3000/v1
+- **Swagger:** http://localhost:3000/api/docs
+- **Health:** http://localhost:3000/v1/health
+
+### Mobile (Expo)
 
 ```bash
-export COREPACK_HOME="$HOME/Documents/adopet/.cache/corepack"
+./scripts/dev-mobile.sh
+# ou: pnpm dev:mobile
 ```
 
-Alternativa: criar o diretório em casa e dar permissão:
+Com o Metro rodando:
+- **`i`** — abre no simulador iOS
+- **`a`** — abre no emulador Android
+- **QR code** — Expo Go no celular (mesma rede)
+
+### Tudo junto
 
 ```bash
-mkdir -p ~/.cache/node/corepack/v1
-chmod -R u+rwx ~/.cache
+pnpm dev
 ```
 
-## Como rodar
+---
 
-### 1. Instalar dependências
+## Emulador / simulador
+
+| Plataforma | Comando | Requisito |
+|------------|---------|-----------|
+| iOS | `./scripts/mobile-ios.sh` ou tecla `i` | Xcode instalado |
+| Android | `./scripts/mobile-android.sh` ou tecla `a` | Android Studio + emulador |
+
+---
+
+## Migrations (Prisma)
+
+| Ação | Comando |
+|------|---------|
+| Aplicar migrations existentes | `./scripts/migrate.sh` |
+| Criar nova migration | `./scripts/migrate-new.sh "nome_da_migration"` |
+| Seed do banco | `./scripts/seed.sh` |
+| Prisma Studio | `cd apps/api && pnpm prisma:studio` |
+
+---
+
+## Infraestrutura (Docker)
+
+| Ação | Comando |
+|------|---------|
+| Subir PostgreSQL | `./scripts/infra-up.sh` |
+| Parar containers | `./scripts/infra-down.sh` |
+| Com Redis | `docker compose -f infra/docker-compose.yml --profile with-redis up -d` |
+| Com MinIO (S3 local) | `docker compose -f infra/docker-compose.yml --profile with-minio up -d` |
+
+---
+
+## Builds do app mobile (EAS)
+
+Gerar builds para as lojas:
 
 ```bash
-pnpm install
+# Android (AAB para Play Store)
+./scripts/build-mobile-android.sh
+
+# iOS (para App Store)
+./scripts/build-mobile-ios.sh
 ```
 
-(Se usar cache no projeto: `export COREPACK_HOME="$(pwd)/.cache/corepack"` antes, ou use `./scripts/pnpm-with-cache.sh install`.)
+**Requisitos:**
+- `eas build` configurado (login: `eas login`)
+- Variáveis no EAS: `EXPO_PUBLIC_API_URL`, `GOOGLE_MAPS_API_KEY`, `GOOGLE_MAPS_API_KEY_IOS`, `EXPO_PUBLIC_SENTRY_DSN`
+- Conta Apple (iOS) e Google Play (Android)
 
-### 2. Build do pacote shared (obrigatório antes de API e mobile)
+Perfis em `apps/mobile/eas.json`: `development`, `preview`, `production`.
 
-```bash
-pnpm --filter @adopet/shared build
-```
+---
 
-### 3. Subir infraestrutura (PostgreSQL) — só se for rodar a API com banco
+## Scripts disponíveis
 
-```bash
-pnpm infra:up
-```
+| Script | Descrição |
+|--------|-----------|
+| `./setup.sh` | Setup completo (ou `--cloud`) |
+| `./scripts/env-setup.sh` | Cria .env a partir dos .example |
+| `./scripts/infra-up.sh` | Sobe PostgreSQL (Docker) |
+| `./scripts/infra-down.sh` | Para containers |
+| `./scripts/migrate.sh` | Aplica migrations |
+| `./scripts/migrate-new.sh "nome"` | Cria nova migration |
+| `./scripts/seed.sh` | Executa seed do banco |
+| `./scripts/dev-api.sh` | Sobe a API |
+| `./scripts/dev-mobile.sh` | Sobe o app (Expo) |
+| `./scripts/mobile-ios.sh` | Abre no simulador iOS |
+| `./scripts/mobile-android.sh` | Abre no emulador Android |
+| `./scripts/build-mobile-android.sh` | Build Android (EAS) |
+| `./scripts/build-mobile-ios.sh` | Build iOS (EAS) |
+| `./scripts/test.sh` | Roda todos os testes |
+| `./scripts/test-api.sh` | Roda testes da API |
 
-Para incluir Redis (perfil opcional):
+### Scripts pnpm (raiz)
 
-```bash
-docker compose -f infra/docker-compose.yml --profile with-redis up -d
-```
+| Comando | Descrição |
+|---------|-----------|
+| `pnpm dev` | API + mobile em paralelo |
+| `pnpm dev:api` | Apenas API |
+| `pnpm dev:mobile` | Apenas mobile |
+| `pnpm lint` | Lint em todos os pacotes |
+| `pnpm format` | Formata com Prettier |
+| `pnpm test` | Testes |
+| `pnpm infra:up` | Docker up |
+| `pnpm infra:down` | Docker down |
 
-### 4. Subir infra e rodar a API
+---
 
-```bash
-pnpm infra:up
-cp apps/api/.env.example apps/api/.env
-# DATABASE_URL padrão: postgresql://adopet:adopet@localhost:5432/adopet
-cd apps/api && pnpm prisma migrate dev --name init
-pnpm prisma:seed
-cd ../..
-pnpm dev:api
-```
+## Configuração (.env)
 
-- **API:** http://localhost:3000/v1  
-- **Swagger:** http://localhost:3000/api/docs  
-- **Health:** http://localhost:3000/v1/health  
-- **Feed:** GET /v1/feed?userId=...&cursor=...  
-- **Swipes:** POST /v1/swipes  
+- **api:** `apps/api/.env` — `DATABASE_URL`, `JWT_SECRET`, `S3_*`, etc. (ver `apps/api/.env.example`)
+- **mobile:** `apps/mobile/.env` — `EXPO_PUBLIC_API_URL` (URL da API)
 
-### 5. Rodar o app mobile (apontando para a API)
+---
 
-```bash
-cp apps/mobile/.env.example apps/mobile/.env
-# Garanta EXPO_PUBLIC_API_URL=http://localhost:3000/v1 (no Mac/simulador localhost funciona)
-pnpm dev:mobile
-```
+## Documentação
 
-Abra com **Expo Go** no celular (escaneie o QR code) ou use **`i`** (iOS) / **`a`** (Android) no terminal para o simulador. O feed e os swipes (curtir/passar) usam a API real; favoritos e chat seguem com mock.
+**Documentação completa** (setup, arquitetura, API, fluxos, manutenção):  
+→ [docs/README.md](docs/README.md) — pode ser publicada no GitHub Pages
 
-### Scripts na raiz
+**Prompt para AI/Agente:** [AGENTS.md](AGENTS.md) — contexto completo do projeto para o Cursor ou outro agente; mencione `@AGENTS.md` ao solicitar alterações.
 
-| Script        | Descrição                          |
-|---------------|------------------------------------|
-| `pnpm dev`    | Sobe mobile e API em paralelo      |
-| `pnpm lint`   | Roda lint em todos os pacotes      |
-| `pnpm format` | Formata código com Prettier        |
-| `pnpm test`   | Roda testes (placeholder)          |
-| `pnpm infra:up`   | Sobe PostgreSQL (e Redis se usar perfil) |
-| `pnpm infra:down` | Para e remove containers           |
-
-## Branding (assets)
-
-Os assets oficiais do Adopet estão em:
-
-- **Logo:** `assets/brand/logo/` (light e dark)
-- **Ícone do app:** `assets/brand/icon/` (light e dark)
-- **Splash:** `assets/brand/splash/` (light e dark)
-
-**Regras:**
-
-- Não criar novos logos ou ícones.
-- Não alterar visualmente os arquivos oficiais.
-- O app mobile usa esses assets para ícone e splash. Se algum tamanho não for o ideal para a store (ex.: 1024x1024 para ícone iOS), não recriar o arte; documentar no README do mobile como ajustar depois (redimensionamento externo, etc.).
-
-## Documentação por app
-
+- [Fluxo de adoção](docs/ADOPTION_FLOW.md)
 - [Mobile (Expo)](apps/mobile/README.md)
 - [API (NestJS)](apps/api/README.md)
 
-## Crescimento do projeto
+---
 
-O monorepo está preparado para:
+## Branding
 
-- Novos tipos de pets e anúncios
-- Funcionalidades premium
-- Novos módulos na API (auth, swipes, mensagens, etc.) — já em scaffold
+Assets em `assets/brand/`: logo, ícone, splash. Não alterar visualmente.

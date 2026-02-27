@@ -53,6 +53,8 @@ export async function createApp(): Promise<NestExpressApplication> {
     .setDescription('API para adoção de pets no Brasil')
     .setVersion('1.0')
     .addBearerAuth()
+    .addServer('http://localhost:3000', 'Local (desenvolvimento)')
+    .addServer('https://api.appadopet.com.br', 'Produção')
     .addTag('health')
     .addTag('auth')
     .addTag('me')

@@ -1,0 +1,41 @@
+# EAS Build usa a raiz do git para o upload. Este arquivo reduz o tamanho
+# ao excluir o que não é necessário para o build do app mobile.
+# Coloque na raiz do repo (adopet/). Ver: https://docs.expo.dev/build-reference/easignore/
+
+# Outros apps do monorepo (não são o mobile)
+apps/api/
+apps/admin-web/
+apps/landing/
+_adminadopet_push/
+_deploy_adopetlanding/
+adopetlanding/
+
+# Dependências (EAS instala no servidor)
+node_modules/
+apps/*/node_modules/
+.pnpm-store/
+
+# Build e cache do mobile
+apps/mobile/.expo/
+apps/mobile/android/build/
+apps/mobile/android/app/build/
+apps/mobile/android/.cxx/
+apps/mobile/android/.gradle/
+apps/mobile/ios/build/
+apps/mobile/ios/Pods/
+apps/mobile/*.tsbuildinfo
+
+# Docs, infra, testes
+docs/
+infra/
+*.log
+apps/*/coverage/
+.nyc_output/
+apps/api/test/logs/
+
+# Arquivos desnecessários para o build
+.git/
+*.local
+.env
+.env.*
+!.env.example

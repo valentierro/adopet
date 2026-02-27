@@ -10,39 +10,59 @@ App mobile do Adopet em **React Native** com **Expo** e **TypeScript**.
 
 ## Como rodar
 
-### Apontar para a API
-
-O feed e os swipes (curtir/passar) usam a API real. Configure a URL:
+### Setup rápido (na raiz do monorepo)
 
 ```bash
-cp .env.example .env
-# EXPO_PUBLIC_API_URL=http://localhost:3000/v1
-# No simulador iOS, localhost é a máquina; no celular físico use o IP da sua máquina (ex.: http://192.168.1.10:3000/v1)
+./setup.sh --cloud     # ou ./setup.sh se usar Docker
+./scripts/dev-mobile.sh
 ```
+
+### Apontar para a API
+
+Configure `apps/mobile/.env`:
+
+```
+EXPO_PUBLIC_API_URL=http://localhost:3000/v1
+```
+
+- **Simulador iOS:** localhost funciona
+- **Celular físico:** use o IP da sua máquina na mesma rede (ex.: `http://192.168.1.10:3000/v1`)
+- **API na Vercel:** use a URL pública da API
 
 ### Subir o app
 
 Na raiz do monorepo:
 
 ```bash
-pnpm install
-pnpm --filter @adopet/shared build
 pnpm dev:mobile
+# ou: ./scripts/dev-mobile.sh
 ```
 
-Ou dentro de `apps/mobile`:
+Dentro de `apps/mobile`:
 
 ```bash
-pnpm install
 pnpm dev
 ```
 
-**Recomendado para evitar erros no Expo Go (celular):** use o **simulador** no Mac.
+### Emulador / simulador
 
-- Com o Metro rodando, pressione **`i`** no terminal → abre no **iOS Simulator** (precisa do Xcode instalado).
-- Ou rode direto: `pnpm ios` (abre o simulador iOS).
+Com o Metro rodando:
+- **`i`** → iOS Simulator (requer Xcode)
+- **`a`** → Android Emulator (requer Android Studio)
+- Ou: `./scripts/mobile-ios.sh` / `./scripts/mobile-android.sh`
 
-No simulador o app funciona sem o erro "getDevServer is not a function". Para testar no celular físico, use o simulador por enquanto ou aguarde atualizações do Expo Go.
+**Recomendado:** use o simulador — no Expo Go (celular) pode ocorrer "getDevServer is not a function".
+
+### Builds (EAS)
+
+Na raiz do monorepo:
+
+```bash
+./scripts/build-mobile-android.sh   # AAB para Play Store
+./scripts/build-mobile-ios.sh       # Para App Store
+```
+
+Requer `eas login`, variáveis no EAS e contas nas lojas. Ver `apps/mobile/eas.json` para perfis.
 
 ### Erro "getDevServer is not a function (it is Object)" (Expo Go no celular)
 

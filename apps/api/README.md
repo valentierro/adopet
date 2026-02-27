@@ -6,30 +6,33 @@ Backend do Adopet em **NestJS** com **TypeScript**.
 
 - Node.js >= 18
 - pnpm
-- PostgreSQL (via Docker: `pnpm infra:up` na raiz)
+- PostgreSQL (Docker ou Neon)
 
 ## Como rodar
 
-### 1. Subir o Postgres (na raiz do monorepo)
+### Setup rápido (na raiz do monorepo)
 
 ```bash
-pnpm infra:up
+./setup.sh             # Com Docker local
+# ou
+./setup.sh --cloud     # Sem Docker — configure DATABASE_URL (Neon) no .env
+./scripts/dev-api.sh
 ```
 
-### 2. Configurar e migrar
+### Manual
 
 ```bash
-cp .env.example .env
-# Ajuste DATABASE_URL se necessário: postgresql://adopet:adopet@localhost:5432/adopet
-pnpm prisma:generate
-pnpm prisma migrate dev --name init
-pnpm prisma:seed
-```
+# 1. Subir Postgres (se local)
+./scripts/infra-up.sh
 
-### 3. Iniciar a API
+# 2. Configurar e migrar
+./scripts/env-setup.sh
+# Edite apps/api/.env — DATABASE_URL: postgresql://adopet:adopet@localhost:5432/adopet ou Neon
+./scripts/migrate.sh
+./scripts/seed.sh
 
-```bash
-pnpm dev
+# 3. Iniciar
+./scripts/dev-api.sh
 ```
 
 - **API:** http://localhost:3000/v1  
@@ -56,11 +59,13 @@ apps/api/
 
 ## Banco de dados: Prisma
 
-- **Comandos:**  
-  - `pnpm prisma:generate` — gera o client  
-  - `pnpm prisma migrate dev` — cria/aplica migrations  
-  - `pnpm prisma:seed` ou `pnpm prisma db seed` — popula 1 user e 10 pets  
-  - `pnpm prisma:studio` — abre o Prisma Studio  
+| Ação | Comando (raiz) | Comando (apps/api) |
+|------|----------------|--------------------|
+| Aplicar migrations | `./scripts/migrate.sh` | `pnpm exec prisma migrate deploy` |
+| Criar migration | `./scripts/migrate-new.sh "nome"` | `pnpm prisma migrate dev --name nome` |
+| Seed | `./scripts/seed.sh` | `pnpm prisma:seed` |
+| Prisma Studio | — | `pnpm prisma:studio` |
+| Gerar client | (postinstall) | `pnpm prisma:generate` |
 
 Variável obrigatória: `DATABASE_URL` no `.env`.
 
