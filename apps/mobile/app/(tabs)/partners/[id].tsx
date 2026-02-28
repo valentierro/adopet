@@ -216,109 +216,134 @@ export default function PartnerDetailScreen() {
   };
 
   const hasLocation = !!(partner.address || partner.city);
+  const typeLabel = partner.type === 'ONG' ? 'ONG' : partner.type === 'CLINIC' ? 'Clínica' : 'Loja';
 
   return (
     <ScreenContainer ref={scrollRef} scroll>
-      <View style={[styles.card, { backgroundColor: colors.surface }]}>
-        {(partner.logoUrl || hasLocation) ? (
-          <View style={styles.logoRow}>
-            {partner.logoUrl ? (
-              <View style={styles.logoWrap}>
-                <Image source={{ uri: partner.logoUrl }} style={styles.logo} resizeMode="contain" />
-              </View>
-            ) : <View style={styles.logoSpacer} />}
-            {hasLocation ? (
-              <TouchableOpacity
-                style={[styles.comoChegarBtn, { borderColor: colors.primary }]}
-                onPress={openAddressInMaps}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="map-outline" size={20} color={colors.primary} />
-                <Text style={[styles.comoChegarText, { color: colors.primary }]}>Como chegar</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-        ) : null}
-        <View style={styles.nameRow}>
-          <Text style={[styles.name, { color: colors.textPrimary }]}>{partner.name}</Text>
-          {partner.isPaidPartner ? (
-            <View style={[styles.paidBadge, { backgroundColor: colors.primary + '25' }]}>
-              <Ionicons name="star" size={12} color={colors.primary} />
-              <Text style={[styles.paidBadgeText, { color: colors.primary }]}>Destaque</Text>
+      {/* Hero / Header */}
+      <View style={[styles.hero, { backgroundColor: colors.primary + '18' }]}>
+        <View style={[styles.heroInner, { backgroundColor: colors.surface }]}>
+          {partner.logoUrl ? (
+            <View style={[styles.logoWrap, { backgroundColor: colors.background }]}>
+              <Image source={{ uri: partner.logoUrl }} style={styles.logo} resizeMode="contain" />
             </View>
           ) : null}
+          <View style={styles.nameBadgeRow}>
+            <Text style={[styles.name, { color: colors.textPrimary }]}>{partner.name}</Text>
+            <View style={styles.badgeRow}>
+              <View style={[styles.typeBadge, { backgroundColor: colors.primary + '30' }]}>
+                <Ionicons name={partner.type === 'ONG' ? 'heart' : partner.type === 'CLINIC' ? 'medkit' : 'storefront'} size={14} color={colors.primary} />
+                <Text style={[styles.typeBadgeText, { color: colors.primary }]}>{typeLabel}</Text>
+              </View>
+              {partner.isPaidPartner ? (
+                <View style={[styles.paidBadge, { backgroundColor: colors.primary + '25' }]}>
+                  <Ionicons name="star" size={12} color={colors.primary} />
+                  <Text style={[styles.paidBadgeText, { color: colors.primary }]}>Destaque</Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+          {hasLocation && (
+            <TouchableOpacity
+              style={[styles.comoChegarBtn, { backgroundColor: colors.primary }]}
+              onPress={openAddressInMaps}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="navigate" size={20} color="#fff" />
+              <Text style={styles.comoChegarText}>Como chegar</Text>
+            </TouchableOpacity>
+          )}
         </View>
+      </View>
+
+      {/* Info card */}
+      <View style={[styles.card, { backgroundColor: colors.surface }]}>
         {hasLocation ? (
           <TouchableOpacity
-            style={styles.row}
+            style={styles.addressRow}
             onPress={openAddressInMaps}
             activeOpacity={0.7}
           >
-            <Ionicons name="location-outline" size={18} color={colors.primary} />
-            <Text style={[styles.meta, styles.locationText, { color: colors.textPrimary }]} numberOfLines={2}>
+            <View style={[styles.addressIconWrap, { backgroundColor: colors.primary + '20' }]}>
+              <Ionicons name="location" size={20} color={colors.primary} />
+            </View>
+            <Text style={[styles.addressText, { color: colors.textPrimary }]} numberOfLines={2}>
               {partner.address || partner.city}
             </Text>
-            <Ionicons name="open-outline" size={14} color={colors.textSecondary} style={styles.locationChevron} />
+            <Ionicons name="open-outline" size={18} color={colors.textSecondary} />
           </TouchableOpacity>
         ) : null}
-        {partner.description ? (
-          <Text style={[styles.description, { color: colors.textPrimary }]}>{partner.description}</Text>
+
+        {partner.description && !partner.description.startsWith('Solicitação aprovada') ? (
+          <Text style={[styles.description, { color: colors.textSecondary }]}>{partner.description}</Text>
         ) : null}
+
+        <View style={styles.contactGrid}>
+          {partner.email ? (
+            <TouchableOpacity
+              style={[styles.contactBtn, { borderColor: colors.primary + '50', backgroundColor: colors.primary + '08' }]}
+              onPress={() => Linking.openURL(`mailto:${partner.email}`)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="mail" size={20} color={colors.primary} />
+              <Text style={[styles.contactBtnText, { color: colors.textPrimary }]} numberOfLines={1}>{partner.email}</Text>
+            </TouchableOpacity>
+          ) : null}
+          {partner.phone ? (
+            <TouchableOpacity
+              style={[styles.contactBtn, { borderColor: colors.primary + '50', backgroundColor: colors.primary + '08' }]}
+              onPress={() => Linking.openURL(`tel:${partner.phone}`)}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="call" size={20} color={colors.primary} />
+              <Text style={[styles.contactBtnText, { color: colors.textPrimary }]}>{partner.phone}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
 
         {partner.website ? (
           <TouchableOpacity
             style={[styles.linkBtn, { borderColor: colors.primary }]}
             onPress={() => openUrl(partner.website!)}
+            activeOpacity={0.7}
           >
-            <Ionicons name="open-outline" size={18} color={colors.primary} />
+            <Ionicons name="globe-outline" size={18} color={colors.primary} />
             <Text style={[styles.linkText, { color: colors.primary }]}>Abrir site</Text>
           </TouchableOpacity>
         ) : null}
 
-        {partner.email ? (
-          <TouchableOpacity
-            style={[styles.linkBtn, { borderColor: colors.primary, marginTop: spacing.sm }]}
-            onPress={() => Linking.openURL(`mailto:${partner.email}`)}
-          >
-            <Ionicons name="mail-outline" size={18} color={colors.primary} />
-            <Text style={[styles.linkText, { color: colors.primary }]}>{partner.email}</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        {partner.phone ? (
-          <TouchableOpacity
-            style={[styles.linkBtn, { borderColor: colors.primary, marginTop: spacing.sm }]}
-            onPress={() => Linking.openURL(`tel:${partner.phone}`)}
-          >
-            <Ionicons name="call-outline" size={18} color={colors.primary} />
-            <Text style={[styles.linkText, { color: colors.primary }]}>{partner.phone}</Text>
-          </TouchableOpacity>
-        ) : null}
-
         <TouchableOpacity
-          style={[styles.linkBtn, { borderColor: colors.primary, marginTop: spacing.sm }]}
+          style={[styles.linkBtn, styles.linkBtnPrimary, { backgroundColor: colors.primary }]}
           onPress={() => router.push({ pathname: '/partner-pets', params: { id: partner.id, partnerName: partner.name } })}
+          activeOpacity={0.8}
         >
-          <Ionicons name="paw-outline" size={18} color={colors.primary} />
-          <Text style={[styles.linkText, { color: colors.primary }]}>Ver anúncios vinculados</Text>
+          <Ionicons name="paw" size={18} color="#fff" />
+          <Text style={styles.linkBtnPrimaryText}>Ver anúncios vinculados</Text>
         </TouchableOpacity>
       </View>
 
       <View
-        style={[styles.section, { paddingHorizontal: spacing.lg }]}
+        style={[styles.section, styles.sectionCard, { backgroundColor: colors.surface }]}
         onLayout={(e) => {
           servicesSectionY.current = e.nativeEvent.layout.y;
           if (highlightServiceId && services.length > 0) scrollToSection(e.nativeEvent.layout.y);
         }}
       >
-        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-          {partner.type === 'ONG' ? 'Serviços prestados pela ONG' : 'Serviços'}
-        </Text>
-        <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
-          {partner.type === 'ONG'
-            ? 'Serviços voluntários oferecidos pela ONG (sem cobrança).'
-            : 'Oferecidos pelo estabelecimento'}
-        </Text>
+        <View style={styles.sectionHeader}>
+          <View style={[styles.sectionIconWrap, { backgroundColor: colors.primary + '20' }]}>
+            <Ionicons name={partner.type === 'ONG' ? 'heart' : 'construct'} size={22} color={colors.primary} />
+          </View>
+          <View style={styles.sectionTitleWrap}>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+              {partner.type === 'ONG' ? 'Serviços prestados pela ONG' : 'Serviços'}
+            </Text>
+            <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>
+              {partner.type === 'ONG'
+                ? 'Serviços voluntários oferecidos pela ONG (sem cobrança).'
+                : 'Oferecidos pelo estabelecimento'}
+            </Text>
+          </View>
+        </View>
         {services.length === 0 ? (
           <Text style={[styles.emptyServicesText, { color: colors.textSecondary }]}>
             {partner.type === 'ONG'
@@ -360,14 +385,21 @@ export default function PartnerDetailScreen() {
 
       {coupons.length > 0 && (
         <View
-          style={[styles.section, { paddingHorizontal: spacing.lg }]}
+          style={[styles.section, styles.sectionCard, { backgroundColor: colors.surface }]}
           onLayout={(e) => {
             couponsSectionY.current = e.nativeEvent.layout.y;
             if (highlightCouponId && coupons.length > 0) scrollToSection(e.nativeEvent.layout.y);
           }}
         >
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Cupons de desconto</Text>
-          <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>Use no estabelecimento</Text>
+          <View style={styles.sectionHeader}>
+            <View style={[styles.sectionIconWrap, { backgroundColor: colors.primary + '20' }]}>
+              <Ionicons name="pricetag" size={22} color={colors.primary} />
+            </View>
+            <View style={styles.sectionTitleWrap}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Cupons de desconto</Text>
+              <Text style={[styles.sectionSub, { color: colors.textSecondary }]}>Use no estabelecimento</Text>
+            </View>
+          </View>
           {coupons.map((c) => (
             <CouponCard
               key={c.id}
@@ -387,48 +419,138 @@ export default function PartnerDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    margin: spacing.lg,
-    padding: spacing.lg,
-    borderRadius: 12,
+  hero: {
+    paddingTop: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: 0,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
   },
-  logoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md, gap: spacing.md },
-  logoWrap: {},
-  logoSpacer: { width: 96 },
-  logo: { width: 96, height: 96, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.06)' },
-  comoChegarBtn: {
+  heroInner: {
+    padding: spacing.lg,
+    borderRadius: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  logoWrap: {
+    width: 100,
+    height: 100,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+    overflow: 'hidden',
+  },
+  logo: { width: 88, height: 88 },
+  nameBadgeRow: { alignItems: 'center', marginBottom: spacing.md },
+  name: { fontSize: 24, fontWeight: '800', textAlign: 'center', marginBottom: spacing.sm },
+  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap', justifyContent: 'center' },
+  typeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: 10,
-    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
   },
-  comoChegarText: { fontSize: 15, fontWeight: '600' },
-  nameRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.xs },
-  name: { fontSize: 22, fontWeight: '700', flex: 1, minWidth: 0 },
+  typeBadgeText: { fontSize: 13, fontWeight: '700' },
   paidBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
   paidBadgeText: { fontSize: 11, fontWeight: '700' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: spacing.md },
-  meta: { fontSize: 15, flex: 1 },
-  locationText: { fontWeight: '500' },
-  locationChevron: { marginLeft: 4 },
+  comoChegarBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 12,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+  },
+  comoChegarText: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  card: {
+    margin: spacing.lg,
+    marginTop: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  addressIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addressText: { flex: 1, fontSize: 15, fontWeight: '500', lineHeight: 22 },
   description: { fontSize: 15, lineHeight: 22, marginBottom: spacing.lg },
+  contactGrid: { gap: spacing.sm, marginBottom: spacing.md },
+  contactBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignSelf: 'stretch',
+  },
+  contactBtnText: { fontSize: 14, fontWeight: '600', flex: 1 },
   linkBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: 8,
-    paddingVertical: spacing.sm,
+    paddingVertical: 12,
     paddingHorizontal: spacing.md,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
+    marginBottom: spacing.sm,
+  },
+  linkBtnPrimary: {
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+    borderWidth: 0,
+    marginTop: spacing.sm,
   },
   linkText: { fontSize: 15, fontWeight: '600' },
+  linkBtnPrimaryText: { fontSize: 16, fontWeight: '700', color: '#fff' },
   section: { marginTop: spacing.lg, marginBottom: spacing.xl },
+  sectionCard: {
+    marginHorizontal: spacing.lg,
+    padding: spacing.lg,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  sectionHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.md },
+  sectionIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionTitleWrap: { flex: 1, minWidth: 0 },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 2 },
-  sectionSub: { fontSize: 13, marginBottom: spacing.md },
+  sectionSub: { fontSize: 13 },
   emptyServicesText: { fontSize: 15, fontStyle: 'italic', marginTop: spacing.sm },
   empty: {
     margin: spacing.lg,

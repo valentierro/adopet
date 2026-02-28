@@ -108,7 +108,6 @@ export class PartnershipRequestsService {
       ...(addressStr && { address: addressStr }),
       ...(city && { city }),
       ...(latitude != null && longitude != null && { latitude, longitude }),
-      ...(req.endereco && { description: `Solicitação aprovada. Contato: ${req.nome}. ${req.endereco}` }),
     };
     const partner = await this.partnersService.create(createDto);
     await this.prisma.partnershipRequest.update({
