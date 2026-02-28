@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Linking } from 'react-native';
 import { useTheme } from '../hooks/useTheme';
+import { useModalMaxWidth } from '../hooks/useResponsiveGridColumns';
 import { PrimaryButton } from './PrimaryButton';
 import { SecondaryButton } from './SecondaryButton';
 
@@ -22,6 +23,7 @@ export function UpdateAvailableModal({
   onDismiss,
 }: Props) {
   const { colors } = useTheme();
+  const modalMaxWidth = useModalMaxWidth();
 
   const handleStore = () => {
     Linking.openURL(
@@ -35,7 +37,7 @@ export function UpdateAvailableModal({
   return (
     <Modal visible transparent animationType="fade">
       <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
-        <View style={[styles.box, { backgroundColor: colors.surface }]}>
+        <View style={[styles.box, { backgroundColor: colors.surface, maxWidth: modalMaxWidth }]}>
           <Text style={[styles.title, { color: colors.textPrimary }]}>
             {forceUpdate ? 'Atualização obrigatória' : 'Nova versão disponível'}
           </Text>
@@ -76,7 +78,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 24,
     width: '100%',
-    maxWidth: 340,
   },
   title: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
   body: { fontSize: 15, marginBottom: 20, lineHeight: 22 },

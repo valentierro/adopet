@@ -26,8 +26,8 @@ try {
 // Helmet: headers de segurança (X-Content-Type-Options, X-Frame-Options, etc.)
 let helmetMiddleware: express.RequestHandler | null = null;
 try {
-  const helmet = require('helmet') as () => express.RequestHandler;
-  helmetMiddleware = helmet(); // headers de segurança; CSP ativo (se quebrar Swagger, desative via helmet({ contentSecurityPolicy: false })
+  const helmet = require('helmet') as (opts?: { contentSecurityPolicy?: boolean }) => express.RequestHandler;
+  helmetMiddleware = helmet({ contentSecurityPolicy: false }); // CSP desabilitado: a página set-password define o seu próprio; o padrão bloqueava scripts e quebrava o formulário
 } catch {
   // ignora se helmet não estiver no bundle
 }

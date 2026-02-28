@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, EmptyState, LoadingLogo, PageIntro, StatusBadge, VerifiedBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useListViewMode } from '../../src/hooks/useListViewMode';
+import { useResponsiveGridColumns } from '../../src/hooks/useResponsiveGridColumns';
 import { getMyAdoptions, type MyAdoptionItem } from '../../src/api/me';
 import { getMatchScoreColor } from '../../src/utils/matchScoreColor';
 import { getSpeciesLabel } from '../../src/utils/petLabels';
@@ -34,12 +35,13 @@ export default function MyAdoptionsScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const { colors } = useTheme();
+  const numColumns = useResponsiveGridColumns();
   const [tabRole, setTabRole] = useState<TabRole>('ADOPTER');
   const [speciesFilter, setSpeciesFilter] = useState<'BOTH' | 'DOG' | 'CAT'>('BOTH');
   const { viewMode, setViewMode } = useListViewMode('myAdoptionsViewMode', { persist: false });
 
   const gridContentWidth = screenWidth - insets.left - insets.right - 2 * gridScreenPadding;
-  const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - gap - gridCellSafety) / NUM_COLUMNS : 0;
+  const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - gap * (numColumns - 1) - gridCellSafety) / numColumns : 0;
   const gridPaddingHorizontal = useMemo(
     () => ({ paddingHorizontal: gridScreenPadding + (insets.left + insets.right) / 2 }),
     [insets.left, insets.right],
@@ -241,8 +243,8 @@ export default function MyAdoptionsScreen() {
         <FlatList
           data={items}
           keyExtractor={(item) => item.adoptionId}
-          numColumns={NUM_COLUMNS}
-          key="grid"
+          numColumns={numColumns}
+          key={`grid-${numColumns}`}
           style={styles.gridList}
           contentContainerStyle={[styles.gridListContent, gridPaddingHorizontal]}
           columnWrapperStyle={styles.gridRow}

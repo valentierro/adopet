@@ -8,6 +8,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { ScreenContainer, LoadingLogo, EmptyState, PageIntro, StatusBadge, VerifiedBadge } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { useListViewMode } from '../src/hooks/useListViewMode';
+import { useResponsiveGridColumns } from '../src/hooks/useResponsiveGridColumns';
 import { useAuthStore } from '../src/stores/authStore';
 import { fetchFeed } from '../src/api/feed';
 import { getFavorites } from '../src/api/favorites';
@@ -18,7 +19,6 @@ import { gridLayout } from '../src/theme/grid';
 import type { Pet } from '@adopet/shared';
 
 const { gap, padding: gridPadding, aspectRatio } = gridLayout;
-const NUM_COLUMNS = 2;
 const gridScreenPadding = spacing.sm;
 const gridCellSafety = spacing.md;
 
@@ -34,12 +34,13 @@ export default function OwnerPetsScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const { colors } = useTheme();
+  const numColumns = useResponsiveGridColumns();
   const userId = useAuthStore((s) => s.user?.id);
   const [speciesFilter, setSpeciesFilter] = useState<'BOTH' | 'DOG' | 'CAT'>('BOTH');
   const { viewMode, setViewMode } = useListViewMode('ownerPetsViewMode', { persist: false });
 
   const gridContentWidth = screenWidth - insets.left - insets.right - 2 * gridScreenPadding;
-  const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - gap - gridCellSafety) / NUM_COLUMNS : 0;
+  const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - gap * (numColumns - 1) - gridCellSafety) / numColumns : 0;
   const gridPaddingHorizontal = useMemo(
     () => ({ paddingHorizontal: gridScreenPadding + (insets.left + insets.right) / 2 }),
     [insets.left, insets.right],
@@ -284,9 +285,9 @@ export default function OwnerPetsScreen() {
         keyExtractor={(p) => p.id}
         renderItem={renderItem}
         ListHeaderComponent={listHeader}
-        numColumns={viewMode === 'grid' ? 2 : 1}
+        numColumns={viewMode === 'grid' ? numColumns : 1}
         columnWrapperStyle={viewMode === 'grid' ? styles.gridColumnWrapper : undefined}
-        key={viewMode}
+        key={`${viewMode}-${numColumns}`}
         contentContainerStyle={[
           styles.listContent,
           viewMode === 'grid' && styles.gridListContent,

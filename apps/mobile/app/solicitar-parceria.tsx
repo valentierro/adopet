@@ -13,12 +13,13 @@ import {
   ActivityIndicator,
   Pressable,
   Linking,
+  Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
-import { ScreenContainer, PrimaryButton } from '../src/components';
+import { ScreenContainer, PrimaryButton, Toast } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { useAuthStore } from '../src/stores/authStore';
 import { createPartnerCheckoutSession, registerAsPartner } from '../src/api/partner';
@@ -124,6 +125,8 @@ export default function SolicitarParceriaScreen() {
   const [instituicao, setInstituicao] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   const [cnpj, setCnpj] = useState('');
   const [cep, setCep] = useState('');
@@ -245,14 +248,11 @@ export default function SolicitarParceriaScreen() {
     try {
       await postPartnershipRequest(payload);
       setSubmitting(false);
-      Alert.alert(
-        'Solicitação enviada',
-        'Sua solicitação de parceria foi enviada. Nossa equipe entrará em contato em breve. Este formulário é apenas para manifestação de interesse, não realiza cadastro no app.',
-        [{ text: 'OK', onPress: () => router.back() }],
-      );
+      setShowSuccessModal(true);
     } catch (e) {
       setSubmitting(false);
       const msg = e instanceof Error ? e.message : 'Não foi possível enviar. Tente novamente.';
+      setToastMessage(getFriendlyErrorMessage(msg) || 'Não foi possível enviar. Tente novamente.');
       Alert.alert('Erro', getFriendlyErrorMessage(msg) || 'Não foi possível enviar a solicitação. Tente novamente ou envie para ' + EMAIL_PARCEIROS);
     }
   };
@@ -796,12 +796,37 @@ export default function SolicitarParceriaScreen() {
                 numberOfLines={4}
                 textAlignVertical="top"
               />
-              <PrimaryButton title={submitting ? 'Abrindo e-mail...' : 'Enviar solicitação'} onPress={handleSubmit} disabled={submitting} style={styles.submitBtn} />
-              <Text style={[styles.hint, { color: colors.textSecondary }]}>Ao tocar em "Enviar solicitação", seu app de e-mail será aberto com os dados preenchidos. Basta enviar a mensagem para concluir.</Text>
+              <PrimaryButton title={submitting ? 'Enviando...' : 'Enviar solicitação'} onPress={handleSubmit} disabled={submitting} style={styles.submitBtn} />
+              <Text style={[styles.hint, { color: colors.textSecondary }]}>Sua solicitação será enviada para nossa equipe. Entraremos em contato em breve pelo e-mail informado.</Text>
             </>
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+      <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
+
+      {tipo === 'ong' && (
+        <Modal visible={showSuccessModal} transparent animationType="fade">
+          <Pressable style={styles.successModalOverlay} onPress={() => { setShowSuccessModal(false); router.replace('/(auth)/login'); }}>
+            <Pressable style={[styles.successModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+              <View style={[styles.successModalIconWrap, { backgroundColor: colors.primary + '20' }]}>
+                <Ionicons name="checkmark-circle" size={56} color={colors.primary} />
+              </View>
+              <Text style={[styles.successModalTitle, { color: colors.textPrimary }]}>Solicitação enviada</Text>
+              <Text style={[styles.successModalMessage, { color: colors.textSecondary }]}>
+                Sua solicitação de parceria ONG foi enviada e será analisada pela equipe Adopet. O retorno será enviado por e-mail no endereço que você informou.
+              </Text>
+              <PrimaryButton
+                title="Ir para o login"
+                onPress={() => {
+                  setShowSuccessModal(false);
+                  router.replace('/(auth)/login');
+                }}
+                style={styles.successModalBtn}
+              />
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
     </ScreenContainer>
   );
 }
@@ -841,4 +866,39 @@ const styles = StyleSheet.create({
   },
   termsLabel: { fontSize: 13 },
   legalLink: { fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
+  successModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  successModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: spacing.xl,
+    alignItems: 'center',
+  },
+  successModalIconWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  successModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: spacing.md,
+    textAlign: 'center',
+  },
+  successModalMessage: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+  },
+  successModalBtn: { width: '100%' },
 });

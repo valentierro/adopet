@@ -10,6 +10,7 @@ import { ScreenContainer, EmptyState, LoadingLogo, PageIntro, VerifiedBadge, Sta
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useListViewMode } from '../../src/hooks/useListViewMode';
+import { useResponsiveGridColumns } from '../../src/hooks/useResponsiveGridColumns';
 import { getPassedPets, undoPass } from '../../src/api/swipes';
 import { addFavorite } from '../../src/api/favorites';
 import { getMatchScore } from '../../src/api/pets';
@@ -21,7 +22,6 @@ import { gridLayout } from '../../src/theme/grid';
 import { Ionicons } from '@expo/vector-icons';
 
 const { gap, padding: gridPadding, aspectRatio } = gridLayout;
-const NUM_COLUMNS = 2;
 const gridScreenPadding = spacing.sm;
 const gridCellSafety = spacing.md;
 
@@ -37,6 +37,7 @@ export default function PassedPetsScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const { colors } = useTheme();
+  const numColumns = useResponsiveGridColumns();
   const userId = useAuthStore((s) => s.user?.id);
   const [nameSearch, setNameSearch] = useState('');
   const [speciesFilter, setSpeciesFilter] = useState<'BOTH' | 'DOG' | 'CAT'>('BOTH');
@@ -46,7 +47,7 @@ export default function PassedPetsScreen() {
   const { viewMode, setViewMode } = useListViewMode('passedPetsViewMode', { persist: false });
 
   const gridContentWidth = screenWidth - insets.left - insets.right - 2 * gridScreenPadding;
-  const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - gap - gridCellSafety) / NUM_COLUMNS : 0;
+  const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - gap * (numColumns - 1) - gridCellSafety) / numColumns : 0;
   const gridPaddingHorizontal = useMemo(
     () => ({ paddingHorizontal: gridScreenPadding + (insets.left + insets.right) / 2 }),
     [insets.left, insets.right],
@@ -240,8 +241,8 @@ export default function PassedPetsScreen() {
           <FlatList
             data={items}
             keyExtractor={(p) => p.id}
-            numColumns={NUM_COLUMNS}
-            key="grid"
+            numColumns={numColumns}
+            key={`grid-${numColumns}`}
             style={styles.gridList}
             contentContainerStyle={[styles.gridListContent, gridPaddingHorizontal]}
             columnWrapperStyle={styles.gridRow}

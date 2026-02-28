@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, EmptyState, LoadingLogo, PageIntro, StatusBadge, VerifiedBadge, Toast } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useListViewMode } from '../../src/hooks/useListViewMode';
+import { useResponsiveGridColumns } from '../../src/hooks/useResponsiveGridColumns';
 import { getMe } from '../../src/api/me';
 import { getMinePets, resubmitPublication, extendListing, type PetStatus } from '../../src/api/pets';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
@@ -18,7 +19,6 @@ import { spacing } from '../../src/theme';
 import { gridLayout } from '../../src/theme/grid';
 
 const { gap, padding: gridPadding, aspectRatio } = gridLayout;
-const NUM_COLUMNS = 2;
 /** Padding lateral do grid na tela (menor que gridPadding para não cortar o card da direita) */
 const gridScreenPadding = spacing.sm;
 /** Redução extra na largura dos cards para não cortar o card da direita em alguns aparelhos */
@@ -69,6 +69,7 @@ export default function MyPetsScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const { colors } = useTheme();
+  const numColumns = useResponsiveGridColumns();
   const [nameSearch, setNameSearch] = useState('');
   const [speciesFilter, setSpeciesFilter] = useState<'BOTH' | 'DOG' | 'CAT'>('BOTH');
   const [statusFilter, setStatusFilter] = useState<'' | PetStatus>('');
@@ -76,7 +77,7 @@ export default function MyPetsScreen() {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
   const gridContentWidth = screenWidth - insets.left - insets.right - 2 * gridScreenPadding;
-  const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - gap - gridCellSafety) / NUM_COLUMNS : 0;
+  const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - gap * (numColumns - 1) - gridCellSafety) / numColumns : 0;
   const gridPaddingHorizontal = useMemo(
     () => ({ paddingHorizontal: gridScreenPadding + (insets.left + insets.right) / 2 }),
     [insets.left, insets.right],
@@ -433,8 +434,8 @@ export default function MyPetsScreen() {
         <FlatList
           data={pets}
           keyExtractor={(p) => p.id}
-          numColumns={NUM_COLUMNS}
-          key="grid"
+          numColumns={numColumns}
+          key={`grid-${numColumns}`}
           style={styles.gridList}
           contentContainerStyle={[styles.gridListContent, gridPaddingHorizontal]}
           columnWrapperStyle={styles.gridRow}

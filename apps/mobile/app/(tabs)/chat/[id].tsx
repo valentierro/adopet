@@ -1443,7 +1443,11 @@ const styles = StyleSheet.create({
   },
   chatMatchBadgeChevron: { marginLeft: 2 },
   modalOverlay: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1455,12 +1459,14 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: spacing.xl,
     alignItems: 'center',
+    alignSelf: 'center',
   },
   matchScoreModalCard: {
     maxWidth: 340,
     width: '100%',
     alignItems: 'stretch',
     maxHeight: '85%',
+    alignSelf: 'center',
   },
   thankYouModalCard: {
     width: '100%',
@@ -1468,6 +1474,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: spacing.xl,
     alignItems: 'center',
+    alignSelf: 'center',
   },
   thankYouIconWrap: {
     width: 80,

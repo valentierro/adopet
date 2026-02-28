@@ -17,6 +17,7 @@ import { recordPetView } from '../../src/api/pets';
 import { trackEvent } from '../../src/analytics';
 import { getPreferences, updatePreferences } from '../../src/api/me';
 import { useUpdateCityFromLocation } from '../../src/hooks/useUpdateCityFromLocation';
+import { useResponsiveGridColumns } from '../../src/hooks/useResponsiveGridColumns';
 import { getMatchScoreColor } from '../../src/utils/matchScoreColor';
 import { getViewedPetIds } from '../../src/utils/viewedPets';
 import { useAuthStore } from '../../src/stores/authStore';
@@ -31,7 +32,6 @@ const GRID_PADDING = spacing.md;
 const GRID_SCREEN_PADDING = spacing.sm;
 /** Redução extra na largura dos cards para não cortar o card da direita em alguns aparelhos */
 const GRID_CELL_SAFETY = spacing.md;
-const NUM_COLUMNS = 2;
 const GRID_CELL_ASPECT = 4 / 5;
 /** Cards do feed visitante (estilo Airbnb): mais quadrados, em carrossel horizontal por seção */
 const GUEST_CARD_WIDTH = 148;
@@ -190,8 +190,9 @@ export default function FeedScreen() {
 
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
+  const numColumns = useResponsiveGridColumns();
   const gridContentWidth = screenWidth - insets.left - insets.right - 2 * GRID_SCREEN_PADDING;
-  const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - GRID_GAP - GRID_CELL_SAFETY) / NUM_COLUMNS : 0;
+  const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - GRID_GAP * (numColumns - 1) - GRID_CELL_SAFETY) / numColumns : 0;
   const guestSlideWidth = Math.min(screenWidth - spacing.lg * 2, 280);
   const guestSlideStep = guestSlideWidth + spacing.md;
   const guestSlideListRef = useRef<ScrollView>(null);
@@ -1379,8 +1380,8 @@ export default function FeedScreen() {
           <FlatList
             data={displayGridItems}
             keyExtractor={(item, index) => `${item.id}-${index}`}
-            numColumns={NUM_COLUMNS}
-            key="grid"
+            numColumns={numColumns}
+            key={`grid-${numColumns}`}
             style={styles.gridList}
             contentContainerStyle={[styles.gridListContent, { paddingHorizontal: GRID_SCREEN_PADDING + (insets.left + insets.right) / 2 }]}
             columnWrapperStyle={styles.gridRow}

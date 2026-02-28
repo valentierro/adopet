@@ -378,23 +378,7 @@ export default function PetDetailsScreen() {
 
   const photos = pet.photos?.length ? pet.photos : ['https://picsum.photos/seed/pet/400/400'];
 
-  return (
-    <ScreenContainer scroll>
-      <PetPhotoGallery photos={photos} onPhotoPress={setFullScreenPhoto} />
-      <Modal
-        visible={!!fullScreenPhoto}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setFullScreenPhoto(null)}
-      >
-        <Pressable style={styles.fullScreenOverlay} onPress={() => setFullScreenPhoto(null)}>
-          {fullScreenPhoto ? (
-            <Image source={{ uri: fullScreenPhoto }} style={styles.fullScreenImage} contentFit="contain" />
-          ) : null}
-        </Pressable>
-      </Modal>
-
-      {showMatchScoreModal && matchScoreData && matchScoreData.score != null && (() => {
+  const matchScoreModalContent = showMatchScoreModal && matchScoreData && matchScoreData.score != null ? (() => {
         const criteria = matchScoreData.criteria ?? [];
         const matchItems = criteria.length > 0
           ? criteria.filter((c) => c.status === 'match').map((c) => c.message)
@@ -493,7 +477,24 @@ export default function PetDetailsScreen() {
             </Pressable>
           </Modal>
         );
-      })()}
+      })() : null;
+
+  return (
+    <>
+    <ScreenContainer scroll>
+      <PetPhotoGallery photos={photos} onPhotoPress={setFullScreenPhoto} />
+      <Modal
+        visible={!!fullScreenPhoto}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFullScreenPhoto(null)}
+      >
+        <Pressable style={styles.fullScreenOverlay} onPress={() => setFullScreenPhoto(null)}>
+          {fullScreenPhoto ? (
+            <Image source={{ uri: fullScreenPhoto }} style={styles.fullScreenImage} contentFit="contain" />
+          ) : null}
+        </Pressable>
+      </Modal>
 
       <Text style={[styles.name, { color: colors.textPrimary }]}>{pet.name}</Text>
       <Text style={[styles.meta, { color: colors.textSecondary }]}>
@@ -1168,6 +1169,8 @@ export default function PetDetailsScreen() {
       </Modal>
       <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
     </ScreenContainer>
+    {matchScoreModalContent}
+    </>
   );
 }
 
@@ -1438,7 +1441,11 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   modalOverlay: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1450,12 +1457,14 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: spacing.xl,
     alignItems: 'center',
+    alignSelf: 'center',
   },
   matchScoreModalCard: {
     maxWidth: 340,
     width: '100%',
     alignItems: 'stretch',
     maxHeight: '85%',
+    alignSelf: 'center',
   },
   matchScoreModalHeader: {
     paddingVertical: spacing.lg,

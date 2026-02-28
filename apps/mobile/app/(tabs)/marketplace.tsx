@@ -19,6 +19,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ScreenContainer, EmptyState, LoadingLogo, PageIntro, MarketplaceGridSkeleton } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useResponsiveGridColumns } from '../../src/hooks/useResponsiveGridColumns';
 import { getMarketplaceItems, type MarketplaceItem, recordPartnerCouponCopy } from '../../src/api/partners';
 import { spacing } from '../../src/theme';
 
@@ -70,6 +71,7 @@ function MarketplaceInfiniteGrid({
   paddingLeft,
   paddingRight,
   cardWidth,
+  numColumns,
   colors,
   router,
 }: {
@@ -79,6 +81,7 @@ function MarketplaceInfiniteGrid({
   paddingLeft: number;
   paddingRight: number;
   cardWidth: number;
+  numColumns: number;
   colors: { textPrimary: string; textSecondary: string; primary: string; surface: string };
   router: ReturnType<typeof useRouter>;
 }) {
@@ -118,7 +121,8 @@ function MarketplaceInfiniteGrid({
     <FlatList
       data={gridItems}
       keyExtractor={(item, index) => (item && item.id ? `${item.kind ?? 'item'}-${item.id}` : `row-${index}`)}
-      numColumns={2}
+      numColumns={numColumns}
+      key={`grid-${numColumns}`}
       columnWrapperStyle={styles.gridRow}
       contentContainerStyle={[styles.gridContent, { paddingLeft, paddingRight }]}
       showsVerticalScrollIndicator={false}
@@ -165,6 +169,7 @@ export default function MarketplaceScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
+  const numColumns = useResponsiveGridColumns();
   const [category, setCategory] = useState<Category>('all');
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -236,7 +241,7 @@ export default function MarketplaceScreen() {
   const paddingLeft = insets.left + GRID_PADDING_LEFT;
   const paddingRight = insets.right + GRID_PADDING_RIGHT;
   const contentWidth = screenWidth - paddingLeft - paddingRight;
-  const cardWidth = Math.floor((contentWidth - GRID_GAP) / 2);
+  const cardWidth = Math.floor((contentWidth - GRID_GAP * (numColumns - 1)) / numColumns);
 
   const showAllView = category === 'all';
   const isLoadingAll = showAllView && (loadingServices || loadingDiscounts);
@@ -420,7 +425,8 @@ export default function MarketplaceScreen() {
           <FlatList
             data={gridItemsByType}
             keyExtractor={(item, index) => (item && item.id ? `${item.kind ?? 'item'}-${item.id}` : `row-${index}`)}
-            numColumns={2}
+            numColumns={numColumns}
+            key={`grid-${numColumns}`}
             columnWrapperStyle={styles.gridRow}
             contentContainerStyle={[styles.gridContent, { paddingLeft, paddingRight }]}
             showsVerticalScrollIndicator={false}
@@ -459,6 +465,7 @@ export default function MarketplaceScreen() {
           paddingLeft={paddingLeft}
           paddingRight={paddingRight}
           cardWidth={cardWidth}
+          numColumns={numColumns}
           colors={colors}
           router={router}
         />

@@ -26,6 +26,7 @@ const baseExpo = {
     }),
   },
   android: {
+    supportsTablet: true,
     adaptiveIcon: {
       foregroundImage: './assets/brand/icon/app_icon_light.png',
       backgroundColor: '#FFFFFF',

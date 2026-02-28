@@ -1,5 +1,6 @@
 import { Controller, Post, Get, Body, Query, Res, HttpCode, HttpStatus, UseGuards, BadRequestException } from '@nestjs/common';
 import { Response } from 'express';
+import { randomBytes } from 'crypto';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
@@ -169,6 +170,9 @@ export class AuthController {
       ? 'Use o <strong>e-mail</strong> em que você recebeu o convite e a <strong>senha</strong> que você definir abaixo. Abra o app Adopet, toque em Entrar e informe esses dados.'
       : 'Use o <strong>e-mail</strong> em que você recebeu a confirmação de parceria e a <strong>senha</strong> que você definir abaixo. Abra o app Adopet, toque em Entrar e informe esses dados.';
 
+    const nonce = randomBytes(16).toString('base64');
+    const csp = `default-src 'self'; script-src 'self' 'nonce-${nonce}'; script-src-attr 'nonce-${nonce}'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; frame-ancestors 'self'`;
+
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -179,8 +183,8 @@ export class AuthController {
 <body style="margin:0;padding:0;background:#E5EDEA;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;">
   <div style="max-width:440px;width:100%;background:#fff;border:2px solid #0D9488;border-radius:16px;padding:28px 24px;margin:24px;">
     <div style="text-align:center;margin-bottom:24px;">
-      <img src="${logoUrl}" alt="Adopet" width="160" height="56" style="max-height:56px;width:auto;object-fit:contain;" onerror="this.style.display='none';this.nextElementSibling.style.display='block';" />
-      <span style="font-size:28px;font-weight:700;color:#0D9488;display:none;">Adopet</span>
+      <img id="logoImg" src="${logoUrl}" alt="Adopet" width="160" height="56" style="max-height:56px;width:auto;object-fit:contain;" />
+      <span id="logoFallback" style="font-size:28px;font-weight:700;color:#0D9488;display:none;">Adopet</span>
     </div>
     <p style="font-size:16px;font-weight:600;color:#1C1917;margin:0 0 12px 0;">${pageTitle}</p>
     <p style="font-size:14px;color:#57534E;line-height:1.65;margin:0 0 8px 0;">${introParagraph}</p>
@@ -206,17 +210,22 @@ export class AuthController {
         <p style="font-size:13px;color:#0F766E;line-height:1.5;margin:0;">${loginHint}</p>
       </div>
     </div>
-    <div id="successWrap" style="display:none;text-align:center;">
-      <div style="width:64px;height:64px;margin:0 auto 20px;background:#D1FAE5;border-radius:50%;display:flex;align-items:center;justify-content:center;">
-        <span style="font-size:36px;">✓</span>
+    <div id="successWrap" style="display:none;text-align:center;padding:24px 0;background:#F0FDFA;border:2px solid #0D9488;border-radius:12px;margin-top:20px;" role="alert" aria-live="polite">
+      <div style="width:80px;height:80px;margin:0 auto 24px;background:#0D9488;border-radius:50%;display:flex;align-items:center;justify-content:center;">
+        <span style="font-size:48px;color:#fff;line-height:1;">✓</span>
       </div>
-      <p style="font-size:18px;font-weight:600;color:#0D9488;margin:0 0 12px 0;">Senha definida com sucesso!</p>
-      <p style="font-size:14px;color:#57534E;line-height:1.6;margin:0;">Faça login no app com o e-mail em que você recebeu a confirmação e a senha que acabou de definir.</p>
+      <p style="font-size:20px;font-weight:700;color:#0D9488;margin:0 0 16px 0;">Senha definida com sucesso!</p>
+      <p style="font-size:15px;color:#57534E;line-height:1.6;margin:0;">Faça login no app com o e-mail em que você recebeu a confirmação e a senha que acabou de definir.</p>
     </div>
   </div>
-  <script>
+  <script nonce="${nonce}">
     (function() {
       var formAction = window.location.href.split('?')[0];
+      var logoImg = document.getElementById('logoImg');
+      var logoFallback = document.getElementById('logoFallback');
+      if (logoImg && logoFallback) {
+        logoImg.addEventListener('error', function() { logoImg.style.display = 'none'; logoFallback.style.display = 'block'; });
+      }
       document.getElementById('eye1').addEventListener('click', function() {
         var el = document.getElementById('newPassword');
         var btn = document.getElementById('eye1');
@@ -272,8 +281,13 @@ export class AuthController {
           })
           .then(function(o) {
             if (o.ok) {
-              document.getElementById('formWrap').style.display = 'none';
-              document.getElementById('successWrap').style.display = 'block';
+              var formWrapEl = document.getElementById('formWrap');
+              var successWrapEl = document.getElementById('successWrap');
+              if (formWrapEl) formWrapEl.style.display = 'none';
+              if (successWrapEl) {
+                successWrapEl.style.display = 'block';
+                successWrapEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
             } else {
               errBox.textContent = o.data && o.data.message ? o.data.message : 'Não foi possível definir a senha. Tente novamente.';
               errBox.style.display = 'block';
@@ -292,6 +306,6 @@ export class AuthController {
   </script>
 </body>
 </html>`;
-    (res as any).set('Content-Type', 'text/html').send(html);
+    res.set('Content-Type', 'text/html').set('Content-Security-Policy', csp).send(html);
   }
 }

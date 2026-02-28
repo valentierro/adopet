@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
@@ -9,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, EmptyState, LoadingLogo, PageIntro, StatusBadge, VerifiedBadge } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { useListViewMode } from '../src/hooks/useListViewMode';
+import { useResponsiveGridColumns } from '../src/hooks/useResponsiveGridColumns';
 import { getMyPartner } from '../src/api/partner';
 import { getPartnerPets, type PartnerPetsPage } from '../src/api/partners';
 import { getSpeciesLabel } from '../src/utils/petLabels';
@@ -16,7 +18,8 @@ import { getMatchScoreColor } from '../src/utils/matchScoreColor';
 import { spacing } from '../src/theme';
 import { gridLayout } from '../src/theme/grid';
 
-const { cellWidth, gap, padding: gridPadding } = gridLayout;
+const { gap, padding: gridPadding } = gridLayout;
+const gridCellSafety = spacing.md;
 /** Altura da imagem no grid: proporção mais quadrada para card menos cumprido */
 const GRID_IMAGE_ASPECT = 1;
 
@@ -45,9 +48,15 @@ type PetItem = PartnerPetsPage['items'][number];
 
 export default function PartnerMyPetsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const { colors } = useTheme();
+  const numColumns = useResponsiveGridColumns();
   const [speciesFilter, setSpeciesFilter] = useState<'BOTH' | 'DOG' | 'CAT'>('BOTH');
   const { viewMode, setViewMode } = useListViewMode('partnerMyPetsViewMode', { persist: false });
+
+  const gridContentWidth = screenWidth - insets.left - insets.right - 2 * gridPadding;
+  const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - gap * (numColumns - 1) - gridCellSafety) / numColumns : 0;
 
   const { data: partner, isLoading: loadingPartner } = useQuery({
     queryKey: ['me', 'partner'],
@@ -220,7 +229,7 @@ export default function PartnerMyPetsScreen() {
         >
           <Image
             source={{ uri: item.photos?.[0] ?? 'https://placehold.co/80?text=Pet' }}
-            style={[styles.gridThumb, { width: cellWidth, height: cellWidth / GRID_IMAGE_ASPECT }]}
+            style={[styles.gridThumb, { width: gridCellWidth, height: gridCellWidth / GRID_IMAGE_ASPECT }]}
             contentFit="cover"
             contentPosition="center"
           />
@@ -331,10 +340,10 @@ export default function PartnerMyPetsScreen() {
       <FlashList
         data={pets}
         keyExtractor={(p) => p.id}
-        numColumns={viewMode === 'grid' ? 2 : 1}
+        numColumns={viewMode === 'grid' ? numColumns : 1}
         estimatedItemSize={viewMode === 'grid' ? 180 : 100}
         contentContainerStyle={[styles.list, viewMode === 'grid' && styles.gridList]}
-        key={viewMode}
+        key={`${viewMode}-${numColumns}`}
         refreshControl={
           <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.primary} />
         }

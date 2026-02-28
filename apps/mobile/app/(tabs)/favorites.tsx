@@ -9,6 +9,7 @@ import { Image } from 'expo-image';
 import { ScreenContainer, PetCard, EmptyState, LoadingLogo, PageIntro, StatusBadge, PrimaryButton, Toast } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useListViewMode } from '../../src/hooks/useListViewMode';
+import { useResponsiveGridColumns } from '../../src/hooks/useResponsiveGridColumns';
 import { getMe } from '../../src/api/me';
 import {
   getFavorites,
@@ -26,7 +27,6 @@ import { spacing } from '../../src/theme';
 import { gridLayout } from '../../src/theme/grid';
 
 const { gap, padding: gridPadding, aspectRatio } = gridLayout;
-const NUM_COLUMNS = 2;
 const gridScreenPadding = spacing.sm;
 const gridCellSafety = spacing.md;
 
@@ -207,12 +207,13 @@ export default function FavoritesScreen() {
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
   const { colors } = useTheme();
+  const numColumns = useResponsiveGridColumns();
   const [speciesFilter, setSpeciesFilter] = useState<'BOTH' | 'DOG' | 'CAT'>('BOTH');
   const { viewMode, setViewMode } = useListViewMode('favoritesViewMode', { persist: false });
   const { data: user } = useQuery({ queryKey: ['me'], queryFn: getMe });
 
   const gridContentWidth = screenWidth - insets.left - insets.right - 2 * gridScreenPadding;
-  const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - gap - gridCellSafety) / NUM_COLUMNS : 0;
+  const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - gap * (numColumns - 1) - gridCellSafety) / numColumns : 0;
   const gridPaddingHorizontal = useMemo(
     () => ({ paddingHorizontal: gridScreenPadding + (insets.left + insets.right) / 2 }),
     [insets.left, insets.right],
@@ -443,8 +444,8 @@ export default function FavoritesScreen() {
         <FlatList
           data={safeItems}
           keyExtractor={(item, index) => `${item.id}-${index}`}
-          numColumns={NUM_COLUMNS}
-          key="grid"
+          numColumns={numColumns}
+          key={`grid-${numColumns}`}
           style={styles.listScroll}
           contentContainerStyle={[styles.gridListContent, gridPaddingHorizontal]}
           columnWrapperStyle={styles.gridRow}

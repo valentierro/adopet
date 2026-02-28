@@ -12,6 +12,7 @@ import { AppErrorBoundary } from '../src/components/AppErrorBoundary';
 import { AppWithOfflineBanner } from '../src/components/AppWithOfflineBanner';
 import { HeaderLogo, UpdateAvailableModal } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
+import { useModalMaxWidth } from '../src/hooks/useResponsiveGridColumns';
 import { useAppVersionCheck } from '../src/hooks/useAppVersionCheck';
 import { setAuthProvider, setOnFeatureDisabled } from '../src/api/client';
 import { useAuthStore } from '../src/stores/authStore';
@@ -82,6 +83,7 @@ function RootLayout() {
     optionalShownThisSession,
   } = useAppVersionCheck();
   const showUpdateModal = !!userId && (forceUpdate || optionalUpdate);
+  const modalMaxWidth = useModalMaxWidth();
 
   useEffect(() => {
     SplashScreen.hideAsync();
@@ -227,7 +229,7 @@ function RootLayout() {
             onPress={handleSessionExpiredClose}
           >
             <Pressable
-              style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 24, maxWidth: 340, width: '100%' }}
+              style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 24, maxWidth: modalMaxWidth, width: '100%' }}
               onPress={(e) => e.stopPropagation()}
             >
               <Text style={{ fontSize: 20, fontWeight: '700', color: colors.textPrimary, marginBottom: 8 }}>

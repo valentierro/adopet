@@ -10,11 +10,11 @@ import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, LoadingLogo, EmptyState, VerifiedBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useResponsiveGridColumns } from '../../src/hooks/useResponsiveGridColumns';
 import { fetchFeed, type FeedResponse, type FeedSpeciesFilter } from '../../src/api/feed';
 import { getPreferences } from '../../src/api/me';
 import { spacing } from '../../src/theme';
 
-const NUM_COLUMNS = 2;
 const GRID_PADDING = spacing.md;
 const GRID_GAP = spacing.sm;
 const GRID_CELL_ASPECT = 4 / 5;
@@ -80,9 +80,10 @@ export default function FeedGridScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
+  const numColumns = useResponsiveGridColumns();
   const horizontalPadding = insets.left + insets.right + 2 * spacing.md + 2 * GRID_PADDING;
   const contentWidth = windowWidth - horizontalPadding;
-  const gridCellWidth = contentWidth > 0 ? (contentWidth - GRID_GAP) / NUM_COLUMNS : 0;
+  const gridCellWidth = contentWidth > 0 ? (contentWidth - GRID_GAP * (numColumns - 1)) / numColumns : 0;
 
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
 
@@ -245,8 +246,8 @@ export default function FeedGridScreen() {
       <FlatList
         data={items}
         keyExtractor={(item) => item.id}
-        numColumns={NUM_COLUMNS}
-        key="grid"
+        numColumns={numColumns}
+        key={`grid-${numColumns}`}
         style={[styles.list, { backgroundColor: colors.background }]}
         contentContainerStyle={[
           styles.listContent,
