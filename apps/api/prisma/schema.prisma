@@ -43,6 +43,8 @@ model User {
   bannedById    String?   // id do admin que baniu
   bannedReason  String?   @db.Text // motivo opcional do ban
   lastListingReminderAt DateTime? // último envio de push "atualize seus anúncios" (follow-up tutores)
+  missionProfileCompleteAt DateTime? // quando completou perfil (avatar, phone, city) — pontos de missão
+  missionPreferencesCompleteAt DateTime? // quando adicionou preferências — pontos de missão
   // KYC (verificação de identidade) — obrigatório para adotantes antes de confirmar adoção
   kycStatus          String?   // PENDING | VERIFIED | REJECTED; null = nunca enviou
   kycDocumentKey     String?   // chave do documento (upload)
@@ -175,6 +177,8 @@ model Partner {
   name                 String
   slug                 String    @unique
   city                 String?
+  latitude             Float?
+  longitude            Float?
   description          String?
   website              String?
   logoUrl              String?

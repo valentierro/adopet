@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { queryClient } from '../queryClient';
 
 const QUERY_CACHE_KEY = 'ADOPET_QUERY_CACHE';
+const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutos
 
 export type User = {
   id: string;
@@ -50,6 +51,8 @@ export type User = {
     isPaidPartner: boolean;
   };
   partnerMemberships?: Array<{ partnerId: string; partnerName: string; partnerSlug: string }>;
+  /** Parceiro (dono de ONG/estabelecimento ou membro); isento de KYC para adoção */
+  isPartner?: boolean;
   /** KYC: null = nunca enviou, PENDING = em análise, VERIFIED = aprovado, REJECTED = rejeitado */
   kycStatus?: string | null;
   kycSubmittedAt?: string | null;
@@ -68,7 +71,11 @@ type AuthState = {
   showLogoutToast: boolean;
   /** Exibir modal "Sessão expirada" antes de redirecionar para tela de convidado (apenas quando expira por inatividade). */
   sessionExpiredModalVisible: boolean;
+  /** Última atividade (timestamp) para expiração por inatividade de 15 min */
+  lastActivityAt: number;
   setTokens: (access: string, refresh: string) => void;
+  markActivity: () => void;
+  isInactivityExpired: () => boolean;
   setUser: (user: User | null) => void;
   setShowLogoutToast: (value: boolean) => void;
   setSessionExpiredModalVisible: (value: boolean) => void;
@@ -90,10 +97,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isHydrated: false,
   showLogoutToast: false,
   sessionExpiredModalVisible: false,
+  lastActivityAt: 0,
 
   setTokens: (access: string, refresh: string) => {
-    set({ accessToken: access, refreshToken: refresh });
+    set({ accessToken: access, refreshToken: refresh, lastActivityAt: Date.now() });
     setStoredTokens(access, refresh);
+  },
+
+  markActivity: () => set({ lastActivityAt: Date.now() }),
+  isInactivityExpired: () => {
+    const last = get().lastActivityAt;
+    if (!last) return false;
+    return Date.now() - last > INACTIVITY_TIMEOUT_MS;
   },
 
   setUser: (user: User | null) => set({ user }),
@@ -111,6 +126,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({
         accessToken: res.accessToken,
         refreshToken: res.refreshToken,
+        lastActivityAt: Date.now(),
         isLoading: false,
       });
       await setStoredTokens(res.accessToken, res.refreshToken);
@@ -134,7 +150,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ isLoading: false });
       if ('accessToken' in res) {
         try {
-          set({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+          set({ accessToken: res.accessToken, refreshToken: res.refreshToken, lastActivityAt: Date.now() });
           await setStoredTokens(res.accessToken, res.refreshToken);
           const me = await getMe();
           set({ user: me });
@@ -159,7 +175,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
       set({ isLoading: false });
       if ('accessToken' in res) {
-        set({ accessToken: res.accessToken, refreshToken: res.refreshToken });
+        set({ accessToken: res.accessToken, refreshToken: res.refreshToken, lastActivityAt: Date.now() });
         await setStoredTokens(res.accessToken, res.refreshToken);
         try {
           const me = await getMe();
@@ -222,10 +238,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({
         accessToken: access,
         refreshToken: refresh,
+        lastActivityAt: access ? Date.now() : 0,
         isHydrated: true,
       });
     } catch {
-      set({ accessToken: null, refreshToken: null, isHydrated: true });
+      set({ accessToken: null, refreshToken: null, lastActivityAt: 0, isHydrated: true });
     }
   },
 

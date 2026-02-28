@@ -123,7 +123,7 @@ export class FeedQueryDto {
 
   @ApiPropertyOptional({
     enum: ['trending'],
-    description: 'Ordenar por engajamento: trending = mais favoritados primeiro',
+    description: 'Ordenar por engajamento: favoritos + conversas ativas (conversas têm peso maior)',
   })
   @IsOptional()
   @IsString()

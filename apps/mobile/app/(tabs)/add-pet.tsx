@@ -190,7 +190,10 @@ export default function AddPetWizardScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!userId) router.replace('/(auth)/welcome');
+      if (!userId) {
+        const t = setTimeout(() => router.replace('/(auth)/welcome'), 0);
+        return () => clearTimeout(t);
+      }
     }, [userId, router]),
   );
 

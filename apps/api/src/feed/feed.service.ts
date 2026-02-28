@@ -32,6 +32,9 @@ const DECAY_RECENCY = 0.08;
 /** Boost de score para pets de parceiro pago (destaque no feed). Valor alto para priorizar à frente de pets sem parceria. */
 const BOOST_PAID_PARTNER = 0.22;
 
+/** Peso das conversas no trending: cada conversa ativa vale mais que um favorito (engajamento mais forte). */
+const TRENDING_CONVERSATION_WEIGHT = 2;
+
 @Injectable()
 export class FeedService {
   constructor(
@@ -326,7 +329,7 @@ export class FeedService {
     }
 
     const petIds = candidates.map((p) => p.id);
-    const [favCounts, confirmedPartnersByPetId] = await Promise.all([
+    const [favCounts, convCounts, confirmedPartnersByPetId] = await Promise.all([
       petIds.length > 0
         ? this.prisma.favorite.groupBy({
             by: ['petId'],
@@ -334,9 +337,24 @@ export class FeedService {
             _count: { id: true },
           })
         : [],
+      petIds.length > 0 && querySortBy === 'trending'
+        ? this.prisma.conversation.groupBy({
+            by: ['petId'],
+            where: {
+              petId: { in: petIds },
+              type: 'NORMAL',
+              messages: { some: { isSystem: false } },
+            },
+            _count: { id: true },
+          })
+        : [],
       this.petPartnershipService.getConfirmedPartnersByPetIds(petIds),
     ]);
     const favByPetId = Object.fromEntries(favCounts.map((f) => [f.petId, f._count.id]));
+    const convByPetId =
+      querySortBy === 'trending'
+        ? Object.fromEntries((convCounts as { petId: string; _count: { id: number } }[]).map((c) => [c.petId, c._count.id]))
+        : {};
 
     const profileForMatch =
       adopterProfile && prefs
@@ -405,12 +423,20 @@ export class FeedService {
       withinRadius = withinRadius.filter((s) => !s.hasPartner);
     }
 
-    /** Ordenação: trending = por favoritos (desc); senão por tier de parceria + match score. */
+    /** Ordenação: trending = favoritos + conversas ativas (peso maior para conversas); senão tier de parceria + match score. */
     if (querySortBy === 'trending') {
+      const trendingScore = (petId: string) => {
+        const fav = favByPetId[petId] ?? 0;
+        const conv = convByPetId[petId] ?? 0;
+        return fav + conv * TRENDING_CONVERSATION_WEIGHT;
+      };
+      withinRadius.forEach((s) => {
+        (s as { trendingScore?: number }).trendingScore = trendingScore(s.pet.id);
+      });
       withinRadius.sort((a, b) => {
-        const favA = favByPetId[a.pet.id] ?? 0;
-        const favB = favByPetId[b.pet.id] ?? 0;
-        if (favB !== favA) return favB - favA;
+        const scoreA = (a as { trendingScore?: number }).trendingScore ?? 0;
+        const scoreB = (b as { trendingScore?: number }).trendingScore ?? 0;
+        if (scoreB !== scoreA) return scoreB - scoreA;
         return b.pet.id.localeCompare(a.pet.id);
       });
     } else {
@@ -434,6 +460,14 @@ export class FeedService {
         const idx = withinRadius.findIndex((s) => s.pet.id === decoded.id);
         if (idx >= 0) {
           startIndex = idx + 1;
+        } else if (querySortBy === 'trending') {
+          const lastScore = (decoded as { score: number }).score;
+          const idxAfter = withinRadius.findIndex(
+            (s) =>
+              ((s as { trendingScore?: number }).trendingScore ?? 0) < lastScore ||
+              (((s as { trendingScore?: number }).trendingScore ?? 0) === lastScore && s.pet.id <= decoded.id),
+          );
+          startIndex = idxAfter === -1 ? withinRadius.length : idxAfter;
         } else {
           const idxAfter = withinRadius.findIndex(
             (s) =>
@@ -448,9 +482,14 @@ export class FeedService {
     const slice = withinRadius.slice(startIndex, startIndex + pageSize + 1);
     const hasMore = slice.length > pageSize;
     const items = slice.slice(0, pageSize);
+    const lastItem = items[items.length - 1];
+    const cursorScore =
+      querySortBy === 'trending' && lastItem
+        ? (lastItem as { trendingScore?: number }).trendingScore ?? lastItem.score
+        : lastItem?.score;
     const nextCursor =
-      hasMore && items.length > 0
-        ? this.encodeCursor(items[items.length - 1].score, items[items.length - 1].pet.id)
+      hasMore && items.length > 0 && cursorScore != null
+        ? this.encodeCursor(cursorScore, lastItem!.pet.id)
         : null;
 
     const itemPetIds = items.map(({ pet }) => pet.id);
@@ -694,6 +733,71 @@ export class FeedService {
       };
     });
     return { items };
+  }
+
+  /** Parceiros com lat/lng no raio (para mapa). typeFilter: ONG | COMMERCIAL (CLINIC+STORE) | undefined (todos). */
+  async getPartnerMapPins(
+    lat: number,
+    lng: number,
+    radiusKm: number,
+    typeFilter?: 'ONG' | 'COMMERCIAL',
+  ): Promise<{
+    items: {
+      id: string;
+      name: string;
+      type: string;
+      city?: string;
+      latitude: number;
+      longitude: number;
+      logoUrl?: string;
+      distanceKm: number;
+    }[];
+  }> {
+    const typeWhere: Prisma.PartnerWhereInput =
+      typeFilter === 'ONG'
+        ? { type: 'ONG' }
+        : typeFilter === 'COMMERCIAL'
+          ? { type: { in: ['CLINIC', 'STORE'] } }
+          : {};
+    const candidates = await this.prisma.partner.findMany({
+      where: {
+        active: true,
+        approvedAt: { not: null },
+        activatedAt: { not: null },
+        latitude: { not: null },
+        longitude: { not: null },
+        ...typeWhere,
+      },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        city: true,
+        latitude: true,
+        longitude: true,
+        logoUrl: true,
+      },
+    });
+    const withinRadius: { p: (typeof candidates)[number]; distanceKm: number }[] = [];
+    for (const p of candidates) {
+      if (p.latitude == null || p.longitude == null) continue;
+      const distanceKm = this.haversineKm(lat, lng, p.latitude, p.longitude);
+      if (distanceKm <= radiusKm) {
+        withinRadius.push({ p, distanceKm });
+      }
+    }
+    return {
+      items: withinRadius.map(({ p, distanceKm }) => ({
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        city: p.city ?? undefined,
+        latitude: p.latitude!,
+        longitude: p.longitude!,
+        logoUrl: p.logoUrl ?? undefined,
+        distanceKm,
+      })),
+    };
   }
 
   /**

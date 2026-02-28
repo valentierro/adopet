@@ -1051,6 +1051,11 @@ export default function PetDetailsScreen() {
             <Ionicons name="paw" size={22} color="#fff" style={styles.adoptedCtaIcon} />
             <Text style={styles.adoptedCtaText}>Ver mais pets no feed</Text>
           </TouchableOpacity>
+        ) : isOwner ? (
+          <PrimaryButton
+            title="Editar anúncio"
+            onPress={() => router.push(`/pet-edit/${id}`)}
+          />
         ) : isGuest ? (
           <>
             <PrimaryButton
@@ -1084,7 +1089,7 @@ export default function PetDetailsScreen() {
               <Ionicons name="share-outline" size={20} color={colors.primary} />
               <Text style={[styles.shareLinkText, { color: colors.primary }]}>Compartilhar anúncio</Text>
             </TouchableOpacity>
-            {!isGuest && (
+            {!isGuest && !isOwner && (
               <TouchableOpacity onPress={handleDenunciar} disabled={reportMutation.isPending} style={styles.reportLink}>
                 <Text style={[styles.reportLinkText, { color: colors.textSecondary }]}>
                   {reportMutation.isPending ? 'Enviando...' : 'Denunciar este anúncio'}

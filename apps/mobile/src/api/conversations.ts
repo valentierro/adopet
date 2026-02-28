@@ -15,6 +15,10 @@ export async function getConversations(): Promise<ConversationListItem[]> {
   return api.get<ConversationListItem[]>('/conversations');
 }
 
+export async function getBlockedConversations(): Promise<ConversationListItem[]> {
+  return api.get<ConversationListItem[]>('/conversations/blocked');
+}
+
 export async function createConversation(petId: string, adopterId?: string): Promise<{ id: string }> {
   return api.post<{ id: string }>('/conversations', adopterId != null ? { petId, adopterId } : { petId });
 }
@@ -34,8 +38,10 @@ export type ConversationDetail = {
     hasChildren?: boolean;
     timeAtHome?: string;
     kycVerified?: boolean;
+    /** Parceiro (dono de ONG/estabelecimento ou membro) não precisa de KYC para adoção */
+    isPartner?: boolean;
   };
-  pet?: { name: string; photoUrl?: string; species?: string; size?: string; age?: number; adoptionFinalized?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string };
+  pet?: { name: string; photoUrl?: string; species?: string; size?: string; age?: number; adoptionFinalized?: boolean; adopterHasConfirmed?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string; canAdopterDecline?: boolean };
   otherUserTyping?: boolean;
   /** Quando true, o outro participante saiu/foi desativado; chat bloqueado para novas mensagens. */
   otherUserDeactivated?: boolean;

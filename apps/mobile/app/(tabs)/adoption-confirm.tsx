@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Modal, Pressable, Platform } from 'react-native';
 import { Image } from 'expo-image';
 import { useTheme } from '../../src/hooks/useTheme';
 import { getPendingAdoptionConfirmations, getMe } from '../../src/api/me';
-import { confirmAdoption } from '../../src/api/pets';
+import { confirmAdoption, declineAdoption } from '../../src/api/pets';
 import { getFriendlyErrorMessage, isKycRequiredError } from '../../src/utils/errorMessage';
 import { trackEvent } from '../../src/analytics';
 import { ScreenContainer, EmptyState, StatusBadge, VerifiedBadge } from '../../src/components';
@@ -14,32 +14,70 @@ import { spacing } from '../../src/theme';
 
 const speciesLabel: Record<string, string> = { dog: 'Cachorro', cat: 'Gato', DOG: 'Cachorro', CAT: 'Gato' };
 
-const RESPONSIBILITY_TERM = `Ao confirmar, você declara que:
-• Assume a responsabilidade de cuidar do pet com zelo, oferecendo ambiente adequado, alimentação, cuidados veterinários e bem-estar.
-• Compromete-se a não abandonar o animal e a não utilizá-lo para fins que impliquem maus-tratos ou crueldade.
-• Sabe que o doador ou o Adopet podem entrar em contato para acompanhar como o pet está e que responder é uma forma de demonstrar responsabilidade.`;
+/** Checklist obrigatório para o adotante antes de confirmar que realizou a adoção. */
+const ADOPTER_CHECKLIST_ITEMS: { key: string; label: string }[] = [
+  { key: 'care', label: 'Assumo a responsabilidade de cuidar do pet com zelo, oferecendo ambiente adequado, alimentação e cuidados veterinários.' },
+  { key: 'noAbandon', label: 'Comprometo-me a não abandonar o animal e a não utilizá-lo para fins que impliquem maus-tratos ou crueldade.' },
+  { key: 'contact', label: 'Estou ciente de que o doador ou o Adopet podem entrar em contato para acompanhar como o pet está e que responder é uma forma de demonstrar responsabilidade.' },
+  { key: 'confirm', label: 'Confirmo que realizei a adoção e assumo todas as responsabilidades acima.' },
+];
 
 export default function AdoptionConfirmScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const queryClient = useQueryClient();
-  const [termAcceptedPetIds, setTermAcceptedPetIds] = useState<Set<string>>(new Set());
+  const [checklistByPet, setChecklistByPet] = useState<Record<string, Record<string, boolean>>>({});
+  const [showThankYouModal, setShowThankYouModal] = useState(false);
+  const [declineConfirmPetId, setDeclineConfirmPetId] = useState<string | null>(null);
+  const [declineMessage, setDeclineMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const { data, isLoading } = useQuery({
     queryKey: ['me', 'pending-adoption-confirmations'],
     queryFn: getPendingAdoptionConfirmations,
   });
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe });
   const items = data?.items ?? [];
-  const needsKyc = items.length > 0 && me?.kycStatus !== 'VERIFIED';
+  const isPartner = me?.isPartner === true;
+  const needsKyc = items.length > 0 && me?.kycStatus !== 'VERIFIED' && !isPartner;
 
-  const toggleTermForPet = (petId: string) => {
-    setTermAcceptedPetIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(petId)) next.delete(petId);
-      else next.add(petId);
-      return next;
-    });
+  const toggleChecklistItem = (petId: string, key: string) => {
+    setChecklistByPet((prev) => ({
+      ...prev,
+      [petId]: {
+        ...(prev[petId] ?? {}),
+        [key]: !(prev[petId]?.[key] ?? false),
+      },
+    }));
   };
+
+  const isChecklistComplete = (petId: string) =>
+    ADOPTER_CHECKLIST_ITEMS.every((item) => checklistByPet[petId]?.[item.key] === true);
+
+  const declineMutation = useMutation({
+    mutationFn: (petId: string) => declineAdoption(petId),
+    onSuccess: async (_, petId) => {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['me', 'pending-adoption-confirmations'] }),
+        queryClient.refetchQueries({ queryKey: ['conversations'] }),
+        queryClient.refetchQueries({
+          predicate: (q) => q.queryKey[0] === 'me' && q.queryKey[1] === 'adoptions',
+        }),
+        queryClient.refetchQueries({ queryKey: ['me', 'tutor-stats'] }),
+      ]);
+      if (Platform.OS === 'web') {
+        setDeclineMessage({ type: 'success', text: 'O pet voltou a ficar disponível. O tutor foi notificado.' });
+      } else {
+        Alert.alert('Você desistiu', 'O pet voltou a ficar disponível. O tutor foi notificado.');
+      }
+    },
+    onError: (e: unknown) => {
+      const msg = getFriendlyErrorMessage(e, 'Não foi possível desistir. Tente novamente.');
+      if (Platform.OS === 'web') {
+        setDeclineMessage({ type: 'error', text: msg });
+      } else {
+        Alert.alert('Erro', msg);
+      }
+    },
+  });
 
   const confirmMutation = useMutation({
     mutationFn: ({ petId, responsibilityTermAccepted }: { petId: string; responsibilityTermAccepted: boolean }) =>
@@ -54,7 +92,7 @@ export default function AdoptionConfirmScreen() {
         }),
         queryClient.refetchQueries({ queryKey: ['me', 'tutor-stats'] }),
       ]);
-      Alert.alert('Adoção confirmada', 'Sua confirmação foi registrada. A adoção seguirá para validação do Adopet.');
+      setShowThankYouModal(true);
     },
     onError: (e: unknown) => {
       if (isKycRequiredError(e)) {
@@ -95,6 +133,7 @@ export default function AdoptionConfirmScreen() {
   }
 
   return (
+    <>
     <ScrollView style={[styles.scroll, { backgroundColor: colors.background }]} contentContainerStyle={styles.scrollContent}>
       <Text style={[styles.title, { color: colors.textPrimary }]}>Confirmar adoção</Text>
       <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
@@ -161,45 +200,165 @@ export default function AdoptionConfirmScreen() {
             </View>
           </TouchableOpacity>
           <View style={[styles.termBlock, { backgroundColor: colors.background + 'cc', borderColor: colors.primary + '40' }]}>
-            <Text style={[styles.termText, { color: colors.textSecondary }]}>{RESPONSIBILITY_TERM}</Text>
+            <Text style={[styles.termLabel, { color: colors.textPrimary, marginBottom: spacing.sm }]}>
+              Marque todos os itens para confirmar que realizou a adoção:
+            </Text>
+            {ADOPTER_CHECKLIST_ITEMS.map((checkItem) => (
+              <TouchableOpacity
+                key={checkItem.key}
+                style={styles.termRow}
+                onPress={() => toggleChecklistItem(item.petId, checkItem.key)}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[
+                    styles.checkbox,
+                    checklistByPet[item.petId]?.[checkItem.key] && { backgroundColor: colors.primary },
+                  ]}
+                >
+                  {checklistByPet[item.petId]?.[checkItem.key] && (
+                    <Ionicons name="checkmark" size={16} color="#fff" />
+                  )}
+                </View>
+                <Text style={[styles.termText, { color: colors.textSecondary, flex: 1 }]}>{checkItem.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={styles.cardActions}>
             <TouchableOpacity
-              style={styles.termRow}
-              onPress={() => toggleTermForPet(item.petId)}
-              activeOpacity={0.7}
+              style={[
+                styles.confirmBtn,
+                { backgroundColor: colors.primary },
+                !isChecklistComplete(item.petId) && { opacity: 0.6 },
+              ]}
+              onPress={() => {
+                if (!isChecklistComplete(item.petId)) {
+                  Alert.alert(
+                    'Checklist obrigatório',
+                    'Marque todos os itens da lista antes de confirmar a adoção.',
+                  );
+                  return;
+                }
+                confirmMutation.mutate({ petId: item.petId, responsibilityTermAccepted: true });
+              }}
+              disabled={
+                (confirmMutation.isPending && confirmMutation.variables?.petId === item.petId) ||
+                (declineMutation.isPending && declineMutation.variables === item.petId) ||
+                !isChecklistComplete(item.petId)
+              }
             >
-              <View style={[styles.checkbox, termAcceptedPetIds.has(item.petId) && { backgroundColor: colors.primary }]}>
-                {termAcceptedPetIds.has(item.petId) && <Ionicons name="checkmark" size={16} color="#fff" />}
-              </View>
-              <Text style={[styles.termLabel, { color: colors.textPrimary }]}>Li e aceito o termo de responsabilidade</Text>
+              {confirmMutation.isPending && confirmMutation.variables?.petId === item.petId ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                  <Text style={styles.confirmBtnText}>Confirmar que fui eu quem adotou</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.declineBtn, { borderColor: (colors.error || '#dc2626') + '80' }]}
+              onPress={() => setDeclineConfirmPetId(item.petId)}
+              disabled={
+                (confirmMutation.isPending && confirmMutation.variables?.petId === item.petId) ||
+                (declineMutation.isPending && declineMutation.variables === item.petId)
+              }
+            >
+              {declineMutation.isPending && declineMutation.variables === item.petId ? (
+                <ActivityIndicator size="small" color={colors.textSecondary} />
+              ) : (
+                <>
+                  <Ionicons name="close-circle-outline" size={18} color={colors.error || '#dc2626'} />
+                  <Text style={[styles.declineBtnText, { color: colors.error || '#dc2626' }]}>Desistir</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={[
-              styles.confirmBtn,
-              { backgroundColor: colors.primary },
-              !termAcceptedPetIds.has(item.petId) && { opacity: 0.6 },
-            ]}
-            onPress={() => {
-              if (!termAcceptedPetIds.has(item.petId)) {
-                Alert.alert('Termo obrigatório', 'Leia e aceite o termo de responsabilidade para confirmar a adoção.');
-                return;
-              }
-              confirmMutation.mutate({ petId: item.petId, responsibilityTermAccepted: true });
-            }}
-            disabled={(confirmMutation.isPending && confirmMutation.variables?.petId === item.petId) || !termAcceptedPetIds.has(item.petId)}
-          >
-            {confirmMutation.isPending && confirmMutation.variables?.petId === item.petId ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                <Text style={styles.confirmBtnText}>Confirmar que fui eu quem adotou</Text>
-              </>
-            )}
-          </TouchableOpacity>
         </View>
       ))}
     </ScrollView>
+
+    <Modal visible={showThankYouModal} transparent animationType="fade">
+      <Pressable style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]} onPress={() => setShowThankYouModal(false)}>
+        <Pressable style={[styles.thankYouModal, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+          <View style={[styles.thankYouIconWrap, { backgroundColor: colors.primary + '20' }]}>
+            <Ionicons name="heart" size={48} color={colors.primary} />
+          </View>
+          <Text style={[styles.thankYouTitle, { color: colors.textPrimary }]}>Obrigado! Adoção confirmada</Text>
+          <Text style={[styles.thankYouText, { color: colors.textSecondary }]}>
+            Sua confirmação foi registrada com sucesso. A adoção seguirá para validação da equipe Adopet.
+            {'\n\n'}
+            Isso não atrapalha o processo: você pode seguir o combinado com o tutor para concretizar a adoção (encontro, entrega do pet, etc.).
+          </Text>
+          <TouchableOpacity
+            style={[styles.thankYouBtn, { backgroundColor: colors.primary }]}
+            onPress={() => setShowThankYouModal(false)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.thankYouBtnText}>Entendi</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+
+    <Modal visible={declineConfirmPetId != null} transparent animationType="fade">
+      <Pressable style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]} onPress={() => setDeclineConfirmPetId(null)}>
+        <Pressable style={[styles.thankYouModal, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+          <Text style={[styles.thankYouTitle, { color: colors.textPrimary, marginBottom: spacing.sm }]}>Desistir da adoção</Text>
+          <Text style={[styles.thankYouText, { color: colors.textSecondary, marginBottom: spacing.lg }]}>
+            O pet voltará a ficar disponível e o tutor será notificado. Deseja continuar?
+          </Text>
+          <View style={styles.declineModalActions}>
+            <TouchableOpacity
+              style={[styles.declineModalBtn, { borderColor: colors.textSecondary + '80' }]}
+              onPress={() => setDeclineConfirmPetId(null)}
+              disabled={declineMutation.isPending}
+            >
+              <Text style={{ color: colors.textSecondary, fontWeight: '600' }}>Não</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.declineModalBtn, { backgroundColor: colors.error || '#dc2626', borderWidth: 0 }]}
+              onPress={() => {
+                if (declineConfirmPetId) {
+                  declineMutation.mutate(declineConfirmPetId);
+                  setDeclineConfirmPetId(null);
+                }
+              }}
+              disabled={declineMutation.isPending}
+            >
+              {declineMutation.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={{ color: '#fff', fontWeight: '600' }}>Sim, desistir</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+
+    {Platform.OS === 'web' && declineMessage && (
+      <Modal visible transparent animationType="fade">
+        <Pressable style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]} onPress={() => setDeclineMessage(null)}>
+          <Pressable style={[styles.thankYouModal, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.thankYouTitle, { color: colors.textPrimary, marginBottom: spacing.sm }]}>
+              {declineMessage.type === 'success' ? 'Você desistiu' : 'Erro'}
+            </Text>
+            <Text style={[styles.thankYouText, { color: colors.textSecondary, marginBottom: spacing.lg }]}>
+              {declineMessage.text}
+            </Text>
+            <TouchableOpacity
+              style={[styles.thankYouBtn, { backgroundColor: colors.primary }]}
+              onPress={() => setDeclineMessage(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.thankYouBtnText}>OK</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    )}
+    </>
   );
 }
 
@@ -238,8 +397,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: spacing.md,
   },
-  termText: { fontSize: 12, lineHeight: 20, marginBottom: spacing.sm },
-  termRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  termText: { fontSize: 12, lineHeight: 20 },
+  termRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, marginBottom: spacing.sm },
   checkbox: {
     width: 22,
     height: 22,
@@ -250,6 +409,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   termLabel: { fontSize: 13, fontWeight: '600', flex: 1 },
+  cardActions: { gap: spacing.sm, marginTop: spacing.xs },
   confirmBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -260,6 +420,17 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   confirmBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  declineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 10,
+    borderWidth: 2,
+  },
+  declineBtnText: { fontSize: 15, fontWeight: '600' },
   kycBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -271,4 +442,21 @@ const styles = StyleSheet.create({
   kycBannerText: { flex: 1, marginLeft: spacing.sm },
   kycBannerTitle: { fontSize: 14, fontWeight: '600', marginBottom: 2 },
   kycBannerSub: { fontSize: 12 },
+  modalOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.xl },
+  thankYouModal: { width: '100%', maxWidth: 340, borderRadius: 16, padding: spacing.xl, alignItems: 'center' },
+  thankYouIconWrap: { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
+  thankYouTitle: { fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: spacing.md },
+  thankYouText: { fontSize: 15, lineHeight: 22, textAlign: 'center', marginBottom: spacing.lg },
+  thankYouBtn: { paddingVertical: spacing.md, paddingHorizontal: spacing.xl, borderRadius: 12, alignSelf: 'stretch', alignItems: 'center' },
+  thankYouBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  declineModalActions: { flexDirection: 'row', gap: spacing.sm, alignSelf: 'stretch', marginTop: spacing.sm },
+  declineModalBtn: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+  },
 });

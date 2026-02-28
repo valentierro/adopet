@@ -30,8 +30,8 @@ const baseExpo = {
       backgroundColor: '#FFFFFF',
     },
     package: 'br.com.adopet.app',
-    // Último publicado na Play Store: 52. Cada novo upload precisa de versionCode maior.
-    versionCode: 52,
+    // Último publicado na Play Store: 53. Cada novo upload precisa de versionCode maior.
+    versionCode: 53,
     intentFilters: [
       {
         action: 'VIEW',

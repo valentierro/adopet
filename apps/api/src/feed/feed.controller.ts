@@ -42,4 +42,36 @@ export class FeedController {
     const speciesFilter = species === 'DOG' || species === 'CAT' ? species : undefined;
     return this.feedService.getMapPins(latNum, lngNum, radius, user?.id, speciesFilter);
   }
+
+  @Get('map-partners')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Pins de parceiros no mapa (lat, lng, radiusKm, type: ONG | COMMERCIAL)' })
+  async getMapPartners(
+    @Query('lat') lat: string,
+    @Query('lng') lng: string,
+    @Query('radiusKm') radiusKm?: string,
+    @Query('type') type?: string,
+  ): Promise<{
+    items: {
+      id: string;
+      name: string;
+      type: string;
+      city?: string;
+      latitude: number;
+      longitude: number;
+      logoUrl?: string;
+      distanceKm: number;
+    }[];
+  }> {
+    const latNum = parseFloat(lat);
+    const lngNum = parseFloat(lng);
+    const radius = radiusKm != null ? parseInt(radiusKm, 10) : 300;
+    if (Number.isNaN(latNum) || Number.isNaN(lngNum)) {
+      return { items: [] };
+    }
+    const typeFilter =
+      type === 'ONG' ? ('ONG' as const) : type === 'COMMERCIAL' ? ('COMMERCIAL' as const) : undefined;
+    return this.feedService.getPartnerMapPins(latNum, lngNum, radius, typeFilter);
+  }
 }

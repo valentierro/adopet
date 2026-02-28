@@ -11,6 +11,12 @@ export const BONUS_FIRST_ADOPTION = 15;
 export const MILESTONE_BONUS = 10;
 export const MILESTONE_AT = [3, 5, 10];
 
+/** Pontos de missão: Complete seu perfil (avatar, telefone, cidade). */
+export const POINTS_MISSION_PROFILE = 5;
+
+/** Pontos de missão: Adicione preferências (espécie, raio, etc). */
+export const POINTS_MISSION_PREFERENCES = 5;
+
 export const TUTOR_LEVELS: { minPoints: number; level: string; title: string }[] = [
   { minPoints: 0, level: 'BEGINNER', title: 'Tutor Iniciante' },
   { minPoints: 25, level: 'ACTIVE', title: 'Tutor Ativo' },

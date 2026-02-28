@@ -19,6 +19,14 @@ export class ConversationsService {
     this.typingService.setTyping(conversationId, userId);
   }
 
+  private async isUserPartner(userId: string): Promise<boolean> {
+    const [asOwner, asMember] = await Promise.all([
+      this.prisma.partner.findUnique({ where: { userId }, select: { id: true } }),
+      this.prisma.partnerMember.findFirst({ where: { userId }, select: { id: true } }),
+    ]);
+    return !!asOwner || !!asMember;
+  }
+
   async createOrGet(userId: string, petId: string, adopterIdParam?: string): Promise<{ id: string }> {
     const pet = await this.prisma.pet.findUnique({ where: { id: petId } });
     if (!pet) throw new NotFoundException('Pet não encontrado');
@@ -131,7 +139,7 @@ export class ConversationsService {
         pet: {
           include: {
             media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }], take: 1 },
-            adoption: { select: { id: true } },
+            adoption: { select: { id: true, adopterId: true } },
           },
         },
       },
@@ -140,12 +148,18 @@ export class ConversationsService {
     const other = conv.participants.find((p) => p.userId !== userId)?.user as
       | { id: string; name: string; avatarUrl: string | null; city: string | null; housingType: string | null; hasYard: boolean | null; hasOtherPets: boolean | null; hasChildren: boolean | null; timeAtHome: string | null; deactivatedAt: Date | null; kycStatus: string | null }
       | undefined;
+    const otherUserIsPartner = other?.id ? await this.isUserPartner(other.id) : false;
     const otherUserDeactivated = !!other?.deactivatedAt;
     const otherUserTyping = this.typingService.isOtherUserTyping(conversationId, userId);
-    // Adoção finalizada = adotante já confirmou ou já existe registro Adoption; antes disso exibe botão "Confirmar adoção"
-    const adoptionFinalized =
+    // Adoção finalizada = Adopet confirmou (adopetConfirmedAt); após isso nem tutor nem adotante podem cancelar/desistir
+    const petWithAdoption = conv.pet as typeof conv.pet & { adopetConfirmedAt?: Date | null; adopterConfirmedAt?: Date | null; adoption?: { adopterId: string } | null };
+    const adoptionFinalized = conv.pet?.status === 'ADOPTED' && !!petWithAdoption?.adopetConfirmedAt;
+    const adopterHasConfirmed = !!(conv.pet?.adopterConfirmedAt || conv.pet?.adoption);
+    const canAdopterDecline =
+      conv.adopterId === userId &&
       conv.pet?.status === 'ADOPTED' &&
-      (!!conv.pet.adopterConfirmedAt || !!conv.pet.adoption);
+      !petWithAdoption?.adopetConfirmedAt &&
+      (conv.pet.pendingAdopterId === userId || petWithAdoption?.adoption?.adopterId === userId);
     const result: {
       id: string;
       type: string;
@@ -161,8 +175,9 @@ export class ConversationsService {
         hasChildren?: boolean;
         timeAtHome?: string;
         kycVerified?: boolean;
+        isPartner?: boolean;
       };
-      pet?: { name: string; photoUrl?: string; species?: string; size?: string; age?: number; adoptionFinalized?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string };
+      pet?: { name: string; photoUrl?: string; species?: string; size?: string; age?: number; adoptionFinalized?: boolean; adopterHasConfirmed?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string; canAdopterDecline?: boolean };
       otherUserTyping?: boolean;
       otherUserDeactivated?: boolean;
     } = {
@@ -181,6 +196,7 @@ export class ConversationsService {
             hasChildren: other.hasChildren ?? undefined,
             timeAtHome: other.timeAtHome ?? undefined,
             kycVerified: other.kycStatus === 'VERIFIED',
+            ...(otherUserIsPartner && { isPartner: true }),
           }
         : { id: '', name: '' },
       otherUserTyping,
@@ -194,9 +210,11 @@ export class ConversationsService {
         size: conv.pet.size ?? undefined,
         age: conv.pet.age ?? undefined,
         adoptionFinalized,
+        ...(adopterHasConfirmed && { adopterHasConfirmed: true }),
         pendingAdopterId: conv.pet.pendingAdopterId ?? undefined,
         isTutor: conv.pet.ownerId === userId,
         status: conv.pet.status,
+        ...(canAdopterDecline && { canAdopterDecline: true }),
       };
     }
     return result;
@@ -251,9 +269,78 @@ export class ConversationsService {
     return convs.map((c) => {
       const other = c.participants.find((p) => p.userId !== userId)?.user;
       const last = c.messages[0];
-      const adoptionFinalized =
-        c.pet.status === 'ADOPTED' &&
-        (!!c.pet.adopterConfirmedAt || !!c.pet.adoption);
+      const petWithAdopt = c.pet as { adopetConfirmedAt?: Date | null };
+      const adoptionFinalized = c.pet.status === 'ADOPTED' && !!petWithAdopt?.adopetConfirmedAt;
+      return {
+        id: c.id,
+        petId: c.petId,
+        createdAt: c.createdAt.toISOString(),
+        updatedAt: c.updatedAt.toISOString(),
+        pet: {
+          id: c.pet.id,
+          name: c.pet.name,
+          photos: (c.pet.media ?? []).map((m) => m.url),
+          adoptionFinalized,
+        },
+        otherUser: {
+          id: other?.id ?? '',
+          name: other?.name ?? '',
+          avatarUrl: other?.avatarUrl ?? undefined,
+          kycVerified: other?.kycStatus === 'VERIFIED',
+        },
+        lastMessage: last
+          ? { content: last.content, createdAt: last.createdAt.toISOString(), senderId: last.senderId ?? '' }
+          : undefined,
+        unreadCount: unreadByConv[c.id] ?? 0,
+      };
+    });
+  }
+
+  /** Lista conversas com usuários que eu bloqueei (para seção "Usuários bloqueados"). */
+  async listBlocked(userId: string): Promise<ConversationListItemDto[]> {
+    const blockedByMe = await this.blocksService.getBlockedUserIds(userId);
+    if (blockedByMe.length === 0) return [];
+
+    const convs = await this.prisma.conversation.findMany({
+      where: {
+        AND: [
+          { participants: { some: { userId } } },
+          { participants: { some: { userId: { in: blockedByMe } } } },
+        ],
+      },
+      include: {
+        pet: {
+          include: {
+            media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }], take: 1 },
+            adoption: { select: { id: true } },
+          },
+        },
+        participants: { include: { user: { select: { id: true, name: true, avatarUrl: true, kycStatus: true } } } },
+        messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    const convIds = convs.map((c) => c.id);
+    const unreadCounts =
+      convIds.length > 0
+        ? await this.prisma.message.groupBy({
+            by: ['conversationId'],
+            where: {
+              conversationId: { in: convIds },
+              readAt: null,
+              OR: [{ senderId: { not: userId } }, { senderId: null }],
+            },
+            _count: { id: true },
+          })
+        : [];
+    const unreadByConv = Object.fromEntries(unreadCounts.map((u) => [u.conversationId, u._count.id]));
+
+    return convs.map((c) => {
+      const other = c.participants.find((p) => p.userId !== userId)?.user;
+      const last = c.messages[0];
+      const petWithAdopt = c.pet as { adopetConfirmedAt?: Date | null };
+      const adoptionFinalized = c.pet.status === 'ADOPTED' && !!petWithAdopt?.adopetConfirmedAt;
       return {
         id: c.id,
         petId: c.petId,

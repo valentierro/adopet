@@ -25,7 +25,7 @@ import { useTheme } from '../../../src/hooks/useTheme';
 import { useAuthStore } from '../../../src/stores/authStore';
 import { getMessages, sendMessage, type SendMessagePayload } from '../../../src/api/messages';
 import { getConversation, postConversationTyping } from '../../../src/api/conversations';
-import { confirmAdoption, patchPetStatus, getMatchScore } from '../../../src/api/pets';
+import { confirmAdoption, patchPetStatus, getMatchScore, cancelAdoption, declineAdoption } from '../../../src/api/pets';
 import { presign } from '../../../src/api/uploads';
 import { BASE_URL } from '../../../src/api/client';
 import { createReport } from '../../../src/api/reports';
@@ -127,6 +127,14 @@ const TUTOR_ADOPTION_CHECKLIST = [
   },
 ];
 
+/** Checklist obrigatório para o adotante antes de confirmar que realizou a adoção. */
+const ADOPTER_CHECKLIST_ITEMS: { key: string; label: string }[] = [
+  { key: 'care', label: 'Assumo a responsabilidade de cuidar do pet com zelo, oferecendo ambiente adequado, alimentação e cuidados veterinários.' },
+  { key: 'noAbandon', label: 'Comprometo-me a não abandonar o animal e a não utilizá-lo para fins que impliquem maus-tratos ou crueldade.' },
+  { key: 'contact', label: 'Estou ciente de que o doador ou o Adopet podem entrar em contato para acompanhar como o pet está e que responder é uma forma de demonstrar responsabilidade.' },
+  { key: 'confirm', label: 'Confirmo que realizei a adoção e assumo todas as responsabilidades acima.' },
+];
+
 export default function ChatRoomScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -144,6 +152,9 @@ export default function ChatRoomScreen() {
   const [neutralSectionExpanded, setNeutralSectionExpanded] = useState(false);
   const [showAdoptionChecklistModal, setShowAdoptionChecklistModal] = useState(false);
   const [adoptionChecklist, setAdoptionChecklist] = useState<Record<string, boolean>>({});
+  const [showAdopterChecklistModal, setShowAdopterChecklistModal] = useState(false);
+  const [adopterChecklist, setAdopterChecklist] = useState<Record<string, boolean>>({});
+  const [showAdoptionThankYouModal, setShowAdoptionThankYouModal] = useState(false);
 
   const resolveImageUri = useCallback((imageUrl: string) => {
     return imageUrl.startsWith('http')
@@ -165,6 +176,8 @@ export default function ChatRoomScreen() {
   const otherUserId = conversation?.otherUser?.id;
   const otherUserName = conversation?.otherUser?.name ?? 'Usuário';
   const otherUserKycVerified = conversation?.otherUser?.kycVerified === true;
+  const otherUserIsPartner = conversation?.otherUser?.isPartner === true;
+  const canMarkAsAdopterWithoutKyc = otherUserKycVerified || otherUserIsPartner;
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe });
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -359,16 +372,25 @@ export default function ChatRoomScreen() {
 
   const messages = data?.pages.flatMap((p) => p.items) ?? [];
   const adoptionFinalized = conversation?.pet?.adoptionFinalized === true;
+  const adopterHasConfirmed = conversation?.pet?.adopterHasConfirmed === true;
   const canConfirmAdoption =
     !!conversation?.pet?.pendingAdopterId &&
     conversation.pet.pendingAdopterId === userId &&
-    !adoptionFinalized;
+    !adopterHasConfirmed;
 
   const canTutorConfirmAdoption =
     !!conversation?.pet?.isTutor &&
     conversation.pet.status !== 'ADOPTED' &&
     !!conversation.petId &&
     !!otherUserId;
+
+  const canTutorCancelAdoption =
+    !!conversation?.pet?.isTutor &&
+    conversation.pet.status === 'ADOPTED' &&
+    !adoptionFinalized &&
+    !!conversation.petId;
+
+  const canAdopterDeclineAdoption = !!conversation?.pet?.canAdopterDecline && !!conversation.petId;
 
   const confirmAdoptionMutation = useMutation({
     mutationFn: (responsibilityTermAccepted: boolean) =>
@@ -383,7 +405,8 @@ export default function ChatRoomScreen() {
         }),
         queryClient.refetchQueries({ queryKey: ['me', 'tutor-stats'] }),
       ]);
-      Alert.alert('Adoção confirmada', 'Sua confirmação foi registrada. A adoção seguirá para validação do Adopet.');
+      setShowAdopterChecklistModal(false);
+      setShowAdoptionThankYouModal(true);
     },
     onError: (e: unknown) => {
       if (isKycRequiredError(e)) {
@@ -426,6 +449,44 @@ export default function ChatRoomScreen() {
         return;
       }
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível marcar como adotado. Tente novamente.'));
+    },
+  });
+
+  const cancelAdoptionMutation = useMutation({
+    mutationFn: () => cancelAdoption(conversation!.petId!),
+    onSuccess: async () => {
+      trackEvent({ name: 'adoption_cancelled', properties: { petId: conversation!.petId! } });
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['conversation', id] }),
+        queryClient.refetchQueries({ queryKey: ['conversations'] }),
+        queryClient.refetchQueries({ queryKey: ['pet', conversation!.petId!] }),
+        queryClient.refetchQueries({ queryKey: ['me', 'tutor-stats'] }),
+      ]);
+      Alert.alert('Processo cancelado', 'O pet voltou a ficar disponível. O adotante indicado foi notificado.');
+    },
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível cancelar. Tente novamente.'));
+    },
+  });
+
+  const declineAdoptionMutation = useMutation({
+    mutationFn: () => declineAdoption(conversation!.petId!),
+    onSuccess: async () => {
+      trackEvent({ name: 'adoption_declined_by_adopter', properties: { petId: conversation!.petId! } });
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['conversation', id] }),
+        queryClient.refetchQueries({ queryKey: ['conversations'] }),
+        queryClient.refetchQueries({ queryKey: ['pet', conversation!.petId!] }),
+        queryClient.refetchQueries({ queryKey: ['me', 'pending-adoption-confirmations'] }),
+        queryClient.refetchQueries({ predicate: (q) => q.queryKey[0] === 'me' && q.queryKey[1] === 'adoptions' }),
+        queryClient.refetchQueries({ queryKey: ['me', 'tutor-stats'] }),
+      ]);
+      Alert.alert('Você desistiu', 'O pet voltou a ficar disponível. O tutor foi notificado.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    },
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível desistir. Tente novamente.'));
     },
   });
 
@@ -648,7 +709,7 @@ export default function ChatRoomScreen() {
                 Adoção responsável, voluntária e sem custos
               </Text>
             </View>
-            {canConfirmAdoption && me?.kycStatus !== 'VERIFIED' && (
+            {canConfirmAdoption && me?.kycStatus !== 'VERIFIED' && !me?.isPartner && (
               <TouchableOpacity
                 style={[styles.kycBannerChat, { backgroundColor: (colors.warning || '#d97706') + '22', borderColor: (colors.warning || '#d97706') + '60' }]}
                 onPress={() => router.push('/kyc')}
@@ -661,18 +722,51 @@ export default function ChatRoomScreen() {
                 <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
               </TouchableOpacity>
             )}
+            {canTutorCancelAdoption && (
+              <TouchableOpacity
+                style={[styles.confirmAdoptionBtn, { backgroundColor: colors.surface, borderWidth: 2, borderColor: (colors.error || '#dc2626') + '80' }]}
+                onPress={() => {
+                  Alert.alert(
+                    'Cancelar processo',
+                    'O pet voltará a ficar disponível e o adotante indicado será notificado. Deseja continuar?',
+                    [
+                      { text: 'Não', style: 'cancel' },
+                      {
+                        text: 'Sim, cancelar',
+                        style: 'destructive',
+                        onPress: () => cancelAdoptionMutation.mutate(),
+                      },
+                    ],
+                  );
+                }}
+                disabled={cancelAdoptionMutation.isPending}
+              >
+                {cancelAdoptionMutation.isPending ? (
+                  <ActivityIndicator size="small" color={colors.textSecondary} />
+                ) : (
+                  <>
+                    <Ionicons name="close-circle-outline" size={22} color={colors.error || '#dc2626'} />
+                    <Text style={[styles.confirmAdoptionBtnText, { color: colors.error || '#dc2626' }]}>
+                      Cancelar processo de adoção
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
             {canTutorConfirmAdoption && (
               <>
-                <Text style={[styles.confirmAdoptionHint, { color: colors.textSecondary }]}>
-                  Só é possível marcar como adotante quem tiver concluído a verificação de identidade (KYC).
-                </Text>
+                {!canMarkAsAdopterWithoutKyc && (
+                  <Text style={[styles.confirmAdoptionHint, { color: colors.textSecondary }]}>
+                    Só é possível marcar como adotante quem tiver concluído a verificação de identidade (KYC). Parceiros estão isentos.
+                  </Text>
+                )}
                 <TouchableOpacity
-                  style={[styles.confirmAdoptionBtn, { backgroundColor: colors.primary }, !otherUserKycVerified && { opacity: 0.85 }]}
+                  style={[styles.confirmAdoptionBtn, { backgroundColor: colors.primary }, !canMarkAsAdopterWithoutKyc && { opacity: 0.85 }]}
                   onPress={() => {
-                  if (!otherUserKycVerified) {
+                  if (!canMarkAsAdopterWithoutKyc) {
                     Alert.alert(
                       'Verificação pendente',
-                      `${otherUserName} ainda não finalizou a verificação de identidade (KYC). A pessoa precisa completar em Perfil → Verificação de identidade para que você possa marcá-la como adotante.`,
+                      `${otherUserName} ainda não finalizou a verificação de identidade (KYC). A pessoa precisa completar em Perfil → Verificação de identidade para que você possa marcá-la como adotante. Parceiros (ONG/estabelecimento) estão isentos.`,
                     );
                     return;
                   }
@@ -698,17 +792,8 @@ export default function ChatRoomScreen() {
               <TouchableOpacity
                 style={[styles.confirmAdoptionBtn, { backgroundColor: colors.primary }]}
                 onPress={() => {
-                  Alert.alert(
-                    'Termo de responsabilidade',
-                    'Ao confirmar, você declara que assume a responsabilidade de cuidar do pet com zelo, oferecendo ambiente adequado e cuidados veterinários; que não o abandonará nem o utilizará para fins que impliquem maus-tratos; e que o doador ou o Adopet podem entrar em contato para acompanhar como o pet está.\n\nDeseja confirmar que leu, aceita este termo e realizou a adoção?',
-                    [
-                      { text: 'Cancelar', style: 'cancel' },
-                      {
-                        text: 'Li e aceito – Confirmar',
-                        onPress: () => confirmAdoptionMutation.mutate(true),
-                      },
-                    ],
-                  );
+                  setAdopterChecklist({});
+                  setShowAdopterChecklistModal(true);
                 }}
                 disabled={confirmAdoptionMutation.isPending}
               >
@@ -718,6 +803,37 @@ export default function ChatRoomScreen() {
                   <>
                     <Ionicons name="checkmark-circle" size={22} color="#fff" />
                     <Text style={styles.confirmAdoptionBtnText}>Confirmar adoção</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+            {canAdopterDeclineAdoption && (
+              <TouchableOpacity
+                style={[styles.confirmAdoptionBtn, { backgroundColor: colors.surface, borderWidth: 2, borderColor: (colors.error || '#dc2626') + '80' }]}
+                onPress={() => {
+                  Alert.alert(
+                    'Desistir da adoção',
+                    'O pet voltará a ficar disponível e o tutor será notificado. Deseja continuar?',
+                    [
+                      { text: 'Não', style: 'cancel' },
+                      {
+                        text: 'Sim, desistir',
+                        style: 'destructive',
+                        onPress: () => declineAdoptionMutation.mutate(),
+                      },
+                    ],
+                  );
+                }}
+                disabled={declineAdoptionMutation.isPending}
+              >
+                {declineAdoptionMutation.isPending ? (
+                  <ActivityIndicator size="small" color={colors.textSecondary} />
+                ) : (
+                  <>
+                    <Ionicons name="close-circle-outline" size={22} color={colors.error || '#dc2626'} />
+                    <Text style={[styles.confirmAdoptionBtnText, { color: colors.error || '#dc2626' }]}>
+                      Desistir da adoção
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -974,6 +1090,138 @@ export default function ChatRoomScreen() {
         </Modal>
       )}
 
+      {showAdopterChecklistModal && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setShowAdopterChecklistModal(false)}>
+          <Pressable style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]} onPress={() => setShowAdopterChecklistModal(false)}>
+            <Pressable
+              style={[styles.modalCard, styles.matchScoreModalCard, { backgroundColor: colors.surface, maxHeight: '85%' }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={[styles.matchScoreModalHeader, { backgroundColor: colors.primary + '20' }]}>
+                <Ionicons name="checkmark-done-outline" size={36} color={colors.primary} />
+                <Text style={[styles.matchScoreModalScore, { color: colors.primary, fontSize: 20 }]}>Antes de confirmar</Text>
+                <Text style={[styles.matchScoreModalSubtitle, { color: colors.textSecondary }]}>
+                  Marque todos os itens para confirmar que realizou a adoção
+                </Text>
+              </View>
+              <ScrollView style={styles.matchScoreModalScroll} contentContainerStyle={styles.matchScoreModalScrollContent} showsVerticalScrollIndicator>
+                {ADOPTER_CHECKLIST_ITEMS.map((item) => (
+                  <TouchableOpacity
+                    key={item.key}
+                    style={[styles.adoptionChecklistRow, { borderColor: colors.textSecondary + '40' }]}
+                    onPress={() =>
+                      setAdopterChecklist((prev) => ({ ...prev, [item.key]: !prev[item.key] }))
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <View
+                      style={[
+                        styles.adoptionChecklistBox,
+                        {
+                          borderColor: adopterChecklist[item.key] ? colors.primary : colors.textSecondary + '60',
+                          backgroundColor: adopterChecklist[item.key] ? colors.primary : 'transparent',
+                        },
+                      ]}
+                    >
+                      {adopterChecklist[item.key] && (
+                        <Ionicons name="checkmark" size={16} color="#fff" />
+                      )}
+                    </View>
+                    <Text style={[styles.adoptionChecklistLabel, { color: colors.textPrimary }]}>{item.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <View style={styles.adoptionChecklistActions}>
+                <TouchableOpacity
+                  style={[styles.adoptionChecklistBtn, { borderColor: colors.textSecondary }]}
+                  onPress={() => setShowAdopterChecklistModal(false)}
+                  disabled={declineAdoptionMutation.isPending}
+                >
+                  <Text style={{ color: colors.textSecondary }}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.adoptionChecklistBtn, { borderColor: (colors.error || '#dc2626') + '80' }]}
+                  onPress={() => {
+                    Alert.alert(
+                      'Desistir da adoção',
+                      'O pet voltará a ficar disponível e o tutor será notificado. Deseja continuar?',
+                      [
+                        { text: 'Não', style: 'cancel' },
+                        {
+                          text: 'Sim, desistir',
+                          style: 'destructive',
+                          onPress: () => {
+                            setShowAdopterChecklistModal(false);
+                            declineAdoptionMutation.mutate();
+                          },
+                        },
+                      ],
+                    );
+                  }}
+                  disabled={declineAdoptionMutation.isPending}
+                >
+                  {declineAdoptionMutation.isPending ? (
+                    <ActivityIndicator size="small" color={colors.error || '#dc2626'} />
+                  ) : (
+                    <Text style={{ color: colors.error || '#dc2626', fontWeight: '600' }}>Desistir</Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.adoptionChecklistBtn,
+                    {
+                      backgroundColor: colors.primary,
+                      borderWidth: 0,
+                      opacity: ADOPTER_CHECKLIST_ITEMS.every((i) => adopterChecklist[i.key]) ? 1 : 0.5,
+                    },
+                  ]}
+                  disabled={
+                    !ADOPTER_CHECKLIST_ITEMS.every((i) => adopterChecklist[i.key]) ||
+                    confirmAdoptionMutation.isPending ||
+                    declineAdoptionMutation.isPending
+                  }
+                  onPress={() => {
+                    if (!ADOPTER_CHECKLIST_ITEMS.every((i) => adopterChecklist[i.key])) return;
+                    setShowAdopterChecklistModal(false);
+                    setAdopterChecklist({});
+                    confirmAdoptionMutation.mutate(true);
+                  }}
+                >
+                  {confirmAdoptionMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={{ color: '#fff', fontWeight: '600' }}>Confirmar adoção</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
+
+      <Modal visible={showAdoptionThankYouModal} transparent animationType="fade">
+        <Pressable style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]} onPress={() => setShowAdoptionThankYouModal(false)}>
+          <Pressable style={[styles.thankYouModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <View style={[styles.thankYouIconWrap, { backgroundColor: colors.primary + '20' }]}>
+              <Ionicons name="heart" size={48} color={colors.primary} />
+            </View>
+            <Text style={[styles.thankYouTitle, { color: colors.textPrimary }]}>Obrigado! Adoção confirmada</Text>
+            <Text style={[styles.thankYouText, { color: colors.textSecondary }]}>
+              Sua confirmação foi registrada com sucesso. A adoção seguirá para validação da equipe Adopet.
+              {'\n\n'}
+              Isso não atrapalha o processo: você pode seguir o combinado com o tutor para concretizar a adoção (encontro, entrega do pet, etc.).
+            </Text>
+            <TouchableOpacity
+              style={[styles.thankYouBtn, { backgroundColor: colors.primary }]}
+              onPress={() => setShowAdoptionThankYouModal(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.thankYouBtnText}>Entendi</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {showMatchScoreModal && matchScoreData && matchScoreData.score != null && (() => {
         const criteria = matchScoreData.criteria ?? [];
         const matchItems = criteria.length > 0
@@ -1214,6 +1462,31 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     maxHeight: '85%',
   },
+  thankYouModalCard: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: 16,
+    padding: spacing.xl,
+    alignItems: 'center',
+  },
+  thankYouIconWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+  },
+  thankYouTitle: { fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: spacing.md },
+  thankYouText: { fontSize: 15, lineHeight: 22, textAlign: 'center', marginBottom: spacing.lg },
+  thankYouBtn: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: 12,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+  },
+  thankYouBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   matchScoreModalHeader: {
     paddingVertical: spacing.lg,
     paddingHorizontal: spacing.xl,

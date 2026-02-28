@@ -32,6 +32,21 @@ export class PetsService {
     private readonly petPartnershipService: PetPartnershipService,
   ) {}
 
+  /** Indica se o usuário é parceiro (dono de Partner ou membro de ONG). Parceiros não precisam de KYC para adoção. */
+  private async isUserPartner(userId: string): Promise<boolean> {
+    const [asOwner, asMember] = await Promise.all([
+      this.prisma.partner.findUnique({
+        where: { userId },
+        select: { id: true },
+      }),
+      this.prisma.partnerMember.findFirst({
+        where: { userId },
+        select: { id: true },
+      }),
+    ]);
+    return !!asOwner || !!asMember;
+  }
+
   private mapToDto(
     pet: {
       id: string;
@@ -310,6 +325,9 @@ export class PetsService {
     const viewCounts = await this.petViewService.getViewCountsLast24h([pet.id]);
     const viewCount = viewCounts.get(pet.id);
     if (viewCount !== undefined && viewCount > 0) dto.viewCountLast24h = viewCount;
+    if (pet.status === 'ADOPTED') {
+      dto.confirmedByAdopet = !pet.adoptionRejectedAt && !!pet.adopetConfirmedAt;
+    }
     if (!userId) {
       delete dto.owner;
     }
@@ -1000,11 +1018,14 @@ export class PetsService {
     }
 
     if (status === 'ADOPTED' && resolvedAdopterId) {
-      const adopter = await this.prisma.user.findUnique({
-        where: { id: resolvedAdopterId },
-        select: { kycStatus: true, name: true },
-      });
-      if (adopter?.kycStatus !== 'VERIFIED') {
+      const [adopter, isPartner] = await Promise.all([
+        this.prisma.user.findUnique({
+          where: { id: resolvedAdopterId },
+          select: { kycStatus: true, name: true },
+        }),
+        this.isUserPartner(resolvedAdopterId),
+      ]);
+      if (!isPartner && adopter?.kycStatus !== 'VERIFIED') {
         throw new BadRequestException({
           code: 'KYC_NOT_COMPLETE',
           message: `O interessado ${adopter?.name ?? 'ainda'} não finalizou a verificação de identidade (KYC). Peça para a pessoa completar no app em Perfil → Verificação de identidade.`,
@@ -1029,7 +1050,9 @@ export class PetsService {
     if (status === 'ADOPTED') {
       await this.prisma.favorite.deleteMany({ where: { petId: id } });
     }
-    if (status === 'ADOPTED' && pet.owner) {
+    // Não notificar admins quando tutor indica adotante — a adoção só vai para aprovação após o adotante confirmar.
+    // Se o tutor não indicou ninguém (pendingAdopterId null), o admin precisa registrar manualmente — notificamos.
+    if (status === 'ADOPTED' && pet.owner && !resolvedAdopterId) {
       const adminIds = this.config.get<string>('ADMIN_USER_IDS')?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
       const title = 'Pet marcado como adotado';
       const body = `${pet.name} foi marcado como adotado pelo tutor ${pet.owner.name}. Confira no painel para registrar a adoção.`;
@@ -1041,11 +1064,11 @@ export class PetsService {
           .create(adminId, IN_APP_NOTIFICATION_TYPES.PENDING_ADOPTION_BY_TUTOR, title, body, metadata, pushData)
           .catch((e) => console.warn('[PetsService] in-app notification to admin failed', e));
       }
-      if (resolvedAdopterId) {
-        this.requestAdoptionConfirmation(id, pet.name, pet.owner.name, resolvedAdopterId).catch((e) =>
-          console.warn('[PetsService] requestAdoptionConfirmation failed', e),
-        );
-      }
+    }
+    if (status === 'ADOPTED' && resolvedAdopterId) {
+      this.requestAdoptionConfirmation(id, pet.name, pet.owner.name, resolvedAdopterId).catch((e) =>
+        console.warn('[PetsService] requestAdoptionConfirmation failed', e),
+      );
     }
     const verified = await this.verificationService.isPetVerified(pet.id);
     return this.mapToDto(pet, undefined, undefined, verified);
@@ -1091,7 +1114,7 @@ export class PetsService {
   async getConversationPartners(
     petId: string,
     ownerId: string,
-  ): Promise<{ id: string; name: string; username?: string; kycVerified: boolean }[]> {
+  ): Promise<{ id: string; name: string; username?: string; kycVerified: boolean; isPartner?: boolean }[]> {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
       select: { ownerId: true },
@@ -1109,12 +1132,251 @@ export class PetsService {
       where: { id: { in: userIds }, deactivatedAt: null },
       select: { id: true, name: true, username: true, kycStatus: true },
     });
+    const partnerUserIds = new Set<string>();
+    const [partnersAsOwner, partnersAsMember] = await Promise.all([
+      this.prisma.partner.findMany({ where: { userId: { in: userIds } }, select: { userId: true } }),
+      this.prisma.partnerMember.findMany({ where: { userId: { in: userIds } }, select: { userId: true } }),
+    ]);
+    partnersAsOwner.forEach((p) => p.userId && partnerUserIds.add(p.userId));
+    partnersAsMember.forEach((p) => partnerUserIds.add(p.userId));
     return users.map((u) => ({
       id: u.id,
       name: u.name,
       ...(u.username ? { username: u.username } : undefined),
       kycVerified: u.kycStatus === 'VERIFIED',
+      ...(partnerUserIds.has(u.id) && { isPartner: true }),
     }));
+  }
+
+  /**
+   * Tutor cancela o processo de adoção. Cenário A: adotante indicado mas ainda não confirmou.
+   * Cenário B: adotante confirmou, Adoption criado, mas Adopet ainda não validou.
+   * Em ambos: pet volta para AVAILABLE, adotante é notificado.
+   */
+  async cancelAdoptionProcess(petId: string, ownerId: string): Promise<PetResponseDto> {
+    const pet = await this.prisma.pet.findUnique({
+      where: { id: petId },
+      include: {
+        owner: { select: { name: true } },
+        pendingAdopter: { select: { id: true, name: true } },
+        adoption: { select: { id: true, adopterId: true } },
+      },
+    });
+    if (!pet || pet.ownerId !== ownerId) {
+      throw new BadRequestException('Pet não encontrado ou você não é o dono');
+    }
+    if (pet.status !== 'ADOPTED') {
+      throw new BadRequestException('Só é possível cancelar um processo de adoção em andamento.');
+    }
+
+    const adopterId = pet.pendingAdopterId ?? pet.adoption?.adopterId;
+    const isScenarioA = !!pet.pendingAdopterId && !pet.adopterConfirmedAt;
+    const isScenarioB = !!pet.adoption && !pet.adopetConfirmedAt;
+    const isScenarioC = !pet.pendingAdopterId && !pet.adoption; // tutor marcou "Adoção fora do app", admin ainda não registrou
+
+    if (!isScenarioA && !isScenarioB && !isScenarioC) {
+      throw new BadRequestException(
+        'Não é possível cancelar: a adoção já foi confirmada pelo Adopet. Entre em contato com o suporte se precisar de ajuda.',
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (pet.adoption) {
+        await tx.adoption.delete({ where: { petId } });
+      }
+      await tx.pet.update({
+        where: { id: petId },
+        data: {
+          status: 'AVAILABLE',
+          pendingAdopterId: null,
+          adopterConfirmedAt: null,
+          markedAdoptedAt: null,
+          adoptionRejectedAt: null,
+          adoptionRejectionReason: null,
+        },
+      });
+    });
+
+    if (adopterId && pet.owner) {
+      await this.notifyAdopterOfCancellation(
+        petId,
+        pet.name,
+        pet.owner.name,
+        adopterId,
+      ).catch((e) => console.warn('[PetsService] notifyAdopterOfCancellation failed', e));
+    }
+
+    const updated = await this.prisma.pet.findUnique({
+      where: { id: petId },
+      include: {
+        media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        owner: { select: { name: true } },
+      },
+    });
+    const verified = await this.verificationService.isPetVerified(petId);
+    return this.mapToDto(updated!, undefined, undefined, verified);
+  }
+
+  /**
+   * Adotante desiste da adoção. Cenário A: ainda não confirmou. Cenário B: já confirmou, Adoption criado.
+   * Em ambos: pet volta para AVAILABLE, tutor é notificado.
+   */
+  async declineAdoptionByAdopter(petId: string, userId: string): Promise<PetResponseDto> {
+    const pet = await this.prisma.pet.findUnique({
+      where: { id: petId },
+      include: {
+        owner: { select: { id: true, name: true } },
+        pendingAdopter: { select: { id: true, name: true } },
+        adoption: { select: { id: true, adopterId: true } },
+      },
+    });
+    if (!pet) {
+      throw new NotFoundException('Pet não encontrado');
+    }
+    if (pet.status !== 'ADOPTED') {
+      throw new BadRequestException('Não há processo de adoção em andamento para este pet.');
+    }
+
+    const isAdopterPending = pet.pendingAdopterId === userId;
+    const isAdopterConfirmed = pet.adoption?.adopterId === userId;
+
+    if (!isAdopterPending && !isAdopterConfirmed) {
+      throw new ForbiddenException('Apenas o adotante indicado pode desistir desta adoção.');
+    }
+
+    if (pet.adopetConfirmedAt) {
+      throw new BadRequestException(
+        'Não é possível desistir: a adoção já foi confirmada pelo Adopet. Entre em contato com o suporte se precisar de ajuda.',
+      );
+    }
+
+    const tutorId = pet.ownerId;
+
+    await this.prisma.$transaction(async (tx) => {
+      if (pet.adoption) {
+        await tx.adoption.delete({ where: { petId } });
+      }
+      await tx.pet.update({
+        where: { id: petId },
+        data: {
+          status: 'AVAILABLE',
+          pendingAdopterId: null,
+          adopterConfirmedAt: null,
+          markedAdoptedAt: null,
+          adoptionRejectedAt: null,
+          adoptionRejectionReason: null,
+        },
+      });
+    });
+
+    const adopter = pet.pendingAdopter ?? (await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    }));
+    if (tutorId && adopter) {
+      await this.notifyTutorOfDecline(
+        petId,
+        pet.name,
+        adopter.name,
+        tutorId,
+        userId,
+      ).catch((e) => console.warn('[PetsService] notifyTutorOfDecline failed', e));
+    }
+
+    const updated = await this.prisma.pet.findUnique({
+      where: { id: petId },
+      include: {
+        media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        owner: { select: { name: true } },
+      },
+    });
+    const verified = await this.verificationService.isPetVerified(petId);
+    return this.mapToDto(updated!, undefined, undefined, verified);
+  }
+
+  private async notifyTutorOfDecline(
+    petId: string,
+    petName: string,
+    adopterName: string,
+    tutorId: string,
+    adopterId: string,
+  ): Promise<void> {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { petId, adopterId, type: 'NORMAL' },
+      select: { id: true },
+    });
+    if (conv) {
+      const messageContent = `${adopterName} desistiu da adoção de ${petName}. O pet voltou a ficar disponível.`;
+      await this.prisma.$transaction([
+        this.prisma.message.create({
+          data: {
+            conversationId: conv.id,
+            senderId: null,
+            isSystem: true,
+            content: messageContent,
+          },
+        }),
+        this.prisma.conversation.update({
+          where: { id: conv.id },
+          data: { updatedAt: new Date() },
+        }),
+      ]);
+    }
+    const title = 'Adotante desistiu';
+    const body = `${adopterName} desistiu da adoção de ${petName}. O pet voltou a ficar disponível.`;
+    const metadata = { petId, type: IN_APP_NOTIFICATION_TYPES.ADOPTION_DECLINED_BY_ADOPTER };
+    const pushData = { petId };
+    await this.inAppNotifications.create(
+      tutorId,
+      IN_APP_NOTIFICATION_TYPES.ADOPTION_DECLINED_BY_ADOPTER,
+      title,
+      body,
+      metadata,
+      pushData,
+    );
+  }
+
+  private async notifyAdopterOfCancellation(
+    petId: string,
+    petName: string,
+    tutorName: string,
+    adopterId: string,
+  ): Promise<void> {
+    const conv = await this.prisma.conversation.findFirst({
+      where: { petId, adopterId, type: 'NORMAL' },
+      select: { id: true },
+    });
+    if (conv) {
+      const messageContent = `${tutorName} cancelou o processo de adoção de ${petName}. O pet voltou a ficar disponível. Entre em contato com o tutor se tiver dúvidas.`;
+      await this.prisma.$transaction([
+        this.prisma.message.create({
+          data: {
+            conversationId: conv.id,
+            senderId: null,
+            isSystem: true,
+            content: messageContent,
+          },
+        }),
+        this.prisma.conversation.update({
+          where: { id: conv.id },
+          data: { updatedAt: new Date() },
+        }),
+      ]);
+    }
+    const title = 'Processo de adoção cancelado';
+    const body = `${tutorName} cancelou o processo de adoção de ${petName}. O pet voltou a ficar disponível.`;
+    const metadata = { petId, type: IN_APP_NOTIFICATION_TYPES.ADOPTION_CANCELLED_BY_TUTOR };
+    const pushData = { petId };
+    await this.inAppNotifications.create(
+      adopterId,
+      IN_APP_NOTIFICATION_TYPES.ADOPTION_CANCELLED_BY_TUTOR,
+      title,
+      body,
+      metadata,
+      pushData,
+    );
   }
 
   async delete(id: string, ownerId: string): Promise<void> {
@@ -1203,11 +1465,14 @@ export class PetsService {
       if (pet.ownerId === userId) {
         console.warn('[PetsService] confirmAdoption: não cria Adoption quando adotante é o próprio tutor (petId=%s)', petId);
       } else {
-        const adopter = await this.prisma.user.findUnique({
-          where: { id: userId },
-          select: { kycStatus: true },
-        });
-        if (adopter?.kycStatus !== 'VERIFIED') {
+        const [adopter, isPartner] = await Promise.all([
+          this.prisma.user.findUnique({
+            where: { id: userId },
+            select: { kycStatus: true },
+          }),
+          this.isUserPartner(userId),
+        ]);
+        if (!isPartner && adopter?.kycStatus !== 'VERIFIED') {
           throw new ForbiddenException({
             code: 'KYC_REQUIRED',
             message: 'É necessário completar a verificação de identidade (KYC) para confirmar a adoção.',

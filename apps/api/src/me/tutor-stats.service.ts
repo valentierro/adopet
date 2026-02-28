@@ -7,6 +7,8 @@ import {
   BONUS_FIRST_ADOPTION,
   MILESTONE_BONUS,
   MILESTONE_AT,
+  POINTS_MISSION_PROFILE,
+  POINTS_MISSION_PREFERENCES,
   TUTOR_LEVELS,
 } from './tutor-stats.constants';
 
@@ -49,11 +51,17 @@ export class TutorStatsService {
     // adoptedCount no retorno = total (tutor + adotante) para bater com "Minhas adoções" e header da home
     const adoptedCount = totalAdoptedCount;
 
+    const userMissions = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { missionProfileCompleteAt: true, missionPreferencesCompleteAt: true },
+    });
     let points = verifiedCount * POINTS_PER_VERIFIED_PET + totalAdoptedCount * POINTS_PER_ADOPTED_PET;
     if (totalAdoptedCount >= 1) points += BONUS_FIRST_ADOPTION;
     for (const at of MILESTONE_AT) {
       if (totalAdoptedCount >= at) points += MILESTONE_BONUS;
     }
+    if (userMissions?.missionProfileCompleteAt) points += POINTS_MISSION_PROFILE;
+    if (userMissions?.missionPreferencesCompleteAt) points += POINTS_MISSION_PREFERENCES;
     points = Math.max(0, Math.round(points));
     if (Number.isNaN(points)) points = 0;
 

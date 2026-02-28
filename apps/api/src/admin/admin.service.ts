@@ -79,6 +79,7 @@ export class AdminService {
           status: 'ADOPTED',
           adoptionRejectedAt: null,
           ...(adoptedPetIds.length > 0 ? { id: { notIn: adoptedPetIds } } : {}),
+          OR: [{ pendingAdopterId: null }, { adopterConfirmedAt: { not: null } }],
         },
       }),
       this.prisma.adoption.count({
@@ -180,6 +181,9 @@ export class AdminService {
     }));
   }
 
+  /** Só exibe adoções pendentes após o adotante indicado confirmar (adopterConfirmedAt).
+   * Se o tutor indicou um adotante (pendingAdopterId), a adoção só entra para aprovação do Adopet
+   * quando o adotante confirmar no app. Caso contrário, o admin veria antes da confirmação do interessado. */
   async getPendingAdoptionsByTutor(): Promise<PendingAdoptionByTutorDto[]> {
     const adoptedPetIds = await this.prisma.adoption.findMany({ select: { petId: true } }).then((a) => a.map((x) => x.petId));
     const pets = await this.prisma.pet.findMany({
@@ -187,6 +191,8 @@ export class AdminService {
         status: 'ADOPTED',
         adoptionRejectedAt: null,
         ...(adoptedPetIds.length > 0 ? { id: { notIn: adoptedPetIds } } : {}),
+        // Se o tutor indicou adotante, só mostrar após o adotante confirmar
+        OR: [{ pendingAdopterId: null }, { adopterConfirmedAt: { not: null } }],
       },
       include: {
         owner: { select: { id: true, name: true } },
@@ -307,6 +313,19 @@ export class AdminService {
     this.sendSatisfactionSurveyNotifications(adoption.id).catch((e) =>
       console.warn('[AdminService] sendSatisfactionSurveyNotifications failed', e),
     );
+    // Notificar admins quando o adotante confirma (adoção segue para validação do Adopet)
+    if (!fromAdopetConfirmation) {
+      const adminIds = this.config.get<string>('ADMIN_USER_IDS')?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+      const title = 'Adoção confirmada pelo adotante';
+      const body = `${adoption.pet.name} — o adotante ${adoption.adopter.name} confirmou a adoção. Confira no painel para validar.`;
+      const metadata = { petId, type: IN_APP_NOTIFICATION_TYPES.PENDING_ADOPTION_BY_TUTOR };
+      const pushData = { screen: 'admin', petId };
+      for (const adminId of adminIds) {
+        this.inAppNotificationsService
+          .create(adminId, IN_APP_NOTIFICATION_TYPES.PENDING_ADOPTION_BY_TUTOR, title, body, metadata, pushData)
+          .catch((e) => console.warn('[AdminService] notify admin of adoption confirmation failed', e));
+      }
+    }
     return {
       id: adoption.id,
       petId: adoption.petId,

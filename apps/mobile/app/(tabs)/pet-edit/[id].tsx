@@ -24,6 +24,7 @@ import {
   getPet,
   updatePet,
   patchPetStatus,
+  cancelAdoption,
   getConversationPartners,
   deletePet,
   deletePetMedia,
@@ -474,6 +475,20 @@ export default function PetEditScreen() {
 
   const mediaItems = pet.mediaItems ?? [];
   const isAdopted = pet.status === 'ADOPTED';
+  const adoptionFinalized = (pet as { confirmedByAdopet?: boolean }).confirmedByAdopet === true;
+  const canCancelAdoption = isAdopted && !adoptionFinalized;
+
+  const cancelAdoptionMutation = useMutation({
+    mutationFn: () => cancelAdoption(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pet', id] });
+      queryClient.invalidateQueries({ queryKey: ['pets', 'mine'] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'tutor-stats'] });
+      Alert.alert('Processo cancelado', 'O pet voltou a ficar disponível. O adotante indicado foi notificado.');
+    },
+    onError: (e: unknown) =>
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível cancelar. Tente novamente.')),
+  });
 
   return (
     <ScreenContainer scroll>
@@ -481,8 +496,41 @@ export default function PetEditScreen() {
         <View style={[styles.adoptedBanner, { backgroundColor: colors.surface, borderColor: colors.primary }]}>
           <Ionicons name="information-circle" size={22} color={colors.primary} />
           <Text style={[styles.adoptedBannerText, { color: colors.textPrimary }]}>
-            Este pet foi adotado. Não é possível editar. Para alterar informações, crie um novo anúncio.
+            {adoptionFinalized
+              ? 'Este pet foi adotado. Não é possível editar. Para alterar informações, crie um novo anúncio.'
+              : 'Adoção em processo. O adotante indicado ainda precisa confirmar ou a Adopet precisa validar.'}
           </Text>
+          {canCancelAdoption && (
+            <TouchableOpacity
+              style={[styles.cancelAdoptionBtn, { borderColor: colors.error || '#dc2626' }]}
+              onPress={() => {
+                Alert.alert(
+                  'Cancelar processo',
+                  'O pet voltará a ficar disponível e o adotante indicado será notificado. Deseja continuar?',
+                  [
+                    { text: 'Não', style: 'cancel' },
+                    {
+                      text: 'Sim, cancelar',
+                      style: 'destructive',
+                      onPress: () => cancelAdoptionMutation.mutate(),
+                    },
+                  ],
+                );
+              }}
+              disabled={cancelAdoptionMutation.isPending}
+            >
+              {cancelAdoptionMutation.isPending ? (
+                <ActivityIndicator size="small" color={colors.error || '#dc2626'} />
+              ) : (
+                <>
+                  <Ionicons name="close-circle-outline" size={20} color={colors.error || '#dc2626'} />
+                  <Text style={[styles.cancelAdoptionBtnText, { color: colors.error || '#dc2626' }]}>
+                    Cancelar processo de adoção
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       )}
       <View style={styles.section}>
@@ -1112,6 +1160,11 @@ export default function PetEditScreen() {
                       <View style={styles.modalItemNameRow}>
                         <Text style={[styles.modalItemText, { color: colors.textPrimary }]}>{p.name}</Text>
                         {p.kycVerified && <VerifiedBadge size={14} iconBackgroundColor={colors.primary} />}
+                        {p.isPartner && !p.kycVerified && (
+                          <View style={[styles.partnerBadge, { backgroundColor: colors.primary + '25' }]}>
+                            <Text style={[styles.partnerBadgeText, { color: colors.primary }]}>Parceiro</Text>
+                          </View>
+                        )}
                       </View>
                       {p.username ? <Text style={[styles.modalItemSub, { color: colors.textSecondary }]}>@{p.username}</Text> : null}
                     </TouchableOpacity>
@@ -1180,6 +1233,7 @@ export default function PetEditScreen() {
 const styles = StyleSheet.create({
   adoptedBanner: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: spacing.sm,
     padding: spacing.md,
@@ -1187,7 +1241,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: spacing.lg,
   },
-  adoptedBannerText: { flex: 1, fontSize: 14 },
+  adoptedBannerText: { flex: 1, fontSize: 14, minWidth: 0 },
+  cancelAdoptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 10,
+    borderWidth: 2,
+    marginTop: spacing.xs,
+    width: '100%',
+  },
+  cancelAdoptionBtnText: { fontSize: 14, fontWeight: '600' },
   section: { marginBottom: spacing.xl },
   sectionTitle: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', marginBottom: spacing.md },
   label: { fontSize: 12, marginBottom: spacing.xs },
@@ -1239,6 +1306,8 @@ const styles = StyleSheet.create({
   modalItemNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   modalItemText: { fontSize: 15, fontWeight: '500' },
   modalItemSub: { fontSize: 12, marginTop: 2 },
+  partnerBadge: { paddingVertical: 2, paddingHorizontal: 6, borderRadius: 8 },
+  partnerBadgeText: { fontSize: 10, fontWeight: '600' },
   modalSearchRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
   modalInput: { flex: 1, padding: spacing.md, borderRadius: 10, fontSize: 16 },
   modalSearchBtn: { paddingHorizontal: spacing.lg, justifyContent: 'center', borderRadius: 10 },

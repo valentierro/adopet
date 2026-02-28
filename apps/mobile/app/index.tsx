@@ -136,7 +136,7 @@ export default function IndexScreen() {
   }
 
   if (!onboardingSeen && userId) {
-    return <Redirect href="/(onboarding)" />;
+    return <Redirect href="/(tabs)" />;
   }
 
   return <Redirect href="/(tabs)" />;

@@ -155,6 +155,15 @@ export class MeService {
       dto.username = normalized;
     }
     const matchFieldsSent = MeService.MATCH_PROFILE_KEYS.some((k) => dto[k] !== undefined);
+    const existing = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarUrl: true, phone: true, city: true, missionProfileCompleteAt: true },
+    });
+    const nextAvatar = dto.avatarUrl !== undefined ? dto.avatarUrl : existing?.avatarUrl;
+    const nextPhone = dto.phone !== undefined ? dto.phone : existing?.phone;
+    const nextCity = dto.city !== undefined ? dto.city : existing?.city;
+    const profileComplete =
+      !!nextAvatar?.trim() && !!nextPhone?.trim() && !!nextCity?.trim() && !existing?.missionProfileCompleteAt;
     const [user, verified] = await Promise.all([
       this.prisma.user.update({
         where: { id: userId },
@@ -163,6 +172,7 @@ export class MeService {
           ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
           ...(dto.phone !== undefined && { phone: dto.phone }),
           ...(dto.city !== undefined && { city: dto.city }),
+          ...(profileComplete && { missionProfileCompleteAt: new Date() }),
           ...(dto.bio !== undefined && { bio: dto.bio }),
           ...(dto.housingType !== undefined && { housingType: dto.housingType }),
           ...(dto.hasYard !== undefined && { hasYard: dto.hasYard }),
@@ -388,6 +398,10 @@ export class MeService {
 
   async updatePreferences(userId: string, dto: UpdatePreferencesDto): Promise<PreferencesResponseDto> {
     const matchPrefsSent = dto.species !== undefined || dto.sizePref !== undefined || dto.sexPref !== undefined;
+    const userBefore = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { missionPreferencesCompleteAt: true },
+    });
     const prefs = await this.prisma.userPreferences.upsert({
       where: { userId },
       create: {
@@ -416,6 +430,12 @@ export class MeService {
         ...(dto.notifyListingReminders !== undefined && { notifyListingReminders: dto.notifyListingReminders }),
       },
     });
+    if (!userBefore?.missionPreferencesCompleteAt) {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { missionPreferencesCompleteAt: new Date() },
+      });
+    }
     if (matchPrefsSent) {
       const hasSpecies = prefs.species != null && prefs.species !== '';
       const hasSizePref = prefs.sizePref != null && prefs.sizePref !== '';
@@ -654,6 +674,7 @@ export class MeService {
         partnerName: m.partner.name,
         partnerSlug: m.partner.slug,
       })),
+      isPartner: !!(u.partner || (u.partnerMemberships?.length ?? 0) > 0),
     };
   }
 }

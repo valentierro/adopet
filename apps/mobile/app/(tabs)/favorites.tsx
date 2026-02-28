@@ -220,7 +220,10 @@ export default function FavoritesScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!userId) router.replace('/(auth)/welcome');
+      if (!userId) {
+        const t = setTimeout(() => router.replace('/(auth)/welcome'), 0);
+        return () => clearTimeout(t);
+      }
     }, [userId, router]),
   );
   const profileComplete = !!(user?.avatarUrl && user?.phone);
@@ -528,7 +531,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   viewedBadgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
-  viewedBadgeList: { bottom: 'auto', top: 6, right: 6, left: 'auto' },
+  viewedBadgeList: { bottom: 6, left: 6, top: 'auto', right: 'auto' },
   gridCardInfo: { padding: spacing.sm },
   gridCardName: { fontSize: 14, fontWeight: '700' },
   gridCardMeta: { fontSize: 12 },

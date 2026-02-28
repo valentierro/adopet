@@ -40,7 +40,25 @@ export async function createApp(): Promise<NestExpressApplication> {
   });
   if (compressionMiddleware) app.use(compressionMiddleware);
   if (helmetMiddleware) app.use(helmetMiddleware);
-  // CORS é aplicado no handler da Vercel (api/index.ts) e em vercel.json
+  // CORS: na Vercel é aplicado em api/index.ts; localmente habilitamos aqui para app web e Expo Go
+  const corsOrigins = process.env.CORS_ORIGINS?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+  app.enableCors({
+    origin:
+      corsOrigins.length > 0
+        ? corsOrigins
+        : (origin, cb) => {
+            if (
+              !origin ||
+              /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ||
+              /^https?:\/\/192\.168\.\d+\.\d+(:\d+)?$/.test(origin)
+            ) {
+              cb(null, true);
+            } else {
+              cb(null, false);
+            }
+          },
+    credentials: true,
+  });
   app.setGlobalPrefix('v1');
   app.use('/v1/payments/stripe-webhook', express.raw({ type: 'application/json' }));
   app.use(express.json({ limit: '10mb' }));

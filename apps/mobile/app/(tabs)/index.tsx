@@ -15,13 +15,14 @@ import {
   Alert,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ScreenContainer, LoadingLogo, VerifiedBadge, PrimaryButton, SecondaryButton, UsuarioVerificadoModal } from '../../src/components';
+import { ScreenContainer, LoadingLogo, VerifiedBadge, PrimaryButton, SecondaryButton, UsuarioVerificadoModal, DashboardSpotlightTour } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useClientConfig } from '../../src/hooks/useClientConfig';
 import { useAuthStore } from '../../src/stores/authStore';
@@ -34,6 +35,18 @@ import { getConversations } from '../../src/api/conversations';
 import { getPassedPets } from '../../src/api/swipes';
 import { fetchFeed } from '../../src/api/feed';
 import { spacing } from '../../src/theme';
+import { getOnboardingSeen } from '../../src/storage/onboarding';
+import {
+  getCardsOrder,
+  setCardsOrder,
+  type ProfileKey,
+} from '../../src/storage/homeCardsOrder';
+import DraggableFlatList, {
+  type RenderItemParams,
+  ScaleDecorator,
+} from 'react-native-draggable-flatlist';
+
+const isWeb = Platform.OS === 'web';
 
 const LogoLight = require('../../assets/brand/logo/logo_horizontal_light.png');
 const LogoDark = require('../../assets/brand/logo/logo_dark.png');
@@ -234,6 +247,20 @@ export default function DashboardScreen() {
   const queryClient = useQueryClient();
   const feedCarouselRef = useRef<ScrollView>(null);
   const feedCarouselOffsetRef = useRef(0);
+  const mainScrollRef = useRef<ScrollView>(null);
+  const mainScrollOffsetRef = useRef(0);
+  const verificationChipRef = useRef<View>(null);
+  const statsRowRef = useRef<View>(null);
+  const feedCardRef = useRef<View>(null);
+  const meusAnunciosRef = useRef<View>(null);
+  const minhasAdocoesRef = useRef<View>(null);
+  const favoritosRef = useRef<View>(null);
+  const footerMenuRef = useRef<View>(null);
+  const [showDashboardTour, setShowDashboardTour] = useState(false);
+  const [showReorderModal, setShowReorderModal] = useState(false);
+  const [reorderDraft, setReorderDraft] = useState<string[]>([]);
+  const [cardsOrder, setCardsOrderState] = useState<string[]>([]);
+  const [cardsOrderLoaded, setCardsOrderLoaded] = useState(false);
   const FEED_CAROUSEL_THUMB_SIZE = 56;
   const FEED_CAROUSEL_GAP = 6;
   const FEED_CAROUSEL_ITEM_WIDTH = FEED_CAROUSEL_THUMB_SIZE + FEED_CAROUSEL_GAP;
@@ -267,6 +294,18 @@ export default function DashboardScreen() {
     staleTime: 60_000,
   });
 
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid) return;
+    let cancelled = false;
+    getOnboardingSeen(uid).then((seen) => {
+      if (!cancelled && !seen) setShowDashboardTour(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
   useFocusEffect(
     useCallback(() => {
       refetchAll();
@@ -280,6 +319,7 @@ export default function DashboardScreen() {
   );
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [showVerifiedInfoModal, setShowVerifiedInfoModal] = useState(false);
+  const [showAdoptionsExplanationModal, setShowAdoptionsExplanationModal] = useState(false);
   const firstName = user?.name?.trim().split(/\s+/)[0] || '';
   const isNonPartner = !user?.partner && !(user?.partnerMemberships && user.partnerMemberships.length > 0);
   const isKycVerified = user?.kycStatus === 'VERIFIED';
@@ -473,9 +513,76 @@ export default function DashboardScreen() {
     // Não adiciona partnerPortalCard ao grid; CTA aparece abaixo de Para seu pet / Pets em alta / Últimas adoções
   }
 
+  const profileKey: ProfileKey = isAdmin ? 'admin' : isPartnerOrMember || isOngUser ? 'partner' : 'user';
+
+  useEffect(() => {
+    let cancelled = false;
+    getCardsOrder(profileKey).then((order) => {
+      if (!cancelled) {
+        setCardsOrderState(order);
+        setCardsOrderLoaded(true);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [profileKey]);
+
+  const cardById = useMemo(() => {
+    const map = new Map<string, (typeof cardsToShow)[0]>();
+    for (const c of cardsToShow) map.set(c.id, c);
+    return map;
+  }, [cardsToShow]);
+
+  const orderedCardsToShow = useMemo(() => {
+    if (!cardsOrderLoaded || cardsOrder.length === 0) return cardsToShow;
+    const fixedBefore = cardsToShow.filter((c) => c.id === 'feed');
+    const fixedAfter = cardsToShow.filter(
+      (c) => c.id === 'partnersArea' || c.id === 'partnerOng' || c.id === 'partnerComercial'
+    );
+    const draggableIds = cardsToShow.filter(
+      (c) =>
+        !['feed', 'partnersArea', 'partnerOng', 'partnerComercial'].includes(c.id)
+    ).map((c) => c.id);
+    const ordered: (typeof cardsToShow)[0][] = [...fixedBefore];
+    for (const id of cardsOrder) {
+      if (draggableIds.includes(id)) {
+        const card = cardById.get(id);
+        if (card) ordered.push(card);
+      }
+    }
+    for (const id of draggableIds) {
+      if (!cardsOrder.includes(id)) {
+        const card = cardById.get(id);
+        if (card) ordered.push(card);
+      }
+    }
+    return [...ordered, ...fixedAfter];
+  }, [cardsToShow, cardsOrder, cardsOrderLoaded, cardById]);
+
+  useEffect(() => {
+    if (showReorderModal) setReorderDraft(cardsOrder);
+  }, [showReorderModal, cardsOrder]);
+
+  const handleReorderSave = useCallback(async () => {
+    await setCardsOrder(profileKey, reorderDraft);
+    setCardsOrderState(reorderDraft);
+    setShowReorderModal(false);
+  }, [profileKey, reorderDraft]);
+
+  const reorderModalData = useMemo(() => {
+    const draft = reorderDraft.length > 0 ? reorderDraft : cardsOrder;
+    return draft
+      .map((id) => ({ key: id, card: cardById.get(id) }))
+      .filter((x): x is { key: string; card: NonNullable<typeof x.card> } => !!x.card);
+  }, [reorderDraft, cardsOrder, cardById]);
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView
+        ref={mainScrollRef}
+        onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+          mainScrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
         contentContainerStyle={[
           styles.scrollContent,
           {
@@ -548,15 +655,17 @@ export default function DashboardScreen() {
                       <Text style={[styles.verificationChipText, { color: colors.warning || '#d97706' }]}>Verificação em análise</Text>
                     </TouchableOpacity>
                   ) : (
-                    <TouchableOpacity
-                      onPress={() => setShowVerificationModal(true)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      style={styles.verificationChip}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
-                      <Text style={[styles.verificationChipText, { color: colors.primary }]}>Solicitar verificação</Text>
-                    </TouchableOpacity>
+                    <View ref={verificationChipRef} collapsable={false}>
+                      <TouchableOpacity
+                        onPress={() => setShowVerificationModal(true)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={styles.verificationChip}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
+                        <Text style={[styles.verificationChipText, { color: colors.primary }]}>Solicitar verificação</Text>
+                      </TouchableOpacity>
+                    </View>
                   ))}
               </View>
               {user ? (
@@ -577,18 +686,22 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             ) : null}
             {tutorStats ? (
-              <View style={[styles.statsRow, { backgroundColor: colors.surface }]}>
+              <View ref={statsRowRef} collapsable={false} style={[styles.statsRow, { backgroundColor: colors.surface }]}>
                 <View style={styles.stat}>
                   <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.points}</Text>
                   <Text style={[styles.statLabel, { color: colors.textSecondary }]}>pontos</Text>
                 </View>
                 <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
-                <View style={styles.stat}>
+                <TouchableOpacity
+                  style={styles.stat}
+                  onPress={() => setShowAdoptionsExplanationModal(true)}
+                  activeOpacity={0.7}
+                >
                   <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.adoptedCount}</Text>
                   <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
                     {tutorStats.adoptedCount === 1 ? 'adoção' : 'adoções'}
                   </Text>
-                </View>
+                </TouchableOpacity>
                 <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
                 <View style={[styles.stat, styles.statTitleWrap]}>
                   <View style={[styles.tutorLevelBadge, { backgroundColor: colors.primary + '18' }]}>
@@ -769,8 +882,20 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         )}
 
+        <View style={styles.gridHeaderRow}>
+          <Text style={[styles.gridSectionTitle, { color: colors.textPrimary }]}>Atalhos</Text>
+          <TouchableOpacity
+            onPress={() => setShowReorderModal(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.personalizeOrderBtn}
+          >
+            <Ionicons name="reorder-three" size={20} color={colors.primary} />
+            <Text style={[styles.personalizeOrderText, { color: colors.primary }]}>Personalizar ordem</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.grid}>
-          {cardsToShow.map((card) => {
+          {orderedCardsToShow.map((card) => {
             const isFull = card.fullWidth;
             const isFeedCard = card.id === 'feed';
             const feedCarouselData = isFeedCard && feedThumbUrls.length > 0 ? [...feedThumbUrls, ...feedThumbUrls, ...feedThumbUrls] : [];
@@ -924,9 +1049,17 @@ export default function DashboardScreen() {
             );
 
             const isPrimaryShortcut = card.primaryShortcut && !card.gradient;
+            const cardRef =
+              card.id === 'feed' ? feedCardRef
+              : card.id === 'my-pets' ? meusAnunciosRef
+              : card.id === 'adopted' ? minhasAdocoesRef
+              : card.id === 'favorites' ? favoritosRef
+              : undefined;
             return (
               <Pressable
                 key={card.id}
+                ref={cardRef}
+                collapsable={!cardRef}
                 style={({ pressed }) => [
                   styles.cardWrap,
                   isFull ? styles.cardWrapFull : { width: cardWidth },
@@ -963,15 +1096,78 @@ export default function DashboardScreen() {
           })}
         </View>
 
-        <TouchableOpacity
-          style={[styles.ctaButton, { backgroundColor: colors.primary }]}
-          onPress={() => router.push('/(tabs)/add-pet')}
-          activeOpacity={0.9}
-        >
-          <Ionicons name="add-circle" size={24} color="#fff" />
-          <Text style={styles.ctaButtonText}>Anunciar pet para adoção</Text>
-        </TouchableOpacity>
+        <View ref={footerMenuRef} collapsable={false}>
+          <TouchableOpacity
+            style={[styles.ctaButton, { backgroundColor: colors.primary }]}
+            onPress={() => router.push('/(tabs)/add-pet')}
+            activeOpacity={0.9}
+          >
+            <Ionicons name="add-circle" size={24} color="#fff" />
+            <Text style={styles.ctaButtonText}>Anunciar pet para adoção</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
+
+      {user?.id && (
+        <DashboardSpotlightTour
+          visible={showDashboardTour}
+          userId={user.id}
+          scrollViewRef={mainScrollRef}
+          scrollOffsetRef={mainScrollOffsetRef}
+          steps={[
+            {
+              key: 'verification',
+              targetRef: verificationChipRef,
+              title: 'Solicitar verificação',
+              message: 'Solicite o selo "Verificado" para seu perfil. A equipe Adopet analisa e aprova. O selo ajuda a transmitir confiança para outros usuários.',
+              tooltipPlacement: 'bottom',
+            },
+            {
+              key: 'adoptions',
+              targetRef: statsRowRef,
+              title: 'Pontos e adoções',
+              message: 'Aqui você vê seus pontos e a quantidade de adoções confirmadas. Quanto mais adoções, mais você sobe de nível (Tutor Iniciante, Ativo, etc.). Toque no "i" para saber como ganhar pontos.',
+              tooltipPlacement: 'bottom',
+            },
+            {
+              key: 'feed',
+              targetRef: feedCardRef,
+              title: 'Descobrir pets',
+              message: 'Toque aqui para ver o feed de pets disponíveis para adoção. Deslize para curtir (favoritar) ou passar. Use o filtro por espécie e o mapa.',
+              tooltipPlacement: 'bottom',
+            },
+            {
+              key: 'meus-anuncios',
+              targetRef: meusAnunciosRef,
+              title: 'Meus anúncios',
+              message: 'Cadastre pets para adoção. Seus anúncios aparecem aqui e passam por análise antes de ir para o feed.',
+              tooltipPlacement: 'bottom',
+            },
+            {
+              key: 'minhas-adocoes',
+              targetRef: minhasAdocoesRef,
+              title: 'Minhas adoções',
+              message: 'Aqui você vê os pets que adotou ou que foram adotados pelos seus anúncios.',
+              tooltipPlacement: 'bottom',
+            },
+            {
+              key: 'favoritos',
+              targetRef: favoritosRef,
+              title: 'Favoritos',
+              message: 'Pets que você curtiu ficam aqui. Toque para ver detalhes e conversar com o tutor.',
+              tooltipPlacement: 'bottom',
+            },
+            {
+              key: 'menu',
+              targetRef: footerMenuRef,
+              title: 'Menu inferior',
+              message: 'O menu abaixo tem as abas principais: Início, Favoritos, Anunciar, Conversas e Perfil. Use-o para navegar pelo app.',
+              tooltipPlacement: 'top',
+            },
+          ]}
+          onComplete={() => setShowDashboardTour(false)}
+        />
+      )}
 
       <Modal
         visible={showGamificationModal}
@@ -1009,7 +1205,7 @@ export default function DashboardScreen() {
                 <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Pontos</Text> — Você ganha pontos quando seus pets recebem o selo de verificação do Adopet (10 pts por pet) e quando uma adoção é confirmada pela equipe (25 pts por adoção). Há bônus na primeira adoção e em marcos como 3ª, 5ª e 10ª adoção.
               </Text>
               <Text style={[styles.gamificationModalP, { color: colors.textSecondary }]}>
-                <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Adoções</Text> — É a quantidade de pets que você já doou e que tiveram a adoção confirmada.
+                <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Adoções</Text> — Soma de pets que você adotou + pets que você anunciou e foram adotados (só confirmadas pela Adopet). Toque no número na home para mais detalhes.
               </Text>
               <Text style={[styles.gamificationModalP, { color: colors.textSecondary }]}>
                 <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Título</Text> — Seu nível como tutor, baseado nos pontos acumulados:
@@ -1045,6 +1241,190 @@ export default function DashboardScreen() {
               <Text style={styles.gamificationModalBtnText}>Entendi</Text>
             </TouchableOpacity>
           </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showReorderModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowReorderModal(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowReorderModal(false)} />
+          <View
+            style={[
+              styles.reorderModal,
+              { backgroundColor: colors.surface, maxHeight: modalHeight },
+            ]}
+            onStartShouldSetResponder={() => true}
+          >
+            <View style={[styles.reorderModalHeader, { borderBottomColor: colors.textSecondary + '30' }]}>
+              <Text style={[styles.reorderModalTitle, { color: colors.textPrimary }]}>
+                Personalizar ordem dos atalhos
+              </Text>
+              <TouchableOpacity
+                hitSlop={12}
+                onPress={() => setShowReorderModal(false)}
+                style={styles.reorderModalClose}
+              >
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.reorderModalHint, { color: colors.textSecondary }]}>
+              {isWeb ? 'Use as setas para alterar a ordem' : 'Arraste os itens ou use as setas para alterar a ordem'}
+            </Text>
+            <View style={styles.reorderModalList}>
+              {isWeb ? (
+                <ScrollView showsVerticalScrollIndicator>
+                  {reorderModalData.map(({ key, card }, index) => (
+                    <View
+                      key={key}
+                      style={[
+                        styles.reorderRow,
+                        { backgroundColor: colors.surface, borderColor: colors.textSecondary + '20' },
+                      ]}
+                    >
+                      <View style={styles.reorderRowArrowGroup}>
+                        <TouchableOpacity
+                          hitSlop={8}
+                          onPress={() => {
+                            if (index <= 0) return;
+                            const next = [...reorderModalData];
+                            [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                            setReorderDraft(next.map((d) => d.key));
+                          }}
+                          style={[styles.reorderArrowBtn, index === 0 && styles.reorderArrowBtnDisabled]}
+                          disabled={index === 0}
+                        >
+                          <Ionicons name="chevron-up" size={20} color={index === 0 ? colors.textSecondary + '60' : colors.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          hitSlop={8}
+                          onPress={() => {
+                            if (index >= reorderModalData.length - 1) return;
+                            const next = [...reorderModalData];
+                            [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                            setReorderDraft(next.map((d) => d.key));
+                          }}
+                          style={[styles.reorderArrowBtn, index === reorderModalData.length - 1 && styles.reorderArrowBtnDisabled]}
+                          disabled={index === reorderModalData.length - 1}
+                        >
+                          <Ionicons name="chevron-down" size={20} color={index === reorderModalData.length - 1 ? colors.textSecondary + '60' : colors.primary} />
+                        </TouchableOpacity>
+                      </View>
+                      <View style={[styles.reorderRowIcon, { backgroundColor: colors.primary + '18' }]}>
+                        <Ionicons name={card.icon} size={22} color={colors.primary} />
+                      </View>
+                      <View style={styles.reorderRowText}>
+                        <Text style={[styles.reorderRowTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                          {card.title}
+                        </Text>
+                        <Text style={[styles.reorderRowSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                          {card.subtitle}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </ScrollView>
+              ) : (
+                <DraggableFlatList
+                  data={reorderModalData}
+                  keyExtractor={(item) => item.key}
+                  onDragEnd={({ data }) => setReorderDraft(data.map((d) => d.key))}
+                  renderItem={({ item, drag, isActive }: RenderItemParams<{ key: string; card: (typeof cardsToShow)[0] }>) => (
+                    <ScaleDecorator>
+                      <Pressable
+                        onLongPress={drag}
+                        disabled={isActive}
+                        style={[
+                          styles.reorderRow,
+                          { backgroundColor: isActive ? colors.primary + '18' : colors.surface, borderColor: colors.textSecondary + '20' },
+                        ]}
+                      >
+                        <Ionicons name="reorder-three" size={24} color={colors.textSecondary} style={styles.reorderDragHandle} />
+                        <View style={[styles.reorderRowIcon, { backgroundColor: colors.primary + '18' }]}>
+                          <Ionicons name={item.card.icon} size={22} color={colors.primary} />
+                        </View>
+                        <View style={styles.reorderRowText}>
+                          <Text style={[styles.reorderRowTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                            {item.card.title}
+                          </Text>
+                          <Text style={[styles.reorderRowSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                            {item.card.subtitle}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    </ScaleDecorator>
+                  )}
+                />
+              )}
+            </View>
+            <View style={[styles.reorderModalActions, { borderTopColor: colors.textSecondary + '30' }]}>
+              <TouchableOpacity
+                style={[styles.reorderModalBtnSecondary, { borderColor: colors.primary }]}
+                onPress={() => setShowReorderModal(false)}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.reorderModalBtnSecondaryText, { color: colors.primary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.reorderModalBtnPrimary, { backgroundColor: colors.primary }]}
+                onPress={handleReorderSave}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.reorderModalBtnPrimaryText}>Salvar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showAdoptionsExplanationModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAdoptionsExplanationModal(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowAdoptionsExplanationModal(false)} />
+          <Pressable
+            style={[styles.verificationModalCard, { backgroundColor: colors.surface, maxWidth: 340 }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.verificationModalHeader}>
+              <View style={[styles.verificationModalIconWrap, { backgroundColor: colors.primary + '18' }]}>
+                <Ionicons name="heart" size={32} color={colors.primary} />
+              </View>
+              <Text style={[styles.verificationModalTitle, { color: colors.textPrimary }]}>Sobre as adoções</Text>
+            </View>
+            <Text style={[styles.verificationModalP, { color: colors.textSecondary }]}>
+              O número de adoções reúne duas coisas:
+            </Text>
+            <Text style={[styles.verificationModalP, { color: colors.textSecondary, marginTop: 0 }]}>
+              <Text style={{ fontWeight: '600', color: colors.textPrimary }}>• Pets que você adotou</Text> — adoções em que você foi o adotante.
+            </Text>
+            <Text style={[styles.verificationModalP, { color: colors.textSecondary, marginTop: 4 }]}>
+              <Text style={{ fontWeight: '600', color: colors.textPrimary }}>• Pets que você anunciou e foram adotados</Text> — adoções em que você foi o tutor e outra pessoa adotou.
+            </Text>
+            <Text style={[styles.verificationModalP, { color: colors.textSecondary, marginTop: 12 }]}>
+              Só entram adoções confirmadas pela equipe Adopet. Você pode ver o detalhe em Minhas adoções.
+            </Text>
+            <View style={styles.verificationModalActions}>
+              <PrimaryButton
+                title="Ver Minhas adoções"
+                onPress={() => {
+                  setShowAdoptionsExplanationModal(false);
+                  router.push('/(tabs)/my-adoptions');
+                }}
+                style={styles.verificationModalCta}
+              />
+              <SecondaryButton
+                title="Fechar"
+                onPress={() => setShowAdoptionsExplanationModal(false)}
+              />
+            </View>
+          </Pressable>
         </View>
       </Modal>
 
@@ -1292,6 +1672,98 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   gamificationModalBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  gridHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+    marginTop: spacing.md,
+  },
+  gridSectionTitle: { fontSize: 18, fontWeight: '700' },
+  personalizeOrderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+  },
+  personalizeOrderText: { fontSize: 14, fontWeight: '600' },
+  reorderModal: {
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
+    marginHorizontal: spacing.lg,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  reorderModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+  },
+  reorderModalTitle: { fontSize: 18, fontWeight: '700' },
+  reorderModalClose: { padding: spacing.xs },
+  reorderModalHint: {
+    fontSize: 13,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  reorderModalList: { flex: 1, minHeight: 280, maxHeight: 400 },
+  reorderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.xs,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  reorderDragHandle: { marginRight: spacing.sm },
+  reorderRowArrowGroup: {
+    marginRight: spacing.sm,
+    flexDirection: 'column',
+  },
+  reorderArrowBtn: {
+    padding: 4,
+  },
+  reorderArrowBtnDisabled: { opacity: 0.5 },
+  reorderRowIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+  },
+  reorderRowText: { flex: 1, minWidth: 0 },
+  reorderRowTitle: { fontSize: 15, fontWeight: '700' },
+  reorderRowSubtitle: { fontSize: 12, marginTop: 2 },
+  reorderModalActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderTopWidth: 1,
+  },
+  reorderModalBtnSecondary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 2,
+    alignItems: 'center',
+  },
+  reorderModalBtnSecondaryText: { fontSize: 16, fontWeight: '700' },
+  reorderModalBtnPrimary: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  reorderModalBtnPrimaryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   homeShortcutsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

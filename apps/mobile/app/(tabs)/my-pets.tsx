@@ -534,7 +534,7 @@ export default function MyPetsScreen() {
                       )}
                     </TouchableOpacity>
                   )}
-                  {!item.verified && (
+                  {!item.verified && item.status !== 'ADOPTED' && (
                     <TouchableOpacity
                       style={[styles.verifyBtn, { borderColor: colors.primary }]}
                       onPress={() => handleRequestVerification(item.id, item.name)}
@@ -710,7 +710,7 @@ export default function MyPetsScreen() {
                     </Text>
                   </TouchableOpacity>
                 )}
-                {!item.verified && (
+                {!item.verified && item.status !== 'ADOPTED' && (
                   <TouchableOpacity
                     style={[styles.verifyBtnList, { borderColor: colors.primary, marginTop: spacing.sm }]}
                     onPress={() => handleRequestVerification(item.id, item.name)}

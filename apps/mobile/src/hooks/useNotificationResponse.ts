@@ -26,12 +26,24 @@ export function useNotificationResponse(router: Router) {
           return;
         }
         const screen = data.screen;
+        if (screen === 'survey') {
+          const adoptionId = data.adoptionId;
+          const role = data.role;
+          if (typeof adoptionId === 'string' && adoptionId) {
+            const params = new URLSearchParams({ adoptionId });
+            if (typeof role === 'string' && (role === 'TUTOR' || role === 'ADOPTER')) {
+              params.set('role', role);
+            }
+            router.replace(`/survey?${params.toString()}`);
+            return;
+          }
+        }
         if (screen === 'my-adoptions') {
-          router.push('/my-adoptions');
+          router.replace('/(tabs)/my-adoptions');
           return;
         }
         if (screen === 'profile') {
-          router.push('/(tabs)/profile');
+          router.replace('/(tabs)/profile');
         }
       };
 

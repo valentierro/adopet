@@ -28,6 +28,12 @@ export class ConversationsController {
     return this.conversationsService.list(user.id);
   }
 
+  @Get('blocked')
+  @ApiOperation({ summary: 'Listar conversas com usuários bloqueados' })
+  async listBlocked(@CurrentUser() user: { id: string }): Promise<ConversationListItemDto[]> {
+    return this.conversationsService.listBlocked(user.id);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Obter uma conversa (para exibir outro participante e pet)' })
   async getOne(

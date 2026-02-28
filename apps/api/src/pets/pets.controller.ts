@@ -153,6 +153,17 @@ export class PetsController {
     return this.petsService.getSimilarPetsWithScores(id, limitNum, user?.id);
   }
 
+  @Post(':id/cancel-adoption')
+  @UseGuards(JwtAuthGuard, PetOwnerGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Tutor cancela processo de adoção; pet volta para disponível (cenário A ou B)' })
+  async cancelAdoption(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ): Promise<PetResponseDto> {
+    return this.petsService.cancelAdoptionProcess(id, user.id);
+  }
+
   @Post(':id/confirm-adoption')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -163,6 +174,17 @@ export class PetsController {
     @Body() body: ConfirmAdoptionDto,
   ): Promise<{ confirmed: boolean }> {
     return this.petsService.confirmAdoption(id, user.id, body.responsibilityTermAccepted === true);
+  }
+
+  @Post(':id/decline-adoption')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Adotante desiste da adoção (cenário A ou B); pet volta para disponível' })
+  async declineAdoption(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+  ): Promise<PetResponseDto> {
+    return this.petsService.declineAdoptionByAdopter(id, user.id);
   }
 
   @Get(':id/match-score')

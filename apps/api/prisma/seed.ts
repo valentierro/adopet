@@ -788,6 +788,17 @@ const SEED_SERVICES: Array<{
   { partnerSlug: 'lar-temporario-pe', name: 'Visita ao lar temporário', description: 'Agende visita para conhecer nossos pets', priceDisplay: 'Gratuito' },
 ];
 
+const CITY_COORDS: Record<string, { latitude: number; longitude: number }> = {
+  Recife: { latitude: -8.0476, longitude: -34.877 },
+  'Jaboatão dos Guararapes': { latitude: -8.1128, longitude: -35.0147 },
+  Caruaru: { latitude: -8.2845, longitude: -35.9702 },
+};
+
+function coordsForCity(city: string | null | undefined): { latitude: number; longitude: number } | undefined {
+  if (!city?.trim()) return undefined;
+  return CITY_COORDS[city.trim()];
+}
+
 async function seedPartners() {
   const existing = await prisma.partner.findMany({ select: { slug: true } });
   const existingSlugs = new Set(existing.map((p) => p.slug));
@@ -797,18 +808,22 @@ async function seedPartners() {
       console.log('Parceiro ONG já existe:', p.slug);
       continue;
     }
+    const coords = coordsForCity(p.city);
     await prisma.partner.create({
       data: {
         type: 'ONG',
         name: p.name,
         slug: p.slug,
         city: p.city,
+        latitude: coords?.latitude,
+        longitude: coords?.longitude,
         description: p.description,
         website: p.website,
         email: p.email,
         phone: p.phone,
         active: true,
         approvedAt: new Date(),
+        activatedAt: new Date(), // para aparecer no mapa sem precisar de primeiro login
         isPaidPartner: p.isPaidPartner ?? false,
       },
     });
@@ -822,18 +837,22 @@ async function seedPartners() {
       continue;
     }
     try {
+      const coords = coordsForCity(p.city);
       await prisma.partner.create({
         data: {
           type: p.type,
           name: p.name,
           slug: p.slug,
           city: p.city,
+          latitude: coords?.latitude,
+          longitude: coords?.longitude,
           description: p.description,
           website: p.website,
           email: p.email,
           phone: p.phone,
           active: true,
           approvedAt: new Date(),
+          activatedAt: new Date(), // para aparecer no mapa sem precisar de primeiro login
           isPaidPartner: true,
         },
       });
@@ -996,7 +1015,7 @@ async function seedUserProfilesForMatch() {
     if (Math.random() < 0.5) data.householdAgreesToAdoption = pick(USER_HOUSEHOLD);
     if (Math.random() < 0.5) data.activityLevel = pick(USER_ACTIVITY);
     if (Math.random() < 0.5) data.preferredPetAge = pick(USER_PET_AGE);
-    if (Math.random() < 0.6) data.commitsToVetCare = Math.random() < 0.95;
+    if (Math.random() < 0.6) data.commitsToVetCare = Math.random() < 0.95 ? 'YES' : 'NO';
     if (Math.random() < 0.5) data.walkFrequency = pick(USER_WALK);
     if (Math.random() < 0.5) data.monthlyBudgetForPet = pick(USER_BUDGET);
     if (Object.keys(data).length > 0) {
@@ -1049,6 +1068,7 @@ async function seedParceiroComercialUser() {
     where: { userId: user.id },
   });
   if (!partner) {
+    const recifeCoords = coordsForCity('Recife');
     partner = await prisma.partner.create({
       data: {
         userId: user.id,
@@ -1056,12 +1076,15 @@ async function seedParceiroComercialUser() {
         name: 'Clínica Vet Amigo',
         slug: 'clinica-vet-amigo-seed',
         city: 'Recife',
+        latitude: recifeCoords?.latitude,
+        longitude: recifeCoords?.longitude,
         description: 'Clínica e pet shop de teste. Use este usuário para testar o portal do parceiro no app.',
         website: 'https://exemplo.com',
         email: PARCEIRO_COMERCIAL_EMAIL,
         phone: '(81) 99999-3333',
         active: true,
         approvedAt: new Date(),
+        activatedAt: new Date(), // para aparecer no mapa sem precisar de primeiro login
         isPaidPartner: true,
         subscriptionStatus: 'active',
         planId: 'BASIC',
@@ -1278,12 +1301,17 @@ async function main() {
   await seedPetPreferencesForMatch();
   await seedUserProfilesForMatch();
 
-  console.log('Seed concluído.');
+  console.log('');
+  console.log('========================================');
+  console.log('  Seed finalizado com sucesso!');
+  console.log('========================================');
+  console.log('');
   console.log('  Login admin: admin@adopet.com.br / ' + SEED_PASSWORD);
   console.log('  Login admin (teste): admin-teste@adopet.com.br / ' + SEED_PASSWORD);
   console.log('  Login parceiro (portal): ' + PARCEIRO_COMERCIAL_EMAIL + ' / ' + SEED_PASSWORD);
   console.log('  Para ver o link Administração, defina no .env da API:');
   console.log('  ADMIN_USER_IDS=' + ADMIN_TESTE_USER_ID);
+  console.log('');
 }
 
 main()

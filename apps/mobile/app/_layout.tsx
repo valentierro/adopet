@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { Stack, useRouter } from 'expo-router';
-import { TouchableOpacity, AppState, Alert, type AppStateStatus } from 'react-native';
+import { TouchableOpacity, AppState, Alert, Modal, Pressable, Text, Platform, type AppStateStatus } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -66,6 +67,9 @@ function RootLayout() {
   const { colors } = useTheme();
   const getAccessToken = useAuthStore((s) => s.getAccessToken);
   const refreshTokens = useAuthStore((s) => s.refreshTokens);
+  const logout = useAuthStore((s) => s.logout);
+  const markActivity = useAuthStore((s) => s.markActivity);
+  const isInactivityExpired = useAuthStore((s) => s.isInactivityExpired);
   const accessToken = useAuthStore((s) => s.accessToken);
   const userId = useAuthStore((s) => s.user?.id);
   const sessionExpiredModalVisible = useAuthStore((s) => s.sessionExpiredModalVisible);
@@ -86,34 +90,40 @@ function RootLayout() {
 
   useEffect(() => {
     if (accessToken) sessionExpiredShownRef.current = false;
-    setAuthProvider(getAccessToken, refreshTokens, () => {
-      if (sessionExpiredShownRef.current) return;
-      sessionExpiredShownRef.current = true;
-      useAuthStore.getState().setSessionExpiredModalVisible(true);
-    });
-  }, [getAccessToken, refreshTokens, accessToken]);
-
-  // Modal "Sessão expirada": exibir quando a sessão expirar por inatividade e redirecionar ao fechar
-  const sessionExpiredAlertShownRef = useRef(false);
-  useEffect(() => {
-    if (!sessionExpiredModalVisible || sessionExpiredAlertShownRef.current) return;
-    sessionExpiredAlertShownRef.current = true;
-    Alert.alert(
-      'Sessão expirada',
-      'Sua sessão expirou por inatividade. Faça login novamente para continuar.',
-      [
-        {
-          text: 'OK',
-          onPress: () => {
-            sessionExpiredAlertShownRef.current = false;
-            setSessionExpiredModalVisible(false);
-            router.replace('/(tabs)/feed');
-          },
-        },
-      ],
-      { cancelable: false }
+    setAuthProvider(
+      getAccessToken,
+      refreshTokens,
+      () => {
+        if (sessionExpiredShownRef.current) return;
+        sessionExpiredShownRef.current = true;
+        useAuthStore.getState().setSessionExpiredModalVisible(true);
+      },
+      {
+        shouldSkipRefreshForInactivity: isInactivityExpired,
+        onInactivityExpire: () => logout(),
+        markActivity,
+      },
     );
-  }, [sessionExpiredModalVisible, setSessionExpiredModalVisible, router]);
+  }, [getAccessToken, refreshTokens, logout, markActivity, isInactivityExpired, accessToken]);
+
+  // Modal "Sessão expirada": exibir quando a sessão expirar e redirecionar ao fechar
+  // Usa Modal na web (Alert.alert não funciona em react-native-web); Alert no native
+  const handleSessionExpiredClose = useCallback(() => {
+    setSessionExpiredModalVisible(false);
+    router.replace('/(tabs)/feed');
+  }, [setSessionExpiredModalVisible, router]);
+  useEffect(() => {
+    if (!sessionExpiredModalVisible) return;
+    // Na web usa Modal (renderizado abaixo); no native usa Alert
+    if (Platform.OS !== 'web') {
+      Alert.alert(
+        'Sessão expirada',
+        'Sua sessão expirou por inatividade. Faça login novamente para continuar.',
+        [{ text: 'OK', onPress: handleSessionExpiredClose }],
+        { cancelable: false }
+      );
+    }
+  }, [sessionExpiredModalVisible, handleSessionExpiredClose]);
 
   useEffect(() => {
     setOnFeatureDisabled(() => {
@@ -125,11 +135,12 @@ function RootLayout() {
   }, [router]);
 
   // Renovar token ao voltar ao app e a cada 5 min em foreground (access token dura 15 min; refresh antecipado evita expirar durante uso)
+  // Não renova se inativo há 15+ min (deixa a próxima requisição acionar o fluxo de sessão expirada)
   const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 min
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
     const refreshIfLoggedIn = () => {
-      if (getAccessToken()) refreshTokens().catch(() => {});
+      if (getAccessToken() && !isInactivityExpired()) refreshTokens().catch(() => {});
     };
     const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
       if (nextState === 'active') {
@@ -150,9 +161,10 @@ function RootLayout() {
       subscription.remove();
       if (intervalId) clearInterval(intervalId);
     };
-  }, [getAccessToken, refreshTokens]);
+  }, [getAccessToken, refreshTokens, isInactivityExpired]);
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <PersistQueryClientProvider
       client={queryClient}
       persistOptions={{ persister: asyncStoragePersister, maxAge: 24 * 60 * 60 * 1000 }}
@@ -210,9 +222,37 @@ function RootLayout() {
         onUpdate={() => {}}
         onDismiss={() => optionalShownThisSession()}
       />
+      {Platform.OS === 'web' && sessionExpiredModalVisible && (
+        <Modal visible transparent animationType="fade">
+          <Pressable
+            style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: 24 }}
+            onPress={handleSessionExpiredClose}
+          >
+            <Pressable
+              style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 24, maxWidth: 340, width: '100%' }}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <Text style={{ fontSize: 20, fontWeight: '700', color: colors.textPrimary, marginBottom: 8 }}>
+                Sessão expirada
+              </Text>
+              <Text style={{ fontSize: 15, lineHeight: 22, color: colors.textSecondary, marginBottom: 24 }}>
+                Sua sessão expirou por inatividade. Faça login novamente para continuar.
+              </Text>
+              <TouchableOpacity
+                style={{ backgroundColor: colors.primary, paddingVertical: 14, paddingHorizontal: 24, borderRadius: 12, alignItems: 'center' }}
+                onPress={handleSessionExpiredClose}
+                activeOpacity={0.8}
+              >
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600' }}>OK</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
       </AppWithOfflineBanner>
       </AppErrorBoundary>
     </PersistQueryClientProvider>
+    </GestureHandlerRootView>
   );
 }
 

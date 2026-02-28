@@ -236,13 +236,13 @@ export default function SignupScreen() {
             Alert.alert(
               'Conta criada!',
               'Sua conta foi criada e sua verificação de identidade foi enviada. Em breve nossa equipe analisará e você poderá confirmar adoções.',
-              [{ text: 'Continuar', onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(onboarding)')) }]
+              [{ text: 'Continuar', onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(tabs)')) }]
             );
           } catch (kycErr) {
             Alert.alert(
               'Conta criada!',
               'Sua conta foi criada com sucesso. O envio da verificação de identidade falhou; você pode fazer depois em Perfil > Solicitar verificação.',
-              [{ text: 'Continuar', onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(onboarding)')) }]
+              [{ text: 'Continuar', onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(tabs)')) }]
             );
           } finally {
             setIsUploadingKyc(false);
@@ -251,7 +251,7 @@ export default function SignupScreen() {
           Alert.alert('Conta criada!', 'Sua conta foi criada com sucesso. Bem-vindo(a)!', [
             {
               text: 'Continuar',
-              onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(onboarding)')),
+              onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(tabs)')),
             },
           ]);
         }
@@ -265,7 +265,7 @@ export default function SignupScreen() {
         Alert.alert('Conta criada!', 'Sua conta foi criada com sucesso. Bem-vindo(a)!', [
           {
             text: 'Continuar',
-            onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(onboarding)')),
+            onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(tabs)')),
           },
         ]);
         return;

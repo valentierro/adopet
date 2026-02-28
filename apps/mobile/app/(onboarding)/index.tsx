@@ -135,12 +135,12 @@ export default function OnboardingScreen() {
     }
   };
 
-  /** Marca o tour como visto ao terminar (para não exibir de novo). O checkbox "não exibir novamente" é legado; sempre persistimos. */
+  /** Marca o tour como visto e redireciona. (Tela legada — o tour principal agora é em popups nas tabs.) */
   const finish = async () => {
     if (userId) {
       await setOnboardingSeen(userId);
     }
-    router.replace('/(tabs)');
+    router.replace('/(tabs)/feed');
   };
 
   return (

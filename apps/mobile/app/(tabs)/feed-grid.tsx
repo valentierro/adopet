@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useLayoutEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl } from 'react-native';
+import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ScrollView, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +20,45 @@ const GRID_GAP = spacing.sm;
 const GRID_CELL_ASPECT = 4 / 5;
 
 type FeedItem = FeedResponse['items'][number];
+
+function GridCardPhotos({ photos, width, aspect }: { photos: string[]; width: number; aspect: number }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const uris = photos?.length ? photos : ['https://picsum.photos/seed/pet/400/500'];
+  const height = width / aspect;
+
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const x = e.nativeEvent.contentOffset.x;
+    const idx = Math.round(x / width);
+    setActiveIndex(Math.min(idx, uris.length - 1));
+  }, [width, uris.length]);
+
+  if (uris.length <= 1) {
+    return <ExpoImage source={{ uri: uris[0] }} style={[styles.cardImage, { width, height }]} contentFit="cover" />;
+  }
+
+  return (
+    <View style={{ width, height, position: 'relative' }}>
+      <ScrollView
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={onScroll}
+        scrollEventThrottle={16}
+        style={{ width, height }}
+        contentContainerStyle={{ width: width * uris.length }}
+      >
+        {uris.map((uri, i) => (
+          <ExpoImage key={i} source={{ uri }} style={[styles.cardImage, { width, height }]} contentFit="cover" />
+        ))}
+      </ScrollView>
+      <View style={styles.dotsWrap}>
+        {uris.map((_, i) => (
+          <View key={i} style={[styles.dot, i === activeIndex && styles.dotActive]} />
+        ))}
+      </View>
+    </View>
+  );
+}
 
 function formatDistanceKm(val: unknown): string | null {
   if (val == null) return null;
@@ -129,10 +168,10 @@ export default function FeedGridScreen() {
             activeOpacity={0.85}
           >
             <View style={styles.cardImageWrap}>
-              <ExpoImage
-                source={{ uri: item.photos?.[0] ?? 'https://picsum.photos/seed/pet/400/500' }}
-                style={[styles.cardImage, { width: gridCellWidth, height: gridCellWidth / GRID_CELL_ASPECT }]}
-                contentFit="cover"
+              <GridCardPhotos
+                photos={item.photos ?? []}
+                width={gridCellWidth}
+                aspect={GRID_CELL_ASPECT}
               />
               <View style={styles.badges}>
                 {item.verified && (
@@ -285,6 +324,18 @@ const styles = StyleSheet.create({
   cardTouchable: { flex: 1 },
   cardImageWrap: { position: 'relative' },
   cardImage: { borderTopLeftRadius: 12, borderTopRightRadius: 12 },
+  dotsWrap: {
+    position: 'absolute',
+    bottom: 6,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+  },
+  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.5)' },
+  dotActive: { backgroundColor: 'rgba(255,255,255,0.95)', width: 6, height: 6, borderRadius: 3 },
   badges: {
     position: 'absolute',
     top: 6,

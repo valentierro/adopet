@@ -10,6 +10,10 @@ export const IN_APP_NOTIFICATION_TYPES = {
   NEW_MESSAGE: 'NEW_MESSAGE',
   NEW_CONVERSATION: 'NEW_CONVERSATION',
   ADOPTION_CONFIRMATION_REQUESTED: 'ADOPTION_CONFIRMATION_REQUESTED',
+  /** Tutor cancelou o processo de adoção (removeu indicação ou cancelou após adotante confirmar). */
+  ADOPTION_CANCELLED_BY_TUTOR: 'ADOPTION_CANCELLED_BY_TUTOR',
+  /** Adotante desistiu da adoção (antes ou após confirmar). */
+  ADOPTION_DECLINED_BY_ADOPTER: 'ADOPTION_DECLINED_BY_ADOPTER',
   /** Para admins: pet marcado como adotado pelo tutor, aguardando confirmação no painel. */
   PENDING_ADOPTION_BY_TUTOR: 'PENDING_ADOPTION_BY_TUTOR',
   PET_PUBLICATION_APPROVED: 'PET_PUBLICATION_APPROVED',

@@ -48,7 +48,10 @@ export default function ProfileScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!userId) router.replace('/(auth)/welcome');
+      if (!userId) {
+        const t = setTimeout(() => router.replace('/(auth)/welcome'), 0);
+        return () => clearTimeout(t);
+      }
     }, [userId, router]),
   );
 
@@ -139,6 +142,7 @@ export default function ProfileScreen() {
     (r) => r.type === 'USER_VERIFIED',
   );
   const canRequestUserVerification =
+    !user?.isPartner &&
     !user?.verified &&
     !userVerificationRequest &&
     user?.kycStatus !== 'VERIFIED' &&
@@ -272,7 +276,7 @@ export default function ProfileScreen() {
       {user?.username ? (
         <Text style={[styles.username, { color: colors.textSecondary }]}>@{user.username}</Text>
       ) : null}
-      {user?.kycStatus === 'VERIFIED' && !user?.partner ? (
+      {user?.kycStatus === 'VERIFIED' && !user?.isPartner ? (
         <View style={[styles.kycBlockWrap, { backgroundColor: colors.primary + '18' }]}>
           <View style={[styles.kycPendingRow, { marginBottom: 0, backgroundColor: 'transparent' }]}>
             <Ionicons name="shield-checkmark" size={18} color={colors.primary} style={styles.kycPendingIcon} />
@@ -284,7 +288,7 @@ export default function ProfileScreen() {
           </Text>
         </View>
       ) : null}
-      {user?.kycStatus === 'PENDING' && !user?.partner ? (
+      {user?.kycStatus === 'PENDING' && !user?.isPartner ? (
         <View style={[styles.kycBlockWrap, { backgroundColor: (colors.warning || '#d97706') + '18' }]}>
           <View style={[styles.kycPendingRow, { marginBottom: 0, backgroundColor: 'transparent' }]}>
             <Ionicons name="time-outline" size={18} color={colors.warning || '#d97706'} style={styles.kycPendingIcon} />
@@ -296,7 +300,7 @@ export default function ProfileScreen() {
           </Text>
         </View>
       ) : null}
-      {user?.kycStatus !== 'VERIFIED' && user?.kycStatus !== 'PENDING' && !user?.partner ? (
+      {user?.kycStatus !== 'VERIFIED' && user?.kycStatus !== 'PENDING' && !user?.isPartner ? (
         <View style={[styles.kycBlockWrap, { backgroundColor: colors.primary + '18' }]}>
           <View style={[styles.kycPendingRow, { marginBottom: spacing.sm, backgroundColor: 'transparent' }]}>
             <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} style={styles.kycPendingIcon} />
@@ -453,7 +457,7 @@ export default function ProfileScreen() {
           )}
         </View>
       )}
-      {verificationFeedback && (
+      {!user?.isPartner && verificationFeedback && (
         <Text style={[styles.verificationFeedback, { color: colors.textSecondary }]}>
           {verificationFeedback}
         </Text>
@@ -514,35 +518,36 @@ export default function ProfileScreen() {
               </View>
               <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
             </TouchableOpacity>
-            {user?.kycStatus === 'PENDING' ? null : user?.kycStatus === 'VERIFIED' ? (
-              <TouchableOpacity
-                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-                onPress={() => router.push('/kyc')}
-              >
-                <View style={styles.menuItemLeft}>
-                  <Ionicons name="shield-checkmark" size={22} color={colors.primary} style={styles.menuIcon} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Verificação concluída</Text>
-                    <Text style={[styles.menuItemSubtext, { color: colors.textSecondary }]}>Documento e selfie aprovados</Text>
+            {!user?.isPartner &&
+              (user?.kycStatus === 'PENDING' ? null : user?.kycStatus === 'VERIFIED' ? (
+                <TouchableOpacity
+                  style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                  onPress={() => router.push('/kyc')}
+                >
+                  <View style={styles.menuItemLeft}>
+                    <Ionicons name="shield-checkmark" size={22} color={colors.primary} style={styles.menuIcon} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Verificação concluída</Text>
+                      <Text style={[styles.menuItemSubtext, { color: colors.textSecondary }]}>Documento e selfie aprovados</Text>
+                    </View>
                   </View>
-                </View>
-                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-                onPress={() => router.push('/kyc')}
-              >
-                <View style={styles.menuItemLeft}>
-                  <Ionicons name="shield-checkmark-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Solicitar verificação (KYC)</Text>
-                    <Text style={[styles.menuItemSubtext, { color: colors.textSecondary }]}>Documento e selfie para adoções</Text>
+                  <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                  onPress={() => router.push('/kyc')}
+                >
+                  <View style={styles.menuItemLeft}>
+                    <Ionicons name="shield-checkmark-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Solicitar verificação (KYC)</Text>
+                      <Text style={[styles.menuItemSubtext, { color: colors.textSecondary }]}>Documento e selfie para adoções</Text>
+                    </View>
                   </View>
-                </View>
-                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-              </TouchableOpacity>
-            )}
+                  <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+                </TouchableOpacity>
+              ))}
             <TouchableOpacity
               style={[styles.menuItem, { borderBottomColor: colors.surface }]}
               onPress={() => router.push('/notifications')}
@@ -696,8 +701,10 @@ export default function ProfileScreen() {
             >
               <View style={styles.menuItemLeft}>
                 <Ionicons name="stats-chart-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Avaliar o app</Text>
-                <Text style={[styles.menuItemSubtext, { color: colors.textSecondary }]}>Pesquisa de satisfação</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Avaliar o app</Text>
+                  <Text style={[styles.menuItemSubtext, { color: colors.textSecondary }]}>Pesquisa de satisfação</Text>
+                </View>
               </View>
               <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
             </TouchableOpacity>
@@ -971,11 +978,12 @@ const styles = StyleSheet.create({
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderRadius: 8,
     marginTop: 6,
+    marginBottom: spacing.md,
   },
   badgeRowIcon: { marginRight: 6 },
   badgeRowText: { fontSize: 13, fontWeight: '600', flex: 1 },

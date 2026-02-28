@@ -39,17 +39,30 @@ let refreshPromise: Promise<boolean | 'network'> | null = null;
 /** Evita chamar onSessionExpired várias vezes quando múltiplas requisições falham. */
 let sessionExpiredFired = false;
 
+export type AuthProviderOptions = {
+  /** Se true, não tenta refresh e trata como sessão expirada por inatividade (15 min) */
+  shouldSkipRefreshForInactivity?: () => boolean;
+  /** Chamado quando 401 por inatividade: fazer logout antes de mostrar modal */
+  onInactivityExpire?: () => void | Promise<void>;
+  /** Chamado a cada requisição bem-sucedida para atualizar última atividade */
+  markActivity?: () => void;
+};
+
 export function setAuthProvider(
   getToken: () => string | null,
   onRefresh: () => Promise<boolean | 'network'>,
   onExpired?: () => void,
+  options?: AuthProviderOptions,
 ) {
   tokenGetter = getToken;
   refreshAndRetry = onRefresh;
   onSessionExpired = onExpired ?? null;
+  authOptions = options ?? null;
   refreshPromise = null;
   sessionExpiredFired = false;
 }
+
+let authOptions: AuthProviderOptions | null = null;
 
 export function setOnFeatureDisabled(callback: (() => void) | null) {
   onFeatureDisabled = callback;
@@ -125,20 +138,29 @@ async function request<T>(
 
   // 401 em rota sem auth (login/signup) = credenciais erradas; não tratar como sessão expirada
   if (res.status === 401 && !isRetry && !skipAuth && refreshAndRetry) {
-    if (!refreshPromise) {
-      refreshPromise = refreshAndRetry().finally(() => {
-        refreshPromise = null;
-      });
-    }
-    const result = await refreshPromise;
-    if (result === true) return request<T>(endpoint, config, true);
-    if (result === 'network') {
-      const body = await res.text();
-      throw new Error(`API ${res.status}: ${body || res.statusText}`);
-    }
-    if (!sessionExpiredFired) {
-      sessionExpiredFired = true;
-      onSessionExpired?.();
+    const skipForInactivity = authOptions?.shouldSkipRefreshForInactivity?.();
+    if (skipForInactivity) {
+      await authOptions?.onInactivityExpire?.();
+      if (!sessionExpiredFired) {
+        sessionExpiredFired = true;
+        onSessionExpired?.();
+      }
+    } else {
+      if (!refreshPromise) {
+        refreshPromise = refreshAndRetry().finally(() => {
+          refreshPromise = null;
+        });
+      }
+      const result = await refreshPromise;
+      if (result === true) return request<T>(endpoint, config, true);
+      if (result === 'network') {
+        const body = await res.text();
+        throw new Error(`API ${res.status}: ${body || res.statusText}`);
+      }
+      if (!sessionExpiredFired) {
+        sessionExpiredFired = true;
+        onSessionExpired?.();
+      }
     }
   }
 
@@ -157,6 +179,7 @@ async function request<T>(
     throw new Error(`API ${res.status}: ${text || res.statusText}`);
   }
   const text = await res.text();
+  authOptions?.markActivity?.();
   if (!text) return undefined as T;
   return JSON.parse(text) as T;
 }

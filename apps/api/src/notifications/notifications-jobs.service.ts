@@ -91,17 +91,18 @@ export class NotificationsJobsService implements OnModuleInit {
           postAdoptionFeedbackPushSentAt: null,
           adoption: { isNot: null },
         },
-        select: { id: true, name: true, adoption: { select: { tutorId: true, adopterId: true } } },
+        select: { id: true, name: true, adoption: { select: { id: true, tutorId: true, adopterId: true } } },
       });
       for (const pet of pets) {
         const adoption = pet.adoption as { tutorId: string; adopterId: string } | null;
         if (!adoption) continue;
         const title = 'Como foi a adoção? 🐾';
         const body = `Conta pra gente como está sendo a vida com o ${pet.name}! Sua experiência ajuda outros tutores.`;
-        const data = { screen: 'my-adoptions' };
-        await this.push.sendToUser(adoption.tutorId, title, body, data);
+        const tutorData = { screen: 'survey', adoptionId: pet.adoption!.id, role: 'TUTOR' };
+        const adopterData = { screen: 'survey', adoptionId: pet.adoption!.id, role: 'ADOPTER' };
+        await this.push.sendToUser(adoption.tutorId, title, body, tutorData);
         if (adoption.adopterId !== adoption.tutorId) {
-          await this.push.sendToUser(adoption.adopterId, title, body, data);
+          await this.push.sendToUser(adoption.adopterId, title, body, adopterData);
         }
         await this.prisma.pet.update({
           where: { id: pet.id },

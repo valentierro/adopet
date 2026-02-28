@@ -42,7 +42,7 @@ export type FeedParams = {
   partnerFilter?: FeedPartnerFilter;
   /** Listar anúncios de um dono (ex.: perfil do tutor) */
   ownerId?: string;
-  /** Ordenar por engajamento: trending = mais favoritados primeiro */
+  /** Ordenar por engajamento: favoritos + conversas ativas (conversas têm peso maior) */
   sortBy?: 'trending';
 } & FeedTriageFilters;
 
@@ -109,6 +109,38 @@ export async function fetchFeedMap(params: {
   if (params.radiusKm != null) query.radiusKm = String(params.radiusKm);
   if (params.species && params.species !== 'BOTH') query.species = params.species;
   return api.get<FeedMapResponse>('/feed/map', query, { timeoutMs: FEED_MAP_TIMEOUT_MS });
+}
+
+export type PartnerMapPin = {
+  id: string;
+  name: string;
+  type: string;
+  city?: string;
+  latitude: number;
+  longitude: number;
+  logoUrl?: string;
+  distanceKm: number;
+};
+
+export type PartnerMapResponse = { items: PartnerMapPin[] };
+
+export type PartnerMapTypeFilter = 'ONG' | 'COMMERCIAL';
+
+export async function fetchPartnerMap(params: {
+  lat: number;
+  lng: number;
+  radiusKm?: number;
+  type?: PartnerMapTypeFilter;
+}): Promise<PartnerMapResponse> {
+  const query: Record<string, string> = {
+    lat: String(params.lat),
+    lng: String(params.lng),
+  };
+  if (params.radiusKm != null) query.radiusKm = String(params.radiusKm);
+  if (params.type) query.type = params.type;
+  return api.get<PartnerMapResponse>('/feed/map-partners', query, {
+    timeoutMs: FEED_MAP_TIMEOUT_MS,
+  });
 }
 
 export { FEED_PAGE_SIZE };

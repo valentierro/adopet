@@ -6,10 +6,10 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import type { MapPin, FeedMapSpeciesFilter } from '../../src/api/feed';
+import type { MapPin, FeedMapSpeciesFilter, PartnerMapPin } from '../../src/api/feed';
 import { ScreenContainer, EmptyState, LoadingLogo, VerifiedBadge, StatusBadge, MatchScoreBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
-import { fetchFeedMap } from '../../src/api/feed';
+import { fetchFeedMap, fetchPartnerMap } from '../../src/api/feed';
 import { getPreferences, updatePreferences, type PreferencesResponse } from '../../src/api/me';
 import { getMatchScore } from '../../src/api/pets';
 import { useAuthStore } from '../../src/stores/authStore';
@@ -21,6 +21,8 @@ import { Ionicons } from '@expo/vector-icons';
 
 // Pin no mapa: PNG 48x48 (map_pin_small.png) gerado por: pnpm run generate:map-pin. Prop image garante exibição no Android sem custom view.
 const MapPinSmallIcon = require('../../assets/brand/icon/map_pin_small.png');
+const PartnerOngPinIcon = require('../../assets/ultimas_doacoes.png');
+const PartnerCommercialPinIcon = require('../../assets/petshop.png');
 
 const DEFAULT_REGION = {
   latitude: -23.5505,
@@ -28,6 +30,12 @@ const DEFAULT_REGION = {
   latitudeDelta: 0.5,
   longitudeDelta: 0.5,
 };
+
+const MAP_LAYER_OPTIONS = [
+  { value: 'pets' as const, label: 'Pets' },
+  { value: 'ong' as const, label: 'ONGs' },
+  { value: 'commercial' as const, label: 'Comerciais' },
+];
 
 const SPECIES_OPTIONS: { value: FeedMapSpeciesFilter; label: string }[] = [
   { value: 'BOTH', label: 'Todos' },
@@ -71,7 +79,8 @@ export default function MapScreen() {
   const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
   const [locationReady, setLocationReady] = useState(false);
   const [mapReady, setMapReady] = useState(false);
-  const [selectedPin, setSelectedPin] = useState<MapPin | null>(null);
+  const [mapLayer, setMapLayer] = useState<'pets' | 'ong' | 'commercial'>('pets');
+  const [selectedPin, setSelectedPin] = useState<MapPin | PartnerMapPin | null>(null);
   const [speciesFilter, setSpeciesFilter] = useState<FeedMapSpeciesFilter>(initialSpecies);
   const [radiusKm, setRadiusKm] = useState(300);
 
@@ -103,6 +112,7 @@ export default function MapScreen() {
     onSuccess: (data: PreferencesResponse) => {
       queryClient.setQueryData(['me', 'preferences'], data);
       queryClient.invalidateQueries({ queryKey: ['feed', 'map'] });
+      queryClient.invalidateQueries({ queryKey: ['feed', 'map-partners'] });
     },
   });
 
@@ -120,29 +130,56 @@ export default function MapScreen() {
         radiusKm,
         species: speciesFilter,
       }),
-    enabled: locationGranted === true && locationReady && mapReady,
+    enabled: locationGranted === true && locationReady && mapReady && mapLayer === 'pets',
     staleTime: 60_000,
     retry: 5,
     retryDelay: (attemptIndex) => Math.min(2000 * 2 ** attemptIndex, 8000),
   });
 
+  const { data: partnerData, isLoading: partnerLoading, isError: partnerError, error: partnerErr, refetch: refetchPartners, isRefetching: partnerRefetching } = useQuery({
+    queryKey: ['feed', 'map-partners', apiCenter.latitude, apiCenter.longitude, radiusKm, mapLayer],
+    queryFn: () =>
+      fetchPartnerMap({
+        lat: apiCenter.latitude,
+        lng: apiCenter.longitude,
+        radiusKm,
+        type: mapLayer === 'ong' ? 'ONG' : mapLayer === 'commercial' ? 'COMMERCIAL' : undefined,
+      }),
+    enabled: locationGranted === true && locationReady && mapReady && (mapLayer === 'ong' || mapLayer === 'commercial'),
+    staleTime: 60_000,
+    retry: 5,
+    retryDelay: (attemptIndex) => Math.min(2000 * 2 ** attemptIndex, 8000),
+  });
+
+  const isPetPin = (p: MapPin | PartnerMapPin | null): p is MapPin =>
+    p != null && 'species' in p;
   const { data: matchScoreData } = useQuery({
     queryKey: ['match-score', selectedPin?.id, userId],
     queryFn: () => getMatchScore(selectedPin!.id, userId!),
-    enabled: !!selectedPin?.id && !!userId && selectedPin.matchScore != null,
+    enabled: !!selectedPin?.id && !!userId && isPetPin(selectedPin) && selectedPin.matchScore != null,
     staleTime: 2 * 60_000,
   });
 
   const isTimeout =
-    isError &&
-    error instanceof Error &&
-    (error.message === 'request timeout' || error.message.includes('timeout'));
+    isErrorLayer &&
+    errorLayer instanceof Error &&
+    (errorLayer.message === 'request timeout' || errorLayer.message.includes('timeout'));
 
-  const mapErrorMessage = isError && error
-    ? getFriendlyErrorMessage(error, 'Não foi possível carregar os pets do mapa. Toque em Atualizar para tentar de novo.')
+  const mapErrorMessage = isErrorLayer && errorLayer
+    ? getFriendlyErrorMessage(errorLayer, `Não foi possível carregar os ${isPetLayer ? 'pets' : 'parceiros'} do mapa. Toque em Atualizar para tentar de novo.`)
     : '';
-  const isNetworkError = isError && error instanceof Error &&
-    /network|fetch|connection|ECONNREFUSED|failed to fetch|timeout/i.test(error.message);
+  const isNetworkError = isErrorLayer && errorLayer instanceof Error &&
+    /network|fetch|connection|ECONNREFUSED|failed to fetch|timeout/i.test(errorLayer.message);
+
+  const handleLayerChange = (layer: 'pets' | 'ong' | 'commercial') => {
+    setMapLayer(layer);
+    setSelectedPin(null);
+  };
+
+  const handleRefetch = () => {
+    if (isPetLayer) refetch();
+    else refetchPartners();
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -196,21 +233,30 @@ export default function MapScreen() {
     locationGranted ? { lat: apiCenter.latitude, lng: apiCenter.longitude } : null,
   );
 
-  const items = data?.items ?? [];
-  // Lista estável e sem duplicatas por id para evitar crash no Fabric (addViewAt / child already has parent).
-  // useMemo deve ficar antes de qualquer early return para não violar as regras dos Hooks.
+  const petItems = data?.items ?? [];
+  const partnerItems = partnerData?.items ?? [];
+  const isPetLayer = mapLayer === 'pets';
+  const items = isPetLayer ? petItems : partnerItems;
+  const isLoadingLayer = isPetLayer ? isLoading : partnerLoading;
+  const isErrorLayer = isPetLayer ? isError : partnerError;
+  const errorLayer = isPetLayer ? error : partnerErr;
+  const isRefetchingLayer = isPetLayer ? isRefetching : partnerRefetching;
+
   const mapMarkers = useMemo(() => {
+    const list = isPetLayer ? petItems : partnerItems;
+    const prefix = isPetLayer ? 'pet' : 'partner';
     const seen = new Set<string>();
-    return items.filter((pin) => {
+    return list.filter((pin) => {
       const id = pin?.id ?? '';
-      if (seen.has(id)) return false;
-      seen.add(id);
+      const key = `${prefix}-${id}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
       const lat = Number(pin.latitude);
       const lng = Number(pin.longitude);
       return !Number.isNaN(lat) && !Number.isNaN(lng);
     });
-  }, [items]);
-  const showEmptyState = !isLoading && !isError && items.length === 0;
+  }, [isPetLayer, petItems, partnerItems]);
+  const showEmptyState = !isLoadingLayer && !isErrorLayer && items.length === 0;
 
   if (locationGranted === false) {
     return (
@@ -242,14 +288,36 @@ export default function MapScreen() {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: spacing.lg }]}
         refreshControl={
           <RefreshControl
-            refreshing={isRefetching && !isLoading}
-            onRefresh={() => refetch()}
+            refreshing={isRefetchingLayer && !isLoadingLayer}
+            onRefresh={handleRefetch}
             tintColor={colors.primary}
           />
         }
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.chipsRow, { borderBottomColor: colors.background }]}>
+          {MAP_LAYER_OPTIONS.map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              style={[
+                styles.chip,
+                { backgroundColor: mapLayer === opt.value ? colors.primary : colors.surface },
+              ]}
+              onPress={() => handleLayerChange(opt.value)}
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  { color: mapLayer === opt.value ? '#fff' : colors.textPrimary },
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {mapLayer === 'pets' && (
+        <View style={[styles.chipsRow, { borderBottomColor: colors.background, paddingVertical: spacing.xs }]}>
           {SPECIES_OPTIONS.map((opt) => (
             <TouchableOpacity
               key={opt.value}
@@ -270,6 +338,7 @@ export default function MapScreen() {
             </TouchableOpacity>
           ))}
         </View>
+        )}
         <View style={[styles.chipsRow, { borderBottomColor: colors.background, paddingVertical: spacing.xs }]}>
           <Text style={[styles.radiusLabel, { color: colors.textSecondary }]}>Raio:</Text>
             {RADIUS_OPTIONS.map((km) => (
@@ -306,13 +375,19 @@ export default function MapScreen() {
           {mapMarkers.map((pin, index) => {
             const lat = Number(pin.latitude);
             const lng = Number(pin.longitude);
-            const markerKey = `marker-${pin.id}-${index}`;
+            const isPet = 'species' in pin;
+            const pinIcon = isPet
+              ? MapPinSmallIcon
+              : (pin as PartnerMapPin).type === 'ONG'
+                ? PartnerOngPinIcon
+                : PartnerCommercialPinIcon;
+            const markerKey = `marker-${isPet ? 'pet' : 'partner'}-${pin.id}-${index}`;
             return (
               <Marker
                 key={markerKey}
                 coordinate={{ latitude: lat, longitude: lng }}
                 anchor={{ x: 0.5, y: 1 }}
-                image={MapPinSmallIcon}
+                image={pinIcon}
                 tracksViewChanges={false}
                 onPress={() => {
                   try {
@@ -329,7 +404,9 @@ export default function MapScreen() {
           <View style={[styles.emptyOverlay, { backgroundColor: colors.background }]}>
             <Ionicons name="map-outline" size={40} color={colors.textSecondary} />
             <Text style={[styles.emptyOverlayText, { color: colors.textSecondary }]}>
-              Nenhum pet no raio de {radiusKm} km. Aumente o raio acima ou volte mais tarde.
+              {isPetLayer
+                ? `Nenhum pet no raio de ${radiusKm} km. Aumente o raio acima ou volte mais tarde.`
+                : `Nenhum parceiro ${mapLayer === 'ong' ? 'ONG' : 'comercial'} no raio de ${radiusKm} km. Aumente o raio ou volte mais tarde.`}
             </Text>
           </View>
         )}
@@ -338,96 +415,142 @@ export default function MapScreen() {
       {selectedPin ? (
         <View style={[styles.selectedCard, { backgroundColor: colors.surface }]}>
           <View style={styles.selectedCardRow}>
-            {selectedPin.photoUrl ? (
-              <ExpoImage source={{ uri: selectedPin.photoUrl }} style={styles.selectedCardPhoto} contentFit="cover" />
-            ) : (
-              <View style={[styles.selectedCardPhoto, styles.selectedCardPhotoPlaceholder]}>
-                <Ionicons name="paw" size={24} color={colors.textSecondary} />
-              </View>
-            )}
-            <View style={styles.selectedCardBody}>
-              <View style={styles.selectedCardTitleRow}>
-                <Text style={[styles.selectedCardName, { color: colors.textPrimary }]} numberOfLines={1}>
-                  {selectedPin.name ?? 'Pet'}
-                </Text>
-                {selectedPin.matchScore != null && selectedPin.matchScore >= 0 && (
-                  <MatchScoreBadge
-                    data={
-                      matchScoreData?.score != null
-                        ? matchScoreData
-                        : {
-                            score: selectedPin.matchScore,
-                            highlights: [],
-                            concerns: [],
-                            criteriaCount: 1,
-                          }
-                    }
-                    size="small"
-                    showTooltip={true}
-                    contextLabel="com você"
-                  />
-                )}
-                {selectedPin.verified && (
-                  <VerifiedBadge size={16} iconBackgroundColor={colors.primary} />
-                )}
-              </View>
-              <Text style={[styles.selectedCardMeta, { color: colors.textSecondary }]}>
-                {Number(selectedPin.age) === 1 ? '1 ano' : `${selectedPin.age ?? 0} anos`} • {selectedPin.species === 'DOG' ? 'Cachorro' : selectedPin.species === 'CAT' ? 'Gato' : 'Pet'}
-                {selectedPin.size ? ` • ${getSizeLabel(selectedPin.size)}` : ''}
-                {selectedPin.city ? ` • ${selectedPin.city}` : ''}
-              </Text>
-              <View style={styles.selectedCardBadges}>
-                {selectedPin.partner != null && typeof selectedPin.partner?.isPaidPartner === 'boolean' && (
-                  <View
-                    style={[
-                      styles.selectedCardPartnerBadge,
-                      {
-                        backgroundColor: selectedPin.partner.isPaidPartner
-                          ? (colors.warning || '#d97706') + '30'
-                          : colors.primary + '25',
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={selectedPin.partner.isPaidPartner ? 'star' : 'heart'}
-                      size={12}
-                      color={selectedPin.partner.isPaidPartner ? (colors.warning || '#d97706') : colors.primary}
-                    />
-                    <Text
-                      style={[
-                        styles.selectedCardPartnerBadgeText,
-                        {
-                          color: selectedPin.partner.isPaidPartner ? (colors.warning || '#d97706') : colors.primary,
-                        },
-                      ]}
-                    >
-                      {selectedPin.partner.isPaidPartner ? 'Patrocinado' : 'Parceiro'}
-                    </Text>
+            {isPetPin(selectedPin) ? (
+              <>
+                {selectedPin.photoUrl ? (
+                  <ExpoImage source={{ uri: selectedPin.photoUrl }} style={styles.selectedCardPhoto} contentFit="cover" />
+                ) : (
+                  <View style={[styles.selectedCardPhoto, styles.selectedCardPhotoPlaceholder]}>
+                    <Ionicons name="paw" size={24} color={colors.textSecondary} />
                   </View>
                 )}
-                {selectedPin.vaccinated !== undefined && selectedPin.vaccinated !== null && (
-                  <StatusBadge
-                    label={selectedPin.vaccinated ? 'Vacinado' : 'Não vacinado'}
-                    variant={selectedPin.vaccinated ? 'success' : 'warning'}
-                  />
+                <View style={styles.selectedCardBody}>
+                  <View style={styles.selectedCardTitleRow}>
+                    <Text style={[styles.selectedCardName, { color: colors.textPrimary }]} numberOfLines={1}>
+                      {selectedPin.name ?? 'Pet'}
+                    </Text>
+                    {selectedPin.matchScore != null && selectedPin.matchScore >= 0 && (
+                      <MatchScoreBadge
+                        data={
+                          matchScoreData?.score != null
+                            ? matchScoreData
+                            : {
+                                score: selectedPin.matchScore,
+                                highlights: [],
+                                concerns: [],
+                                criteriaCount: 1,
+                              }
+                        }
+                        size="small"
+                        showTooltip={true}
+                        contextLabel="com você"
+                      />
+                    )}
+                    {selectedPin.verified && (
+                      <VerifiedBadge size={16} iconBackgroundColor={colors.primary} />
+                    )}
+                  </View>
+                  <Text style={[styles.selectedCardMeta, { color: colors.textSecondary }]}>
+                    {Number(selectedPin.age) === 1 ? '1 ano' : `${selectedPin.age ?? 0} anos`} • {selectedPin.species === 'DOG' ? 'Cachorro' : selectedPin.species === 'CAT' ? 'Gato' : 'Pet'}
+                    {selectedPin.size ? ` • ${getSizeLabel(selectedPin.size)}` : ''}
+                    {selectedPin.city ? ` • ${selectedPin.city}` : ''}
+                  </Text>
+                  <View style={styles.selectedCardBadges}>
+                    {selectedPin.partner != null && typeof selectedPin.partner?.isPaidPartner === 'boolean' && (
+                      <View
+                        style={[
+                          styles.selectedCardPartnerBadge,
+                          {
+                            backgroundColor: selectedPin.partner.isPaidPartner
+                              ? (colors.warning || '#d97706') + '30'
+                              : colors.primary + '25',
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name={selectedPin.partner.isPaidPartner ? 'star' : 'heart'}
+                          size={12}
+                          color={selectedPin.partner.isPaidPartner ? (colors.warning || '#d97706') : colors.primary}
+                        />
+                        <Text
+                          style={[
+                            styles.selectedCardPartnerBadgeText,
+                            {
+                              color: selectedPin.partner.isPaidPartner ? (colors.warning || '#d97706') : colors.primary,
+                            },
+                          ]}
+                        >
+                          {selectedPin.partner.isPaidPartner ? 'Patrocinado' : 'Parceiro'}
+                        </Text>
+                      </View>
+                    )}
+                    {selectedPin.vaccinated !== undefined && selectedPin.vaccinated !== null && (
+                      <StatusBadge
+                        label={selectedPin.vaccinated ? 'Vacinado' : 'Não vacinado'}
+                        variant={selectedPin.vaccinated ? 'success' : 'warning'}
+                      />
+                    )}
+                    {typeof selectedPin.distanceKm === 'number' && !Number.isNaN(selectedPin.distanceKm) && (
+                      <StatusBadge label={`${selectedPin.distanceKm.toFixed(1)} km`} variant="neutral" />
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.selectedCardBtn, { backgroundColor: colors.primary }]}
+                    onPress={() => {
+                      if (selectedPin?.id) {
+                        router.push(`/pet/${selectedPin.id}?from=map`);
+                      }
+                      setSelectedPin(null);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.selectedCardBtnText}>Ver perfil</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <>
+                {(selectedPin as PartnerMapPin).logoUrl ? (
+                  <ExpoImage source={{ uri: (selectedPin as PartnerMapPin).logoUrl }} style={styles.selectedCardPhoto} contentFit="cover" />
+                ) : (
+                  <View style={[styles.selectedCardPhoto, styles.selectedCardPhotoPlaceholder]}>
+                    <Ionicons
+                      name={(selectedPin as PartnerMapPin).type === 'ONG' ? 'heart' : 'storefront'}
+                      size={24}
+                      color={colors.textSecondary}
+                    />
+                  </View>
                 )}
-                {typeof selectedPin.distanceKm === 'number' && !Number.isNaN(selectedPin.distanceKm) && (
-                  <StatusBadge label={`${selectedPin.distanceKm.toFixed(1)} km`} variant="neutral" />
-                )}
-              </View>
-              <TouchableOpacity
-                style={[styles.selectedCardBtn, { backgroundColor: colors.primary }]}
-                onPress={() => {
-                  if (selectedPin?.id) {
-                    router.push(`/pet/${selectedPin.id}?from=map`);
-                  }
-                  setSelectedPin(null);
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.selectedCardBtnText}>Ver perfil</Text>
-              </TouchableOpacity>
-            </View>
+                <View style={styles.selectedCardBody}>
+                  <View style={styles.selectedCardTitleRow}>
+                    <Text style={[styles.selectedCardName, { color: colors.textPrimary }]} numberOfLines={1}>
+                      {(selectedPin as PartnerMapPin).name ?? 'Parceiro'}
+                    </Text>
+                  </View>
+                  <Text style={[styles.selectedCardMeta, { color: colors.textSecondary }]}>
+                    {(selectedPin as PartnerMapPin).type === 'ONG' ? 'ONG' : (selectedPin as PartnerMapPin).type === 'CLINIC' ? 'Clínica' : 'Loja'}
+                    {(selectedPin as PartnerMapPin).city ? ` • ${(selectedPin as PartnerMapPin).city}` : ''}
+                  </Text>
+                  <View style={styles.selectedCardBadges}>
+                    {typeof (selectedPin as PartnerMapPin).distanceKm === 'number' && !Number.isNaN((selectedPin as PartnerMapPin).distanceKm) && (
+                      <StatusBadge label={`${(selectedPin as PartnerMapPin).distanceKm!.toFixed(1)} km`} variant="neutral" />
+                    )}
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.selectedCardBtn, { backgroundColor: colors.primary }]}
+                    onPress={() => {
+                      if (selectedPin?.id) {
+                        router.push(`/partners/${selectedPin.id}`);
+                      }
+                      setSelectedPin(null);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.selectedCardBtnText}>Ver parceiro</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
             <TouchableOpacity
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               onPress={() => setSelectedPin(null)}
@@ -439,30 +562,32 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      <View style={[styles.footer, isError && styles.footerError, { backgroundColor: colors.surface }]}>
+      <View style={[styles.footer, isErrorLayer && styles.footerError, { backgroundColor: colors.surface }]}>
         <View style={styles.footerTextWrap}>
-          <Text style={[styles.footerText, { color: colors.textSecondary }]} numberOfLines={isError ? 10 : 2}>
-            {isError
+          <Text style={[styles.footerText, { color: colors.textSecondary }]} numberOfLines={isErrorLayer ? 10 : 2}>
+            {isErrorLayer
               ? mapErrorMessage
-              : isLoading
-                ? 'Carregando pets...'
+              : isLoadingLayer
+                ? (isPetLayer ? 'Carregando pets...' : 'Carregando parceiros...')
                 : showEmptyState
-                  ? `Nenhum pet no raio de ${radiusKm} km`
-                  : `${items.length} pet(s) no raio de ${radiusKm} km`}
+                  ? (isPetLayer ? `Nenhum pet no raio de ${radiusKm} km` : `Nenhum parceiro ${mapLayer === 'ong' ? 'ONG' : 'comercial'} no raio de ${radiusKm} km`)
+                  : isPetLayer
+                    ? `${items.length} pet(s) no raio de ${radiusKm} km`
+                    : `${items.length} parceiro(s) no raio de ${radiusKm} km`}
           </Text>
-          {isError && (
+          {isErrorLayer && (
             <Text style={[styles.footerHint, { color: colors.textSecondary }]}>
-              Você pode ver os pets na aba Início.
+              {isPetLayer ? 'Você pode ver os pets na aba Início.' : 'Toque em Atualizar para tentar novamente.'}
             </Text>
           )}
-          {isError && __DEV__ && isNetworkError && (
+          {isErrorLayer && __DEV__ && isNetworkError && (
             <Text style={[styles.footerDevHint, { color: colors.textSecondary }]}>
               Dica: no simulador, confira se a API está rodando (pnpm dev:api) e se EXPO_PUBLIC_API_URL no .env do app aponta para um host acessível (ex.: http://localhost:3000).
             </Text>
           )}
         </View>
         <View style={styles.footerActions}>
-          {isError && (
+          {isErrorLayer && isPetLayer && (
             <TouchableOpacity
               style={[styles.refreshBtn, styles.refreshBtnSecondary, { borderColor: colors.primary }]}
               onPress={() => router.replace('/(tabs)')}
@@ -472,8 +597,8 @@ export default function MapScreen() {
           )}
           <TouchableOpacity
             style={[styles.refreshBtn, { backgroundColor: colors.primary }]}
-            onPress={() => refetch()}
-            disabled={isLoading}
+            onPress={handleRefetch}
+            disabled={isLoadingLayer}
           >
             <Text style={styles.refreshBtnText}>Atualizar</Text>
           </TouchableOpacity>

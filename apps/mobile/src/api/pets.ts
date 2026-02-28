@@ -138,7 +138,17 @@ export async function confirmAdoption(
   });
 }
 
-export type ConversationPartner = { id: string; name: string; username?: string; kycVerified?: boolean };
+/** Tutor cancela o processo de adoção; pet volta para disponível (cenário A ou B). */
+export async function cancelAdoption(petId: string): Promise<PetResponse> {
+  return api.post<PetResponse>(`/pets/${petId}/cancel-adoption`, {});
+}
+
+/** Adotante desiste da adoção (cenário A ou B); pet volta para disponível, tutor é notificado. */
+export async function declineAdoption(petId: string): Promise<PetResponse> {
+  return api.post<PetResponse>(`/pets/${petId}/decline-adoption`, {});
+}
+
+export type ConversationPartner = { id: string; name: string; username?: string; kycVerified?: boolean; isPartner?: boolean };
 
 export async function getConversationPartners(petId: string): Promise<ConversationPartner[]> {
   return api.get<ConversationPartner[]>(`/pets/${petId}/conversation-partners`);

@@ -21,6 +21,8 @@ export { ProfileMenuFooter } from './ProfileMenuFooter';
 export { MatchScoreBadge, type MatchScoreData } from './MatchScoreBadge';
 export { GuestWelcomeSheet } from './GuestWelcomeSheet';
 export { OnboardingSlidesSheet } from './OnboardingSlidesSheet';
+export { FirstAccessTourOverlay } from './FirstAccessTourOverlay';
+export { DashboardSpotlightTour, type TourStep } from './DashboardSpotlightTour';
 export { UpdateAvailableModal } from './UpdateAvailableModal';
 export { NotificationBanner } from './NotificationBanner';
 export { NotificationBannerWrapper } from './NotificationBannerWrapper';
