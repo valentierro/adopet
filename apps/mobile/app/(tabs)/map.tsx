@@ -19,10 +19,10 @@ import { getSizeLabel } from '../../src/utils/petLabels';
 import { spacing } from '../../src/theme';
 import { Ionicons } from '@expo/vector-icons';
 
-// Pin no mapa: PNG 48x48 (map_pin_small.png) gerado por: pnpm run generate:map-pin. Prop image garante exibição no Android sem custom view.
+// Pins no mapa: PNG 48x48 gerados por: node scripts/resize-map-pin.js
 const MapPinSmallIcon = require('../../assets/brand/icon/map_pin_small.png');
-const PartnerOngPinIcon = require('../../assets/ultimas_doacoes.png');
-const PartnerCommercialPinIcon = require('../../assets/petshop.png');
+const PartnerOngPinIcon = require('../../assets/brand/icon/pin_ong_small.png');
+const PartnerCommercialPinIcon = require('../../assets/brand/icon/petshop_small.png');
 
 const DEFAULT_REGION = {
   latitude: -23.5505,
@@ -430,21 +430,33 @@ export default function MapScreen() {
                       {selectedPin.name ?? 'Pet'}
                     </Text>
                     {selectedPin.matchScore != null && selectedPin.matchScore >= 0 && (
-                      <MatchScoreBadge
-                        data={
-                          matchScoreData?.score != null
-                            ? matchScoreData
-                            : {
-                                score: selectedPin.matchScore,
-                                highlights: [],
-                                concerns: [],
-                                criteriaCount: 1,
-                              }
-                        }
-                        size="small"
-                        showTooltip={true}
-                        contextLabel="com você"
-                      />
+                      <TouchableOpacity
+                        onPress={() => {
+                          if (selectedPin?.id) {
+                            router.push(`/pet/${selectedPin.id}?from=map`);
+                            setSelectedPin(null);
+                          }
+                        }}
+                        activeOpacity={0.8}
+                        accessibilityLabel="Ver detalhes do match. Toque para abrir o perfil do pet."
+                        accessibilityRole="button"
+                      >
+                        <MatchScoreBadge
+                          data={
+                            matchScoreData?.score != null
+                              ? matchScoreData
+                              : {
+                                  score: selectedPin.matchScore,
+                                  highlights: [],
+                                  concerns: [],
+                                  criteriaCount: 1,
+                                }
+                          }
+                          size="small"
+                          showTooltip={true}
+                          contextLabel="com você"
+                        />
+                      </TouchableOpacity>
                     )}
                     {selectedPin.verified && (
                       <VerifiedBadge size={16} iconBackgroundColor={colors.primary} />

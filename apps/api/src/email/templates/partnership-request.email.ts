@@ -46,9 +46,12 @@ export function getPartnershipRequestEmailText(data: PartnershipRequestEmailData
   if (data.tipo === 'ong') {
     if (data.cnpj) lines.push(`CNPJ: ${data.cnpj}`);
     if (data.anoFundacao) lines.push(`Ano de fundação: ${data.anoFundacao}`);
-    if (data.cep) lines.push(`CEP: ${data.cep}`);
-    if (data.endereco) lines.push(`Endereço: ${data.endereco}`);
-    lines.push('');
+    if (data.cep || data.endereco) {
+      lines.push('--- Endereço (para exibição no mapa) ---');
+      if (data.cep) lines.push(`CEP: ${data.cep}`);
+      if (data.endereco) lines.push(`Endereço completo: ${data.endereco}`);
+      lines.push('');
+    }
   } else {
     if (data.personType && data.documentoComercial) {
       lines.push(`${data.personType === 'PF' ? 'CPF' : 'CNPJ'}: ${data.documentoComercial}`);
@@ -70,10 +73,16 @@ export function getPartnershipRequestEmailHtml(data: PartnershipRequestEmailData
   const extraOng =
     data.tipo === 'ong' && (data.cnpj || data.anoFundacao || data.cep || data.endereco)
       ? `
+    ${data.cnpj || data.anoFundacao ? `
     <tr><td style="padding: 8px 0 4px 0; font-size: 14px; color: #57534E;"><strong>Dados da instituição</strong></td></tr>
     <tr><td style="padding: 0 0 12px 0; font-size: 14px; color: #1C1917;">
-      ${[data.cnpj && `CNPJ: ${escapeHtml(data.cnpj)}`, data.anoFundacao && `Ano de fundação: ${escapeHtml(data.anoFundacao)}`, data.cep && `CEP: ${escapeHtml(data.cep)}`, data.endereco && `Endereço: ${escapeHtml(data.endereco)}`].filter(Boolean).join('<br/>')}
-    </td></tr>`
+      ${[data.cnpj && `CNPJ: ${escapeHtml(data.cnpj)}`, data.anoFundacao && `Ano de fundação: ${escapeHtml(data.anoFundacao)}`].filter(Boolean).join('<br/>')}
+    </td></tr>` : ''}
+    ${data.cep || data.endereco ? `
+    <tr><td style="padding: 12px 0 4px 0; font-size: 14px; color: #57534E;"><strong>Endereço (para exibição no mapa)</strong></td></tr>
+    <tr><td style="padding: 0 0 12px 0; font-size: 14px; color: #1C1917;">
+      ${[data.cep && `CEP: ${escapeHtml(data.cep)}`, data.endereco && `Endereço completo: ${escapeHtml(data.endereco)}`].filter(Boolean).join('<br/>')}
+    </td></tr>` : ''}`
       : '';
   const extraComercial =
     data.tipo === 'comercial' && (data.personType || data.documentoComercial || data.planoDesejado)

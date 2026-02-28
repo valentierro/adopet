@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { InAppNotificationsService, IN_APP_NOTIFICATION_TYPES } from '../notifications/in-app-notifications.service';
 import {
   getPartnershipRequestEmailText,
   getPartnershipRequestEmailHtml,
@@ -19,6 +20,7 @@ export class PublicService {
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
+    private readonly inAppNotifications: InAppNotificationsService,
   ) {}
 
   async getStats(): Promise<PublicStatsDto> {
@@ -110,6 +112,18 @@ export class PublicService {
         html,
         attachments: [{ filename: `partnership-request-${Date.now()}.txt`, content: text }],
       });
+    }
+
+    if (dto.tipo === 'ong') {
+      const adminIds = this.config.get<string>('ADMIN_USER_IDS')?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+      const title = 'Nova solicitação de parceria ONG';
+      const body = `${dto.instituicao.trim()} solicitou parceria. Toque para aprovar ou rejeitar.`;
+      const pushData = { screen: 'adminPartners' };
+      for (const adminId of adminIds) {
+        this.inAppNotifications
+          .create(adminId, IN_APP_NOTIFICATION_TYPES.PARTNERSHIP_REQUEST_ONG, title, body, undefined, pushData)
+          .catch(() => {});
+      }
     }
   }
 }

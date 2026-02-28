@@ -6,6 +6,7 @@ import { AuthService } from '../auth/auth.service';
 import { EmailService } from '../email/email.service';
 import { getSetPasswordEmailHtml, getSetPasswordEmailText } from '../email/templates/set-password.email';
 import { getPartnerWelcomeOngEmailHtml, getPartnerWelcomeOngEmailText } from '../email/templates/partner-welcome-ong.email';
+import { forwardGeocodeByAddress, reverseGeocode } from '../common/geocoding';
 
 export type PartnershipRequestAdminDto = {
   id: string;
@@ -83,6 +84,18 @@ export class PartnershipRequestsService {
       setPasswordToken = created.setPasswordToken;
     }
 
+    let city: string | null = null;
+    let latitude: number | null = null;
+    let longitude: number | null = null;
+    const addressStr = req.endereco?.trim() || null;
+    if (addressStr) {
+      const coords = await forwardGeocodeByAddress(addressStr);
+      if (coords) {
+        latitude = coords.lat;
+        longitude = coords.lng;
+        city = await reverseGeocode(coords.lat, coords.lng);
+      }
+    }
     const createDto = {
       type,
       name: req.instituicao,
@@ -92,6 +105,9 @@ export class PartnershipRequestsService {
       active: true,
       isPaidPartner: false,
       ...(userId && { userId }),
+      ...(addressStr && { address: addressStr }),
+      ...(city && { city }),
+      ...(latitude != null && longitude != null && { latitude, longitude }),
       ...(req.endereco && { description: `Solicitação aprovada. Contato: ${req.nome}. ${req.endereco}` }),
     };
     const partner = await this.partnersService.create(createDto);

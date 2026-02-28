@@ -27,6 +27,9 @@ function routeForNotification(router: ReturnType<typeof useRouter>, n: InAppNoti
     case 'PENDING_ADOPTION_BY_TUTOR':
       router.push('/(tabs)/admin/adoptions');
       break;
+    case 'PARTNERSHIP_REQUEST_ONG':
+      router.push('/(tabs)/admin/partners');
+      break;
     case 'ADOPTION_CONFIRMATION_REQUESTED':
       router.push('/(tabs)/adoption-confirm');
       break;

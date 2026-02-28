@@ -37,6 +37,8 @@ import type { CreatePartnerServiceDto } from './dto/create-partner-service.dto';
 import type { UpdatePartnerServiceDto } from './dto/update-partner-service.dto';
 import type { PartnerServiceResponseDto } from './dto/partner-service-response.dto';
 import { PARTNER_MEMBER_ROLES } from './dto/add-partner-member.dto';
+import { forwardGeocodeByAddress } from '../common/geocoding';
+
 function slugify(name: string): string {
   return name
     .trim()
@@ -297,6 +299,8 @@ export class PartnersService {
       phone?: string | null;
       email?: string | null;
       address?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
       galleryUrls?: string | null;
     } = {};
     if (dto.name !== undefined) data.name = dto.name.trim();
@@ -306,7 +310,17 @@ export class PartnersService {
     if (dto.logoUrl !== undefined) data.logoUrl = dto.logoUrl?.trim() || null;
     if (dto.phone !== undefined) data.phone = dto.phone?.trim() || null;
     if (dto.email !== undefined) data.email = dto.email?.trim() || null;
-    if (dto.address !== undefined) data.address = dto.address?.trim() || null;
+    if (dto.address !== undefined) {
+      data.address = dto.address?.trim() || null;
+      if (data.address) {
+        const coords = await forwardGeocodeByAddress(data.address);
+        data.latitude = coords?.lat ?? null;
+        data.longitude = coords?.lng ?? null;
+      } else {
+        data.latitude = null;
+        data.longitude = null;
+      }
+    }
     if (dto.galleryUrls !== undefined) data.galleryUrls = Array.isArray(dto.galleryUrls) ? JSON.stringify(dto.galleryUrls) : null;
     const updated = await this.prisma.partner.update({
       where: { userId },
@@ -1023,6 +1037,16 @@ export class PartnersService {
     const slug = await ensureUniqueSlug(slugBase, (s) =>
       this.prisma.partner.findUnique({ where: { slug: s } }).then((r) => !!r),
     );
+    let latitude: number | null = null;
+    let longitude: number | null = null;
+    const addressStr = address?.trim() || null;
+    if (addressStr) {
+      const coords = await forwardGeocodeByAddress(addressStr);
+      if (coords) {
+        latitude = coords.lat;
+        longitude = coords.lng;
+      }
+    }
     const partner = await this.prisma.partner.create({
       data: {
         userId,
@@ -1033,7 +1057,9 @@ export class PartnersService {
         approvedAt: null,
         isPaidPartner: false,
         planId: planId?.trim() || null,
-        address: address?.trim() || null,
+        address: addressStr,
+        latitude,
+        longitude,
         documentType: documentType || null,
         document: document?.replace(/\D/g, '') || null,
         legalName: legalName?.trim() || null,
@@ -1043,7 +1069,7 @@ export class PartnersService {
     return { id: partner.id, slug: partner.slug };
   }
 
-  /** Cria parceiro (admin). Gera slug a partir do nome se não informado. */
+  /** Cria parceiro (admin). Gera slug a partir do nome se não informado. Geocodifica endereço para lat/lng quando não informados. */
   async create(dto: CreatePartnerDto): Promise<PartnerAdminDto> {
     const slugBase = dto.slug?.trim() || slugify(dto.name);
     if (!slugBase) throw new BadRequestException('Nome ou slug inválido');
@@ -1057,6 +1083,16 @@ export class PartnersService {
       (dto.personType === 'PF' ? dto.cpf : dto.personType === 'CNPJ' ? dto.cnpj : undefined)
         ?.replace(/\D/g, '')
         .trim() || null;
+    let latitude = dto.latitude ?? null;
+    let longitude = dto.longitude ?? null;
+    const addressStr = dto.address?.trim() || null;
+    if (addressStr && (latitude == null || longitude == null)) {
+      const coords = await forwardGeocodeByAddress(addressStr);
+      if (coords) {
+        latitude = coords.lat;
+        longitude = coords.lng;
+      }
+    }
     const partner = await this.prisma.partner.create({
       data: {
         type: dto.type,
@@ -1071,7 +1107,9 @@ export class PartnersService {
         active,
         approvedAt,
         isPaidPartner: dto.isPaidPartner === true,
-        address: dto.address?.trim() || null,
+        address: addressStr,
+        latitude,
+        longitude,
         documentType,
         document,
         legalName: dto.legalName?.trim() || null,
@@ -1101,6 +1139,8 @@ export class PartnersService {
       rejectionReason?: string | null;
       isPaidPartner?: boolean;
       address?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
       documentType?: 'CPF' | 'CNPJ' | null;
       document?: string | null;
       legalName?: string | null;
@@ -1125,7 +1165,24 @@ export class PartnersService {
       data.rejectionReason = dto.rejectionReason?.trim() || null;
     }
     if (dto.isPaidPartner !== undefined) data.isPaidPartner = dto.isPaidPartner;
-    if (dto.address !== undefined) data.address = dto.address?.trim() || null;
+    if (dto.address !== undefined) {
+      data.address = dto.address?.trim() || null;
+      if (dto.latitude !== undefined && dto.longitude !== undefined) {
+        data.latitude = dto.latitude;
+        data.longitude = dto.longitude;
+      } else if (data.address) {
+        const coords = await forwardGeocodeByAddress(data.address);
+        data.latitude = coords?.lat ?? null;
+        data.longitude = coords?.lng ?? null;
+      } else {
+        data.latitude = null;
+        data.longitude = null;
+      }
+    }
+    if (dto.latitude !== undefined && dto.longitude !== undefined && dto.address === undefined) {
+      data.latitude = dto.latitude;
+      data.longitude = dto.longitude;
+    }
     if (dto.personType !== undefined) data.documentType = dto.personType === 'PF' ? 'CPF' : dto.personType;
     if (dto.cpf !== undefined) data.document = dto.cpf?.replace(/\D/g, '').trim() || null;
     if (dto.cnpj !== undefined) data.document = dto.cnpj?.replace(/\D/g, '').trim() || null;

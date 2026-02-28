@@ -19,7 +19,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { ScreenContainer, PrimaryButton, SecondaryButton, StatusBadge, LoadingLogo, VerifiedBadge, TutorLevelBadge, MatchScoreBadge } from '../../../src/components';
+import { ScreenContainer, PrimaryButton, SecondaryButton, StatusBadge, LoadingLogo, VerifiedBadge, TutorLevelBadge, MatchScoreBadge, Toast } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
 import { useAuthStore } from '../../../src/stores/authStore';
 import { getPetById } from '../../../src/api/pet';
@@ -184,9 +184,11 @@ export default function PetDetailsScreen() {
   });
   const favorites = favoritesData?.items ?? [];
   const isFavorited = !!id && favorites.some((f) => f.petId === id);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const addFavMutation = useMutation({
     mutationFn: () => addFavorite(id!),
     onSuccess: () => {
+      setToastMessage('Adicionado aos favoritos!');
       if (id) trackEvent({ name: 'favorite_added', properties: { petId: id } });
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
       if (from === 'passed-pets') {
@@ -196,10 +198,19 @@ export default function PetDetailsScreen() {
         }).catch(() => {});
       }
     },
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível adicionar aos favoritos.'));
+    },
   });
   const removeFavMutation = useMutation({
     mutationFn: () => removeFavorite(id!),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['favorites'] }),
+    onSuccess: () => {
+      setToastMessage('Removido dos favoritos');
+      queryClient.invalidateQueries({ queryKey: ['favorites'] });
+    },
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível remover dos favoritos.'));
+    },
   });
   const reportMutation = useMutation({
     mutationFn: ({ reason, description }: { reason: string; description?: string }) =>
@@ -1074,11 +1085,15 @@ export default function PetDetailsScreen() {
                 ) : isFavorited ? (
           <>
             <PrimaryButton title="Quero adotar / Chat" onPress={handleConversar} />
-            <SecondaryButton title="Remover dos favoritos" onPress={() => removeFavMutation.mutate()} />
+            <SecondaryButton
+              title={removeFavMutation.isPending ? 'Removendo...' : 'Remover dos favoritos'}
+              onPress={() => removeFavMutation.mutate()}
+              disabled={removeFavMutation.isPending}
+            />
           </>
         ) : (
           <PrimaryButton
-            title="Adicionar aos favoritos"
+            title={addFavMutation.isPending ? 'Adicionando...' : 'Adicionar aos favoritos'}
             onPress={() => addFavMutation.mutate()}
             disabled={addFavMutation.isPending}
           />
@@ -1151,6 +1166,7 @@ export default function PetDetailsScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
     </ScreenContainer>
   );
 }

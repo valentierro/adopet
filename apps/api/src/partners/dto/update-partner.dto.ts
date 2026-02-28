@@ -78,11 +78,19 @@ export class UpdatePartnerDto {
   @IsBoolean()
   isPaidPartner?: boolean;
 
-  @ApiPropertyOptional({ description: 'Endereço completo do estabelecimento' })
+  @ApiPropertyOptional({ description: 'Endereço completo do estabelecimento (geocodificado para lat/lng quando alterado)' })
   @IsOptional()
   @IsString()
   @MaxLength(500)
   address?: string;
+
+  @ApiPropertyOptional({ description: 'Latitude (geocodificado automaticamente quando address é alterado)' })
+  @IsOptional()
+  latitude?: number;
+
+  @ApiPropertyOptional({ description: 'Longitude (geocodificado automaticamente quando address é alterado)' })
+  @IsOptional()
+  longitude?: number;
 
   @ApiPropertyOptional({ example: 'PF', enum: ['PF', 'CNPJ'] })
   @IsOptional()

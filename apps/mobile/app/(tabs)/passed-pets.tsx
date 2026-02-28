@@ -75,6 +75,7 @@ export default function PassedPetsScreen() {
   const undoMutation = useMutation({
     mutationFn: undoPass,
     onSuccess: () => {
+      setToastMessage('Pet movido de volta ao feed!');
       queryClient.invalidateQueries({ queryKey: ['swipes', 'passed'] });
       queryClient.invalidateQueries({ queryKey: ['feed'] });
     },

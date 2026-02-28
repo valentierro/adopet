@@ -198,6 +198,12 @@ export default function SolicitarParceriaScreen() {
       return;
     }
 
+    if (tipo === 'ong') {
+      if (!rua.trim() || !numero.trim() || !cidade.trim() || !uf.trim() || uf.trim().length < 2) {
+        Alert.alert('Campo obrigatório', 'Preencha o endereço completo da instituição (rua, número, cidade e UF) para que possamos exibir a localização no mapa do app.');
+        return;
+      }
+    }
     if (tipo === 'comercial' && personType) {
       const docTrim = documentoComercial.replace(/\D/g, '');
       if (docTrim.length > 0) {
@@ -733,6 +739,9 @@ export default function SolicitarParceriaScreen() {
                 keyboardType="number-pad"
               />
               <Text style={labelStyle}>CEP (opcional – busca endereço)</Text>
+              <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: spacing.xs }]}>
+                Endereço obrigatório para exibir a ONG no mapa do app.
+              </Text>
               <View style={styles.cepRow}>
                 <TextInput
                   style={[inputStyle, styles.cepInput]}
@@ -747,11 +756,11 @@ export default function SolicitarParceriaScreen() {
                   {loadingCep ? <ActivityIndicator size="small" color="#fff" /> : <Ionicons name="search" size={22} color="#fff" />}
                 </TouchableOpacity>
               </View>
-              <Text style={labelStyle}>Endereço completo</Text>
+              <Text style={labelStyle}>Endereço completo *</Text>
               <TextInput style={inputStyle} placeholder="Rua" placeholderTextColor={colors.textSecondary} value={rua} onChangeText={setRua} />
               <View style={styles.row2}>
                 <View style={styles.half}>
-                  <Text style={labelStyle}>Número</Text>
+                  <Text style={labelStyle}>Número *</Text>
                   <TextInput style={inputStyle} placeholder="123" placeholderTextColor={colors.textSecondary} value={numero} onChangeText={setNumero} keyboardType="numeric" />
                 </View>
                 <View style={styles.half}>
@@ -759,14 +768,15 @@ export default function SolicitarParceriaScreen() {
                   <TextInput style={inputStyle} placeholder="Sala 1" placeholderTextColor={colors.textSecondary} value={complemento} onChangeText={setComplemento} />
                 </View>
               </View>
+              <Text style={labelStyle}>Bairro</Text>
               <TextInput style={inputStyle} placeholder="Bairro" placeholderTextColor={colors.textSecondary} value={bairro} onChangeText={setBairro} />
               <View style={styles.row2}>
                 <View style={styles.half}>
-                  <Text style={labelStyle}>Cidade</Text>
+                  <Text style={labelStyle}>Cidade *</Text>
                   <TextInput style={inputStyle} placeholder="Cidade" placeholderTextColor={colors.textSecondary} value={cidade} onChangeText={setCidade} />
                 </View>
                 <View style={styles.ufWrap}>
-                  <Text style={labelStyle}>UF</Text>
+                  <Text style={labelStyle}>UF *</Text>
                   <TextInput style={inputStyle} placeholder="SP" placeholderTextColor={colors.textSecondary} value={uf} onChangeText={(t) => setUf(t.toUpperCase().slice(0, 2))} />
                 </View>
               </View>

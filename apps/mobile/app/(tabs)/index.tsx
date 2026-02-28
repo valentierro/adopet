@@ -15,7 +15,6 @@ import {
   Alert,
   NativeSyntheticEvent,
   NativeScrollEvent,
-  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -41,12 +40,6 @@ import {
   setCardsOrder,
   type ProfileKey,
 } from '../../src/storage/homeCardsOrder';
-import DraggableFlatList, {
-  type RenderItemParams,
-  ScaleDecorator,
-} from 'react-native-draggable-flatlist';
-
-const isWeb = Platform.OS === 'web';
 
 const LogoLight = require('../../assets/brand/logo/logo_horizontal_light.png');
 const LogoDark = require('../../assets/brand/logo/logo_dark.png');
@@ -58,17 +51,27 @@ function useDashboardData() {
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === 'granted') {
-        try {
-          const loc = await Location.getCurrentPositionAsync({});
-          setUserCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
-        } catch {
-          setUserCoords(null);
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (cancelled) return;
+        if (status === 'granted') {
+          try {
+            const loc = await Location.getCurrentPositionAsync({});
+            if (!cancelled) setUserCoords({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+          } catch {
+            if (!cancelled) setUserCoords(null);
+          }
         }
+      } catch {
+        // Location pode falhar no iOS em certas condições (Expo Go, simulador, permissões)
+        if (!cancelled) setUserCoords(null);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const { data: user } = useQuery({ queryKey: ['me'], queryFn: getMe, staleTime: 60_000 });
@@ -354,27 +357,22 @@ export default function DashboardScreen() {
     if (user) setUser(user);
   }, [user, setUser]);
 
-  if (isLoading && !user) {
-    return (
-      <ScreenContainer>
-        <LoadingLogo size={160} />
-      </ScreenContainer>
-    );
-  }
+  const isPartnerOrMember =
+    !!(user?.partner || (user?.partnerMemberships && user.partnerMemberships.length > 0));
+  const isOngUser =
+    !!(user?.partner?.type === 'ONG' || (user?.partnerMemberships && user.partnerMemberships.length > 0));
+  const profileKey: ProfileKey = isAdmin ? 'admin' : isPartnerOrMember || isOngUser ? 'partner' : 'user';
 
-  if (!user && !isLoading && isError) {
-    return (
-      <ScreenContainer>
-        <View style={[styles.errorWrap, { paddingHorizontal: spacing.lg }]}>
-          <Text style={[styles.errorTitle, { color: colors.textPrimary }]}>Não foi possível carregar seus dados</Text>
-          <Text style={[styles.errorSub, { color: colors.textSecondary }]}>Verifique sua conexão e tente novamente.</Text>
-          <TouchableOpacity style={[styles.retryBtn, { backgroundColor: colors.primary }]} onPress={() => refetchMe()} activeOpacity={0.8}>
-            <Text style={styles.retryBtnText}>Tentar novamente</Text>
-          </TouchableOpacity>
-        </View>
-      </ScreenContainer>
-    );
-  }
+  useEffect(() => {
+    let cancelled = false;
+    getCardsOrder(profileKey).then((order) => {
+      if (!cancelled) {
+        setCardsOrderState(order);
+        setCardsOrderLoaded(true);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [profileKey]);
 
   const cards: {
     id: string;
@@ -498,10 +496,6 @@ export default function DashboardScreen() {
     mapIdx >= 0 ? [...cards.slice(0, mapIdx + 1), conditionalCard, ...cards.slice(mapIdx + 1)] : cards;
 
   // Parceiro/membro de ONG ou admin: não vê os CTAs "Sou ONG" e "Clínicas, lojas"
-  const isPartnerOrMember =
-    user?.partner || (user?.partnerMemberships && user.partnerMemberships.length > 0);
-  const isOngUser =
-    user?.partner?.type === 'ONG' || (user?.partnerMemberships && user.partnerMemberships.length > 0);
   let cardsToShow = isPartnerOrMember || isAdmin
     ? cardsWithConditional.filter((c) => c.id !== 'partnerOng' && c.id !== 'partnerComercial')
     : cardsWithConditional;
@@ -512,19 +506,6 @@ export default function DashboardScreen() {
   if (isNonOngPartner) {
     // Não adiciona partnerPortalCard ao grid; CTA aparece abaixo de Para seu pet / Pets em alta / Últimas adoções
   }
-
-  const profileKey: ProfileKey = isAdmin ? 'admin' : isPartnerOrMember || isOngUser ? 'partner' : 'user';
-
-  useEffect(() => {
-    let cancelled = false;
-    getCardsOrder(profileKey).then((order) => {
-      if (!cancelled) {
-        setCardsOrderState(order);
-        setCardsOrderLoaded(true);
-      }
-    });
-    return () => { cancelled = true; };
-  }, [profileKey]);
 
   const cardById = useMemo(() => {
     const map = new Map<string, (typeof cardsToShow)[0]>();
@@ -574,6 +555,28 @@ export default function DashboardScreen() {
       .map((id) => ({ key: id, card: cardById.get(id) }))
       .filter((x): x is { key: string; card: NonNullable<typeof x.card> } => !!x.card);
   }, [reorderDraft, cardsOrder, cardById]);
+
+  if (isLoading && !user) {
+    return (
+      <View style={[styles.screen, { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }]}>
+        <LoadingLogo size={140} />
+      </View>
+    );
+  }
+  if (isError && !user) {
+    return (
+      <View style={[styles.screen, { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, padding: spacing.lg }]}>
+        <Ionicons name="cloud-offline-outline" size={48} color={colors.textSecondary} style={{ marginBottom: spacing.md }} />
+        <Text style={{ fontSize: 18, fontWeight: '600', color: colors.textPrimary, marginBottom: spacing.sm, textAlign: 'center' }}>
+          Não foi possível carregar o perfil
+        </Text>
+        <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: spacing.lg, textAlign: 'center' }}>
+          Verifique sua conexão e tente novamente.
+        </Text>
+        <PrimaryButton title="Tentar de novo" onPress={() => refetchMe()} />
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -1255,7 +1258,11 @@ export default function DashboardScreen() {
           <View
             style={[
               styles.reorderModal,
-              { backgroundColor: colors.surface, maxHeight: modalHeight },
+              {
+                backgroundColor: colors.surface,
+                minHeight: Math.min(Math.max(420, windowHeight * 0.55), 560),
+                maxHeight: modalHeight,
+              },
             ]}
             onStartShouldSetResponder={() => true}
           >
@@ -1272,94 +1279,63 @@ export default function DashboardScreen() {
               </TouchableOpacity>
             </View>
             <Text style={[styles.reorderModalHint, { color: colors.textSecondary }]}>
-              {isWeb ? 'Use as setas para alterar a ordem' : 'Arraste os itens ou use as setas para alterar a ordem'}
+              Use as setas para alterar a ordem
             </Text>
-            <View style={styles.reorderModalList}>
-              {isWeb ? (
-                <ScrollView showsVerticalScrollIndicator>
-                  {reorderModalData.map(({ key, card }, index) => (
-                    <View
-                      key={key}
-                      style={[
-                        styles.reorderRow,
-                        { backgroundColor: colors.surface, borderColor: colors.textSecondary + '20' },
-                      ]}
+            <ScrollView
+              style={[styles.reorderModalList, { minHeight: 280 }]}
+              contentContainerStyle={styles.reorderModalListContent}
+              showsVerticalScrollIndicator
+            >
+              {reorderModalData.map(({ key, card }, index) => (
+                <View
+                  key={key}
+                  style={[
+                    styles.reorderRow,
+                    { backgroundColor: colors.surface, borderColor: colors.textSecondary + '20' },
+                  ]}
+                >
+                  <View style={styles.reorderRowArrowGroup}>
+                    <TouchableOpacity
+                      hitSlop={8}
+                      onPress={() => {
+                        if (index <= 0) return;
+                        const next = [...reorderModalData];
+                        [next[index - 1], next[index]] = [next[index], next[index - 1]];
+                        setReorderDraft(next.map((d) => d.key));
+                      }}
+                      style={[styles.reorderArrowBtn, index === 0 && styles.reorderArrowBtnDisabled]}
+                      disabled={index === 0}
                     >
-                      <View style={styles.reorderRowArrowGroup}>
-                        <TouchableOpacity
-                          hitSlop={8}
-                          onPress={() => {
-                            if (index <= 0) return;
-                            const next = [...reorderModalData];
-                            [next[index - 1], next[index]] = [next[index], next[index - 1]];
-                            setReorderDraft(next.map((d) => d.key));
-                          }}
-                          style={[styles.reorderArrowBtn, index === 0 && styles.reorderArrowBtnDisabled]}
-                          disabled={index === 0}
-                        >
-                          <Ionicons name="chevron-up" size={20} color={index === 0 ? colors.textSecondary + '60' : colors.primary} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          hitSlop={8}
-                          onPress={() => {
-                            if (index >= reorderModalData.length - 1) return;
-                            const next = [...reorderModalData];
-                            [next[index], next[index + 1]] = [next[index + 1], next[index]];
-                            setReorderDraft(next.map((d) => d.key));
-                          }}
-                          style={[styles.reorderArrowBtn, index === reorderModalData.length - 1 && styles.reorderArrowBtnDisabled]}
-                          disabled={index === reorderModalData.length - 1}
-                        >
-                          <Ionicons name="chevron-down" size={20} color={index === reorderModalData.length - 1 ? colors.textSecondary + '60' : colors.primary} />
-                        </TouchableOpacity>
-                      </View>
-                      <View style={[styles.reorderRowIcon, { backgroundColor: colors.primary + '18' }]}>
-                        <Ionicons name={card.icon} size={22} color={colors.primary} />
-                      </View>
-                      <View style={styles.reorderRowText}>
-                        <Text style={[styles.reorderRowTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                          {card.title}
-                        </Text>
-                        <Text style={[styles.reorderRowSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-                          {card.subtitle}
-                        </Text>
-                      </View>
-                    </View>
-                  ))}
-                </ScrollView>
-              ) : (
-                <DraggableFlatList
-                  data={reorderModalData}
-                  keyExtractor={(item) => item.key}
-                  onDragEnd={({ data }) => setReorderDraft(data.map((d) => d.key))}
-                  renderItem={({ item, drag, isActive }: RenderItemParams<{ key: string; card: (typeof cardsToShow)[0] }>) => (
-                    <ScaleDecorator>
-                      <Pressable
-                        onLongPress={drag}
-                        disabled={isActive}
-                        style={[
-                          styles.reorderRow,
-                          { backgroundColor: isActive ? colors.primary + '18' : colors.surface, borderColor: colors.textSecondary + '20' },
-                        ]}
-                      >
-                        <Ionicons name="reorder-three" size={24} color={colors.textSecondary} style={styles.reorderDragHandle} />
-                        <View style={[styles.reorderRowIcon, { backgroundColor: colors.primary + '18' }]}>
-                          <Ionicons name={item.card.icon} size={22} color={colors.primary} />
-                        </View>
-                        <View style={styles.reorderRowText}>
-                          <Text style={[styles.reorderRowTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                            {item.card.title}
-                          </Text>
-                          <Text style={[styles.reorderRowSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-                            {item.card.subtitle}
-                          </Text>
-                        </View>
-                      </Pressable>
-                    </ScaleDecorator>
-                  )}
-                />
-              )}
-            </View>
+                      <Ionicons name="chevron-up" size={20} color={index === 0 ? colors.textSecondary + '60' : colors.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      hitSlop={8}
+                      onPress={() => {
+                        if (index >= reorderModalData.length - 1) return;
+                        const next = [...reorderModalData];
+                        [next[index], next[index + 1]] = [next[index + 1], next[index]];
+                        setReorderDraft(next.map((d) => d.key));
+                      }}
+                      style={[styles.reorderArrowBtn, index === reorderModalData.length - 1 && styles.reorderArrowBtnDisabled]}
+                      disabled={index === reorderModalData.length - 1}
+                    >
+                      <Ionicons name="chevron-down" size={20} color={index === reorderModalData.length - 1 ? colors.textSecondary + '60' : colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+                  <View style={[styles.reorderRowIcon, { backgroundColor: colors.primary + '18' }]}>
+                    <Ionicons name={card.icon} size={22} color={colors.primary} />
+                  </View>
+                  <View style={styles.reorderRowText}>
+                    <Text style={[styles.reorderRowTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                      {card.title}
+                    </Text>
+                    <Text style={[styles.reorderRowSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {card.subtitle}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
             <View style={[styles.reorderModalActions, { borderTopColor: colors.textSecondary + '30' }]}>
               <TouchableOpacity
                 style={[styles.reorderModalBtnSecondary, { borderColor: colors.primary }]}
@@ -1713,6 +1689,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   reorderModalList: { flex: 1, minHeight: 280, maxHeight: 400 },
+  reorderModalListContent: { paddingBottom: spacing.md },
   reorderRow: {
     flexDirection: 'row',
     alignItems: 'center',

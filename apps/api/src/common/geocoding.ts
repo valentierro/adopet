@@ -44,6 +44,44 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string |
 }
 
 /**
+ * Obtém coordenadas (lat, lng) a partir de um endereço completo (forward geocoding).
+ * Usado para preencher lat/lng de parceiros a partir do endereço cadastrado (para aparecer no mapa).
+ * Restringe a busca ao Brasil (countrycodes=br). Retorna null em caso de erro ou sem resultados.
+ */
+export async function forwardGeocodeByAddress(
+  address: string,
+  countryCode = 'br',
+): Promise<{ lat: number; lng: number } | null> {
+  const trimmed = address?.trim();
+  if (!trimmed) return null;
+  const params = new URLSearchParams({
+    q: `${trimmed}, ${countryCode.toUpperCase()}`,
+    format: 'json',
+    limit: '1',
+    countrycodes: countryCode.toLowerCase(),
+  });
+  try {
+    const res = await fetch(`${NOMINATIM_SEARCH_URL}?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        'User-Agent': USER_AGENT,
+        Accept: 'application/json',
+      },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as Array<{ lat?: string; lon?: string }>;
+    const first = data?.[0];
+    if (!first?.lat || !first?.lon) return null;
+    const lat = parseFloat(first.lat);
+    const lng = parseFloat(first.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Obtém coordenadas (lat, lng) a partir do nome da cidade (forward geocoding).
  * Usado para preencher lat/lng de pets aprovados que têm cidade mas não têm coordenadas (para aparecer no mapa).
  * Restringe a busca ao Brasil (countrycodes=br). Retorna null em caso de erro ou sem resultados.

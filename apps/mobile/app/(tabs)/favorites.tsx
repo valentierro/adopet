@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { ScreenContainer, PetCard, EmptyState, LoadingLogo, PageIntro, StatusBadge, PrimaryButton } from '../../src/components';
+import { ScreenContainer, PetCard, EmptyState, LoadingLogo, PageIntro, StatusBadge, PrimaryButton, Toast } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useListViewMode } from '../../src/hooks/useListViewMode';
 import { getMe } from '../../src/api/me';
@@ -271,11 +271,16 @@ export default function FavoritesScreen() {
     }, [refetch, userId]),
   );
 
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const removeMutation = useMutation({
     mutationFn: removeFavorite,
     onSuccess: () => {
+      setToastMessage('Removido dos favoritos');
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
       queryClient.refetchQueries({ queryKey: ['favorites'] });
+    },
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível remover dos favoritos.'));
     },
   });
 
@@ -486,6 +491,7 @@ export default function FavoritesScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
     </ScreenContainer>
   );
 }

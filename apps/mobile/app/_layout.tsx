@@ -1,7 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { Stack, useRouter } from 'expo-router';
 import { TouchableOpacity, AppState, Alert, Modal, Pressable, Text, Platform, type AppStateStatus } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -164,7 +163,6 @@ function RootLayout() {
   }, [getAccessToken, refreshTokens, isInactivityExpired]);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
     <PersistQueryClientProvider
       client={queryClient}
       persistOptions={{ persister: asyncStoragePersister, maxAge: 24 * 60 * 60 * 1000 }}
@@ -252,7 +250,6 @@ function RootLayout() {
       </AppWithOfflineBanner>
       </AppErrorBoundary>
     </PersistQueryClientProvider>
-    </GestureHandlerRootView>
   );
 }
 

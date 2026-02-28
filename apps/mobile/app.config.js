@@ -3,7 +3,7 @@
 const baseExpo = {
   name: 'Adopet',
   slug: 'adopet',
-  version: '1.1.1',
+  version: '1.1.3',
   orientation: 'portrait',
   icon: './assets/brand/icon/app_icon_light.png',
   userInterfaceStyle: 'automatic',
@@ -15,6 +15,7 @@ const baseExpo = {
   },
   ios: {
     supportsTablet: true,
+    buildNumber: '56',
     bundleIdentifier: 'br.com.adopet.app',
     associatedDomains: ['applinks:appadopet.com.br'],
     infoPlist: { UIBackgroundModes: [] },
@@ -30,8 +31,8 @@ const baseExpo = {
       backgroundColor: '#FFFFFF',
     },
     package: 'br.com.adopet.app',
-    // Último publicado na Play Store: 53. Cada novo upload precisa de versionCode maior.
-    versionCode: 53,
+    // Último publicado na Play Store: 56. Cada novo upload precisa de versionCode maior.
+    versionCode: 56,
     intentFilters: [
       {
         action: 'VIEW',

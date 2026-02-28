@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput } from 'reac
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
-import { ScreenContainer, LoadingLogo } from '../../src/components';
+import { ScreenContainer, LoadingLogo, Toast } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { getSavedSearches, createSavedSearch, updateSavedSearch, deleteSavedSearch, type SavedSearchItem } from '../../src/api/saved-search';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
@@ -52,6 +52,7 @@ export default function SavedSearchesScreen() {
   const [breed, setBreed] = useState('');
   const [radiusKm, setRadiusKm] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const { data: list = [], isLoading, refetch } = useQuery({
     queryKey: ['saved-searches'],
@@ -97,6 +98,7 @@ export default function SavedSearchesScreen() {
   const deleteMutation = useMutation({
     mutationFn: deleteSavedSearch,
     onSuccess: (_data, deletedId) => {
+      setToastMessage('Busca removida');
       queryClient.invalidateQueries({ queryKey: ['saved-searches'] });
       if (editingId === deletedId) {
         setEditingId(null);
@@ -106,6 +108,7 @@ export default function SavedSearchesScreen() {
         setRadiusKm(null);
       }
     },
+    onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível remover.')),
   });
 
   const startEditing = (s: SavedSearchItem) => {
@@ -310,6 +313,7 @@ export default function SavedSearchesScreen() {
           </View>
         ))
       )}
+      <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
     </ScreenContainer>
   );
 }

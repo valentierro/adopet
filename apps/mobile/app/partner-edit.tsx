@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, PrimaryButton, LoadingLogo, PartnerPanelLayout } from '../src/components';
+import { ScreenContainer, PrimaryButton, LoadingLogo, PartnerPanelLayout, Toast } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMyPartner, updateMyPartner } from '../src/api/partner';
 import { presign, confirmPartnerLogoUpload } from '../src/api/uploads';
@@ -25,6 +25,7 @@ export default function PartnerEditScreen() {
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (partner) {
@@ -42,9 +43,10 @@ export default function PartnerEditScreen() {
   const updateMutation = useMutation({
     mutationFn: (body: Parameters<typeof updateMyPartner>[0]) => updateMyPartner(body),
     onSuccess: () => {
+      setToastMessage('Dados salvos!');
       queryClient.invalidateQueries({ queryKey: ['me', 'partner'] });
       queryClient.invalidateQueries({ queryKey: ['me'] });
-      router.back();
+      setTimeout(() => router.back(), 600);
     },
     onError: (e: unknown) => {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível salvar.'));
@@ -80,6 +82,7 @@ export default function PartnerEditScreen() {
       return confirmPartnerLogoUpload(key);
     },
     onSuccess: (data) => {
+      setToastMessage('Logo atualizada!');
       setLogoUrl(data.logoUrl);
       queryClient.invalidateQueries({ queryKey: ['me', 'partner'] });
       queryClient.invalidateQueries({ queryKey: ['me'] });
@@ -159,6 +162,7 @@ export default function PartnerEditScreen() {
         <PrimaryButton title={updateMutation.isPending ? 'Salvando...' : 'Salvar'} onPress={handleSave} disabled={updateMutation.isPending} />
         </ScrollView>
       </PartnerPanelLayout>
+      <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
     </ScreenContainer>
   );
 }

@@ -44,6 +44,11 @@ export function useNotificationResponse(router: Router) {
         }
         if (screen === 'profile') {
           router.replace('/(tabs)/profile');
+          return;
+        }
+        if (screen === 'adminPartners') {
+          router.replace('/(tabs)/admin/partners');
+          return;
         }
       };
 

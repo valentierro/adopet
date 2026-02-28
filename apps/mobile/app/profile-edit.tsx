@@ -5,7 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, PrimaryButton, LoadingLogo, ProfileMenuFooter } from '../src/components';
+import { ScreenContainer, PrimaryButton, LoadingLogo, ProfileMenuFooter, Toast } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMe, updateMe } from '../src/api/me';
 import { presign, confirmAvatarUpload } from '../src/api/uploads';
@@ -133,11 +133,13 @@ export default function ProfileEditScreen() {
     }
   }, [user]);
 
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const updateMutation = useMutation({
     mutationFn: (body: Parameters<typeof updateMe>[0]) => updateMe(body),
     onSuccess: () => {
+      setToastMessage('Perfil atualizado!');
       queryClient.invalidateQueries({ queryKey: ['me'] });
-      router.back();
+      setTimeout(() => router.back(), 600);
     },
     onError: (e: unknown) => {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível salvar.'));
@@ -159,7 +161,10 @@ export default function ProfileEditScreen() {
       if (!putRes.ok) throw new Error(`Upload falhou: ${putRes.status}`);
       return confirmAvatarUpload(key);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['me'] }),
+    onSuccess: () => {
+      setToastMessage('Foto atualizada!');
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+    },
     onError: (e: unknown) => {
       Alert.alert('Erro ao enviar foto', getFriendlyErrorMessage(e, 'Tente novamente.'));
     },
@@ -530,6 +535,7 @@ export default function ProfileEditScreen() {
         />
       </View>
       <ProfileMenuFooter />
+      <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
     </ScreenContainer>
   );
 }

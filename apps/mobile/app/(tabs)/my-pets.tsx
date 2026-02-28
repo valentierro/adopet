@@ -7,7 +7,7 @@ import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, EmptyState, LoadingLogo, PageIntro, StatusBadge, VerifiedBadge } from '../../src/components';
+import { ScreenContainer, EmptyState, LoadingLogo, PageIntro, StatusBadge, VerifiedBadge, Toast } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useListViewMode } from '../../src/hooks/useListViewMode';
 import { getMe } from '../../src/api/me';
@@ -124,13 +124,15 @@ export default function MyPetsScreen() {
     router.push(`/verification-request?${q.toString()}`);
   };
 
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const resubmitMutation = useMutation({
     mutationFn: (petId: string) => resubmitPublication(petId),
     onSuccess: () => {
+      setToastMessage('Enviado para análise!');
       queryClient.invalidateQueries({ queryKey: ['pets', 'mine'] });
       setResubmittingId(null);
     },
-    onError: (err, petId) => {
+    onError: (err) => {
       setResubmittingId(null);
       Alert.alert('Erro', getFriendlyErrorMessage(err, 'Não foi possível reenviar. Tente de novo.'));
     },
@@ -138,10 +140,11 @@ export default function MyPetsScreen() {
   const extendMutation = useMutation({
     mutationFn: (petId: string) => extendListing(petId),
     onSuccess: () => {
+      setToastMessage('Anúncio prorrogado por 60 dias!');
       queryClient.invalidateQueries({ queryKey: ['pets', 'mine'] });
       setExtendingId(null);
     },
-    onError: (err, petId) => {
+    onError: (err) => {
       setExtendingId(null);
       Alert.alert('Erro', getFriendlyErrorMessage(err, 'Não foi possível prorrogar.'));
     },
@@ -725,6 +728,7 @@ export default function MyPetsScreen() {
           )}
         />
       )}
+      <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
     </ScreenContainer>
   );
 }

@@ -122,6 +122,7 @@ export default function NotificationsScreen() {
   const markAllReadMutation = useMutation({
     mutationFn: markAllNotificationsAsRead,
     onSuccess: () => {
+      setToastMessage('Todas marcadas como lidas.');
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications-unread-count'] });
     },
@@ -222,6 +223,9 @@ export default function NotificationsScreen() {
           break;
         case 'PENDING_ADOPTION_BY_TUTOR':
           router.push('/(tabs)/admin/adoptions');
+          break;
+        case 'PARTNERSHIP_REQUEST_ONG':
+          router.push('/(tabs)/admin/partners');
           break;
         case 'ADOPTION_CONFIRMATION_REQUESTED':
           router.push('/(tabs)/adoption-confirm');

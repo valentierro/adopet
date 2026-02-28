@@ -83,6 +83,38 @@ Isso roda `expo start --ios`: inicia o Metro e tenta abrir no simulador iOS.
   ```
   Isso gera o projeto nativo em `ios/` e abre no simulador (exige CocoaPods e mais tempo na primeira vez).
 
+## Se o app der crash no Expo Go (iOS)
+
+Tente, nesta ordem:
+
+1. **Limpar cache e recarregar**
+   ```bash
+   cd apps/mobile
+   pnpm reset-cache
+   # Depois: pnpm dev e pressione "i" para abrir no iOS
+   ```
+
+2. **Reinstalar Expo Go no simulador** – delete o app Expo Go e instale de novo (App Store do simulador ou `npx expo start --ios`).
+
+3. **Reiniciar o simulador** – Feche o simulador e abra de novo (Xcode → Devices and Simulators → Boot).
+
+4. **Rodar com logs para ver o erro**
+   ```bash
+   cd apps/mobile
+   EXPO_DEBUG=1 pnpm dev
+   # Em outro terminal (com o app aberto no simulador):
+   npx react-native log-ios
+   ```
+
+5. **Usar development build em vez de Expo Go** – às vezes o Expo Go no iOS instável (ex.: SDK 54 + Hermes). Use:
+   ```bash
+   cd apps/mobile
+   npx expo run:ios
+   ```
+   Isso compila o app nativo e abre no simulador sem depender do Expo Go.
+
+6. **Testar no iPhone físico** – às vezes o crash é só no simulador. Conecte o iPhone, rode `pnpm dev` e escaneie o QR code com a câmera.
+
 ## Se Expo Go der "constructor is not callable" no simulador
 
 O Expo Go no iOS (Hermes) pode falhar com esse erro. Use uma das alternativas abaixo.

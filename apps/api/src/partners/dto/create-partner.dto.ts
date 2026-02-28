@@ -77,6 +77,14 @@ export class CreatePartnerDto {
   @MaxLength(500)
   address?: string;
 
+  @ApiPropertyOptional({ description: 'Latitude (geocodificado a partir do endereço quando não informado)' })
+  @IsOptional()
+  latitude?: number;
+
+  @ApiPropertyOptional({ description: 'Longitude (geocodificado a partir do endereço quando não informado)' })
+  @IsOptional()
+  longitude?: number;
+
   @ApiPropertyOptional({ example: 'PF', enum: ['PF', 'CNPJ'], description: 'Pessoa física ou jurídica (parceiro comercial)' })
   @IsOptional()
   @IsString()

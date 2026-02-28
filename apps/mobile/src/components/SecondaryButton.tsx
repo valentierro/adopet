@@ -1,5 +1,6 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, type ViewStyle } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, type ViewStyle, Platform } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useTheme } from '../hooks/useTheme';
 import { spacing, radius } from '../theme';
 
@@ -22,6 +23,13 @@ export function SecondaryButton({
 }: Props) {
   const { colors } = useTheme();
 
+  const handlePress = () => {
+    if (!disabled && Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    onPress();
+  };
+
   return (
     <TouchableOpacity
       style={[
@@ -34,7 +42,7 @@ export function SecondaryButton({
         },
         style,
       ]}
-      onPress={onPress}
+      onPress={handlePress}
       disabled={disabled}
       activeOpacity={0.8}
       accessibilityRole="button"

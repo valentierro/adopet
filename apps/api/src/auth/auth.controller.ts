@@ -154,8 +154,6 @@ export class AuthController {
   async setPasswordPage(@Query('token') token: string | string[], @Res() res: Response): Promise<void> {
     const tokenStr = Array.isArray(token) ? (token[0] ?? '') : (typeof token === 'string' ? token : '');
     const tokenEscaped = tokenStr.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const apiUrl = this.config.get<string>('API_PUBLIC_URL')?.replace(/\/$/, '') ?? '';
-    const formAction = apiUrl ? `${apiUrl}/v1/auth/set-password` : '/v1/auth/set-password';
     const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? 'https://appadopet.com.br';
     const logoUrl = (this.config.get<string>('LOGO_URL') || appUrl + '/logo.png').trim();
 
@@ -193,13 +191,13 @@ export class AuthController {
         <input type="hidden" name="token" value="${tokenEscaped}" />
         <label style="display:block;font-size:14px;color:#57534E;margin-bottom:4px;">Nova senha</label>
         <div style="position:relative;margin-bottom:12px;">
-          <input type="password" name="newPassword" id="newPassword" required minlength="6" placeholder="Mín. 6 caracteres, letra e número" style="width:100%;padding:12px 44px 12px 12px;border:1px solid #ccc;border-radius:8px;font-size:16px;box-sizing:border-box;" />
-          <button type="button" onclick="togglePw('newPassword','t1')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:#57534E;font-size:18px;" title="Mostrar senha" id="t1" aria-label="Mostrar senha">👁</button>
+          <input type="password" name="newPassword" id="newPassword" required minlength="6" placeholder="Mín. 6 caracteres, letra e número" style="width:100%;padding:12px 52px 12px 12px;border:1px solid #ccc;border-radius:8px;font-size:16px;box-sizing:border-box;" />
+          <button type="button" id="eye1" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;min-width:44px;min-height:44px;padding:0;color:#57534E;font-size:20px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation;" title="Mostrar senha" aria-label="Mostrar senha"><span aria-hidden="true">&#128065;</span></button>
         </div>
         <label style="display:block;font-size:14px;color:#57534E;margin-bottom:4px;">Repetir a senha</label>
         <div style="position:relative;margin-bottom:20px;">
-          <input type="password" name="newPasswordConfirm" id="newPasswordConfirm" required minlength="6" placeholder="Digite a mesma senha" style="width:100%;padding:12px 44px 12px 12px;border:1px solid #ccc;border-radius:8px;font-size:16px;box-sizing:border-box;" />
-          <button type="button" onclick="togglePw('newPasswordConfirm','t2')" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:4px;color:#57534E;font-size:18px;" title="Mostrar senha" id="t2" aria-label="Mostrar senha">👁</button>
+          <input type="password" name="newPasswordConfirm" id="newPasswordConfirm" required minlength="6" placeholder="Digite a mesma senha" style="width:100%;padding:12px 52px 12px 12px;border:1px solid #ccc;border-radius:8px;font-size:16px;box-sizing:border-box;" />
+          <button type="button" id="eye2" style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;min-width:44px;min-height:44px;padding:0;color:#57534E;font-size:20px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;touch-action:manipulation;" title="Mostrar senha" aria-label="Mostrar senha"><span aria-hidden="true">&#128065;</span></button>
         </div>
         <button type="submit" id="submitBtn" style="width:100%;padding:14px;background:linear-gradient(135deg,#0D9488,#14B8A6);color:#fff;border:0;border-radius:12px;font-size:16px;font-weight:600;cursor:pointer;">Definir senha</button>
       </form>
@@ -217,47 +215,80 @@ export class AuthController {
     </div>
   </div>
   <script>
-    var formAction = ${JSON.stringify(formAction)};
-    function togglePw(id, btnId) {
-      var el = document.getElementById(id);
-      var btn = document.getElementById(btnId);
-      if (el.type === 'password') { el.type = 'text'; btn.textContent = '🙈'; btn.title = 'Ocultar senha'; btn.setAttribute('aria-label','Ocultar senha'); }
-      else { el.type = 'password'; btn.textContent = '👁'; btn.title = 'Mostrar senha'; btn.setAttribute('aria-label','Mostrar senha'); }
-    }
-    document.getElementById('setPasswordForm').addEventListener('submit', function(e) {
-      e.preventDefault();
-      var p1 = document.getElementById('newPassword').value;
-      var p2 = document.getElementById('newPasswordConfirm').value;
-      var errBox = document.getElementById('errorBox');
-      errBox.style.display = 'none';
-      errBox.textContent = '';
-      if (!p2) { errBox.textContent = 'Repita a senha no segundo campo.'; errBox.style.display = 'block'; return; }
-      if (p1 !== p2) { errBox.textContent = 'As senhas não coincidem. Digite a mesma senha nos dois campos.'; errBox.style.display = 'block'; return; }
-      var btn = document.getElementById('submitBtn');
-      btn.disabled = true;
-      btn.textContent = 'Salvando...';
-      var form = document.getElementById('setPasswordForm');
-      var body = new URLSearchParams(new FormData(form));
-      fetch(formAction, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
-        .then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
-        .then(function(o) {
-          if (o.ok) {
-            document.getElementById('formWrap').style.display = 'none';
-            document.getElementById('successWrap').style.display = 'block';
-          } else {
-            errBox.textContent = o.data && o.data.message ? o.data.message : 'Não foi possível definir a senha. Tente novamente.';
+    (function() {
+      var formAction = window.location.href.split('?')[0];
+      document.getElementById('eye1').addEventListener('click', function() {
+        var el = document.getElementById('newPassword');
+        var btn = document.getElementById('eye1');
+        if (!el || !btn) return;
+        if (el.type === 'password') {
+          el.type = 'text';
+          btn.querySelector('span').innerHTML = '&#128584;';
+          btn.title = 'Ocultar senha';
+          btn.setAttribute('aria-label', 'Ocultar senha');
+        } else {
+          el.type = 'password';
+          btn.querySelector('span').innerHTML = '&#128065;';
+          btn.title = 'Mostrar senha';
+          btn.setAttribute('aria-label', 'Mostrar senha');
+        }
+      });
+      document.getElementById('eye2').addEventListener('click', function() {
+        var el = document.getElementById('newPasswordConfirm');
+        var btn = document.getElementById('eye2');
+        if (!el || !btn) return;
+        if (el.type === 'password') {
+          el.type = 'text';
+          btn.querySelector('span').innerHTML = '&#128584;';
+          btn.title = 'Ocultar senha';
+          btn.setAttribute('aria-label', 'Ocultar senha');
+        } else {
+          el.type = 'password';
+          btn.querySelector('span').innerHTML = '&#128065;';
+          btn.title = 'Mostrar senha';
+          btn.setAttribute('aria-label', 'Mostrar senha');
+        }
+      });
+      document.getElementById('setPasswordForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var p1 = document.getElementById('newPassword').value;
+        var p2 = document.getElementById('newPasswordConfirm').value;
+        var errBox = document.getElementById('errorBox');
+        errBox.style.display = 'none';
+        errBox.textContent = '';
+        if (!p2) { errBox.textContent = 'Repita a senha no segundo campo.'; errBox.style.display = 'block'; return; }
+        if (p1 !== p2) { errBox.textContent = 'As senhas não coincidem. Digite a mesma senha nos dois campos.'; errBox.style.display = 'block'; return; }
+        var btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.textContent = 'Salvando...';
+        var form = document.getElementById('setPasswordForm');
+        var body = new URLSearchParams(new FormData(form));
+        fetch(formAction, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+          .then(function(r) {
+            return r.text().then(function(t) {
+              try { var d = JSON.parse(t); return { ok: r.ok, data: d }; }
+              catch (_) { return { ok: r.ok, data: { message: t || 'Erro inesperado' } }; }
+            });
+          })
+          .then(function(o) {
+            if (o.ok) {
+              document.getElementById('formWrap').style.display = 'none';
+              document.getElementById('successWrap').style.display = 'block';
+            } else {
+              errBox.textContent = o.data && o.data.message ? o.data.message : 'Não foi possível definir a senha. Tente novamente.';
+              errBox.style.display = 'block';
+              btn.disabled = false;
+              btn.textContent = 'Definir senha';
+            }
+          })
+          .catch(function(err) {
+            errBox.textContent = 'Erro de conexão. Verifique sua internet e tente novamente.';
             errBox.style.display = 'block';
             btn.disabled = false;
             btn.textContent = 'Definir senha';
-          }
-        })
-        .catch(function() {
-          errBox.textContent = 'Erro de conexão. Verifique sua internet e tente novamente.';
-          errBox.style.display = 'block';
-          btn.disabled = false;
-          btn.textContent = 'Definir senha';
-        });
-    });
+          });
+      });
+    })();
   </script>
 </body>
 </html>`;
