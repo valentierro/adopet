@@ -638,38 +638,37 @@ export default function DashboardScreen() {
             </View>
             <View style={styles.heroStatusRow}>
               <View style={styles.heroStatusLeft}>
-                {isNonPartner &&
-                  (isKycVerified ? (
+                {(user?.verified || isKycVerified) ? (
+                  <TouchableOpacity
+                    onPress={() => setShowVerifiedInfoModal(true)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    activeOpacity={0.7}
+                  >
+                    <VerifiedBadge size={18} showLabel backgroundColor={colors.primary} textColor="#fff" />
+                  </TouchableOpacity>
+                ) : isNonPartner && isKycPending ? (
+                  <TouchableOpacity
+                    onPress={() => setShowKycPendingModal(true)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={styles.verificationChip}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="time-outline" size={20} color={colors.warning || '#d97706'} />
+                    <Text style={[styles.verificationChipText, { color: colors.warning || '#d97706' }]}>Verificação em análise</Text>
+                  </TouchableOpacity>
+                ) : isNonPartner ? (
+                  <View ref={verificationChipRef} collapsable={false}>
                     <TouchableOpacity
-                      onPress={() => setShowVerifiedInfoModal(true)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      activeOpacity={0.7}
-                    >
-                      <VerifiedBadge size={18} showLabel backgroundColor={colors.primary} textColor="#fff" />
-                    </TouchableOpacity>
-                  ) : isKycPending ? (
-                    <TouchableOpacity
-                      onPress={() => setShowKycPendingModal(true)}
+                      onPress={() => setShowVerificationModal(true)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       style={styles.verificationChip}
                       activeOpacity={0.7}
                     >
-                      <Ionicons name="time-outline" size={20} color={colors.warning || '#d97706'} />
-                      <Text style={[styles.verificationChipText, { color: colors.warning || '#d97706' }]}>Verificação em análise</Text>
+                      <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
+                      <Text style={[styles.verificationChipText, { color: colors.primary }]}>Solicitar verificação</Text>
                     </TouchableOpacity>
-                  ) : (
-                    <View ref={verificationChipRef} collapsable={false}>
-                      <TouchableOpacity
-                        onPress={() => setShowVerificationModal(true)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        style={styles.verificationChip}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
-                        <Text style={[styles.verificationChipText, { color: colors.primary }]}>Solicitar verificação</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+                  </View>
+                ) : null}
               </View>
               {user ? (
                 <View style={[styles.roleBadgeWrap, { backgroundColor: roleBadgeColor + '22' }]}>

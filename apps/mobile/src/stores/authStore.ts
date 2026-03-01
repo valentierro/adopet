@@ -219,7 +219,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  /** Retorna true se renovou; false se falhou por token inválido/expirado (fez logout); 'network' se falhou por rede (não desloga). */
+  /** Retorna true se renovou; false se falhou por token inválido/expirado; 'network' se falhou por rede (não desloga).
+   * Quando falha por token inválido, NÃO chama logout aqui — deixa onSessionExpired exibir o modal e o usuário
+   * confirmar; senão o modal "sessão expirada" nunca aparece (logout já teria zerado accessToken). */
   refreshTokens: async (): Promise<boolean | 'network'> => {
     const refreshToken = get().refreshToken ?? (await getStoredRefreshToken());
     if (!refreshToken) return false;
@@ -231,7 +233,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const msg = e instanceof Error ? e.message : String(e);
       const isNetworkError = /timeout|failed to fetch|network request failed|network error|could not connect|econnrefused|enotfound/i.test(msg);
       if (isNetworkError) return 'network';
-      await get().logout();
+      // Não chama logout — onSessionExpired mostrará o modal; handleSessionExpiredClose fará o logout
       return false;
     }
   },

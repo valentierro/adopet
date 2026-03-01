@@ -22,6 +22,8 @@ export function getApiUrlConfigIssue(): string | null {
 type RequestConfig = RequestInit & {
   params?: Record<string, string | number | undefined>;
   skipAuth?: boolean;
+  /** Token JWT explícito (evita race com tokenGetter em uploads pós-ImagePicker) */
+  token?: string | null;
   /** Timeout em ms; padrão REQUEST_TIMEOUT_MS */
   timeoutMs?: number;
   /** Se true, fetch com cache: 'no-store' (evita resposta em cache, ex.: app-config) */
@@ -90,7 +92,7 @@ async function request<T>(
   config: RequestConfig = {},
   isRetry = false,
 ): Promise<T> {
-  const { params, skipAuth, timeoutMs, noCache, ...init } = config;
+  const { params, skipAuth, token: explicitToken, timeoutMs, noCache, ...init } = config;
   const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const url = new URL(BASE_URL.replace(/\/$/, '') + path);
   if (params) {
@@ -104,12 +106,15 @@ async function request<T>(
     'Content-Type': 'application/json',
     ...(init.headers as Record<string, string>),
   };
-  // Para rotas autenticadas: garante que o token esteja disponível (evita race pós-login e pós-ImagePicker)
-  if (!skipAuth && tokenGetter) {
-    let token = tokenGetter();
-    if (!token) {
-      await delay(150);
+  // Para rotas autenticadas: usa token explícito ou tokenGetter (evita race pós-ImagePicker)
+  if (!skipAuth) {
+    let token = explicitToken;
+    if (!token && tokenGetter) {
       token = tokenGetter();
+      if (!token) {
+        await delay(150);
+        token = tokenGetter();
+      }
     }
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
@@ -160,7 +165,11 @@ async function request<T>(
         });
       }
       const result = await refreshPromise;
-      if (result === true) return request<T>(endpoint, config, true);
+      if (result === true) {
+        // Retry com token fresco do tokenGetter, não o explicitToken antigo
+        const { token: _explicit, ...configWithoutToken } = config;
+        return request<T>(endpoint, configWithoutToken as RequestConfig, true);
+      }
       if (result === 'network') {
         const body = await res.text();
         throw new Error(`API ${res.status}: ${body || res.statusText}`);
@@ -202,7 +211,7 @@ export const api = {
   post: <T>(
     path: string,
     body: unknown,
-    options?: { skipAuth?: boolean; timeoutMs?: number },
+    options?: { skipAuth?: boolean; token?: string | null; timeoutMs?: number },
   ) =>
     request<T>(path, {
       method: 'POST',

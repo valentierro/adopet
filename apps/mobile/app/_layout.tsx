@@ -110,10 +110,12 @@ function RootLayout() {
 
   // Modal "Sessão expirada": exibir quando a sessão expirar e redirecionar ao fechar
   // Usa Modal na web (Alert.alert não funciona em react-native-web); Alert no native
-  const handleSessionExpiredClose = useCallback(() => {
+  // Faz logout ao confirmar (refreshTokens não chama logout para permitir exibir o modal antes)
+  const handleSessionExpiredClose = useCallback(async () => {
     setSessionExpiredModalVisible(false);
+    await logout();
     router.replace('/(tabs)/feed');
-  }, [setSessionExpiredModalVisible, router]);
+  }, [setSessionExpiredModalVisible, logout, router]);
   useEffect(() => {
     if (!sessionExpiredModalVisible) return;
     // Na web usa Modal (renderizado abaixo); no native usa Alert

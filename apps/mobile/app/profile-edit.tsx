@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PrimaryButton, LoadingLogo, ProfileMenuFooter, Toast } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMe, updateMe } from '../src/api/me';
+import { useAuthStore } from '../src/stores/authStore';
 import { presign, confirmAvatarUpload } from '../src/api/uploads';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
 import { formatPhoneInput, formatPhoneDisplay, getPhoneDigits } from '../src/utils/phoneMask';
@@ -148,11 +149,12 @@ export default function ProfileEditScreen() {
   });
 
   const uploadAvatarMutation = useMutation({
-    mutationFn: async (uri: string) => {
+    mutationFn: async ({ uri, token }: { uri: string; token?: string | null }) => {
       const ext = uri.split('.').pop()?.toLowerCase() || 'jpg';
       const filename = `avatar.${ext === 'jpg' ? 'jpg' : ext}`;
+      const t = token ?? useAuthStore.getState().getAccessToken();
       const doUpload = async (): Promise<{ avatarUrl: string }> => {
-        const { uploadUrl, key } = await presign(filename, `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+        const { uploadUrl, key } = await presign(filename, `image/${ext === 'jpg' ? 'jpeg' : ext}`, t);
         const response = await fetch(uri);
         const blob = await response.blob();
         const putRes = await fetch(uploadUrl, {
@@ -161,7 +163,7 @@ export default function ProfileEditScreen() {
           headers: { 'Content-Type': blob.type || 'image/jpeg' },
         });
         if (!putRes.ok) throw new Error(`Upload falhou: ${putRes.status}`);
-        return confirmAvatarUpload(key);
+        return confirmAvatarUpload(key, t);
       };
       try {
         return await doUpload();
@@ -198,7 +200,8 @@ export default function ProfileEditScreen() {
       quality: 0.8,
     });
     if (result.canceled || !result.assets[0]?.uri) return;
-    uploadAvatarMutation.mutate(result.assets[0].uri);
+    const token = useAuthStore.getState().getAccessToken();
+    uploadAvatarMutation.mutate({ uri: result.assets[0].uri, token });
   }, [uploadAvatarMutation]);
 
   if (isLoading && !user) {

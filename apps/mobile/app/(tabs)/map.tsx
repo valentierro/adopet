@@ -363,6 +363,20 @@ export default function MapScreen() {
             ))}
         </View>
         <View style={[styles.mapWrap, showEmptyState && styles.mapWrapEmpty]}>
+          <View style={[styles.mapLegend, { backgroundColor: colors.surface + 'ee' }]}>
+            <View style={styles.mapLegendItem}>
+              <ExpoImage source={MapPinSmallIcon} style={styles.mapLegendIcon} />
+              <Text style={[styles.mapLegendText, { color: colors.textPrimary }]}>Pet</Text>
+            </View>
+            <View style={styles.mapLegendItem}>
+              <ExpoImage source={PartnerOngPinIcon} style={styles.mapLegendIcon} />
+              <Text style={[styles.mapLegendText, { color: colors.textPrimary }]}>ONG</Text>
+            </View>
+            <View style={styles.mapLegendItem}>
+              <ExpoImage source={PartnerCommercialPinIcon} style={styles.mapLegendIcon} />
+              <Text style={[styles.mapLegendText, { color: colors.textPrimary }]}>Parceiro comercial</Text>
+            </View>
+          </View>
           <MapView
           ref={mapRef}
           style={styles.map}
@@ -638,6 +652,23 @@ const styles = StyleSheet.create({
   loadingText: { fontSize: 16 },
   mapWrap: { position: 'relative', minHeight: 280, height: MAP_MIN_HEIGHT },
   mapWrapEmpty: { minHeight: 240 },
+  mapLegend: {
+    position: 'absolute',
+    bottom: spacing.md,
+    left: spacing.md,
+    zIndex: 10,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 10,
+    gap: 6,
+  },
+  mapLegendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  mapLegendIcon: { width: 24, height: 24 },
+  mapLegendText: { fontSize: 12, fontWeight: '500' },
   map: { flex: 1, width: '100%', height: '100%' },
   emptyOverlay: {
     position: 'absolute',

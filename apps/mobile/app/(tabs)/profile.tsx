@@ -162,10 +162,11 @@ export default function ProfileScreen() {
   const [preferenciasBuscaExpanded, setPreferenciasBuscaExpanded] = useState(false);
 
   const uploadAvatarMutation = useMutation({
-    mutationFn: async (uri: string) => {
+    mutationFn: async ({ uri, token }: { uri: string; token?: string | null }) => {
       const ext = uri.split('.').pop()?.toLowerCase() || 'jpg';
       const filename = `avatar.${ext === 'jpg' ? 'jpg' : ext}`;
-      const { uploadUrl, key } = await presign(filename, `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+      const t = token ?? useAuthStore.getState().getAccessToken();
+      const { uploadUrl, key } = await presign(filename, `image/${ext === 'jpg' ? 'jpeg' : ext}`, t);
       const response = await fetch(uri);
       const blob = await response.blob();
       const putRes = await fetch(uploadUrl, {
@@ -174,7 +175,7 @@ export default function ProfileScreen() {
         headers: { 'Content-Type': blob.type || 'image/jpeg' },
       });
       if (!putRes.ok) throw new Error(`Upload falhou: ${putRes.status}`);
-      return confirmAvatarUpload(key);
+      return confirmAvatarUpload(key, t);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['me'] }),
   });
@@ -192,8 +193,9 @@ export default function ProfileScreen() {
       quality: 0.8,
     });
     if (result.canceled || !result.assets[0]) return;
+    const token = useAuthStore.getState().getAccessToken();
     try {
-      await uploadAvatarMutation.mutateAsync(result.assets[0].uri);
+      await uploadAvatarMutation.mutateAsync({ uri: result.assets[0].uri, token });
     } catch (e: unknown) {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível atualizar a foto.'));
     }
