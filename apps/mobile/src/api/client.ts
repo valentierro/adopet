@@ -104,11 +104,11 @@ async function request<T>(
     'Content-Type': 'application/json',
     ...(init.headers as Record<string, string>),
   };
-  // Para rotas autenticadas: garante que o token esteja disponível (evita race pós-login)
+  // Para rotas autenticadas: garante que o token esteja disponível (evita race pós-login e pós-ImagePicker)
   if (!skipAuth && tokenGetter) {
     let token = tokenGetter();
     if (!token) {
-      await delay(50);
+      await delay(150);
       token = tokenGetter();
     }
     if (token) {

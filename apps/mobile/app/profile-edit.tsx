@@ -151,23 +151,37 @@ export default function ProfileEditScreen() {
     mutationFn: async (uri: string) => {
       const ext = uri.split('.').pop()?.toLowerCase() || 'jpg';
       const filename = `avatar.${ext === 'jpg' ? 'jpg' : ext}`;
-      const { uploadUrl, key } = await presign(filename, `image/${ext === 'jpg' ? 'jpeg' : ext}`);
-      const response = await fetch(uri);
-      const blob = await response.blob();
-      const putRes = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: blob,
-        headers: { 'Content-Type': blob.type || 'image/jpeg' },
-      });
-      if (!putRes.ok) throw new Error(`Upload falhou: ${putRes.status}`);
-      return confirmAvatarUpload(key);
+      const doUpload = async (): Promise<{ avatarUrl: string }> => {
+        const { uploadUrl, key } = await presign(filename, `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const putRes = await fetch(uploadUrl, {
+          method: 'PUT',
+          body: blob,
+          headers: { 'Content-Type': blob.type || 'image/jpeg' },
+        });
+        if (!putRes.ok) throw new Error(`Upload falhou: ${putRes.status}`);
+        return confirmAvatarUpload(key);
+      };
+      try {
+        return await doUpload();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const isAuthError = /401|API\s+401|unauthorized/i.test(msg);
+        if (isAuthError) {
+          await new Promise((r) => setTimeout(r, 800));
+          return doUpload();
+        }
+        throw e;
+      }
     },
     onSuccess: () => {
       setToastMessage('Foto atualizada!');
       queryClient.invalidateQueries({ queryKey: ['me'] });
     },
     onError: (e: unknown) => {
-      Alert.alert('Erro ao enviar foto', getFriendlyErrorMessage(e, 'Tente novamente.'));
+      const msg = getFriendlyErrorMessage(e, 'Tente novamente.');
+      Alert.alert('Erro ao enviar foto', msg);
     },
   });
 
