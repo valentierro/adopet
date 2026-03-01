@@ -84,7 +84,7 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string): strin
     return 'Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada e clique no link que enviamos.';
   }
   // Sessão expirada (token JWT ou refresh): não confundir com login com senha errada
-  if (/jwt expired|token expired|refresh token inválido|refresh token.*expirado|sessão expirada/i.test(msg)) {
+  if (/jwt expired|token expired|refresh token inválido|refresh token.*expirado|sessão expirada|^unauthorized$/i.test(msg)) {
     return 'Sua sessão expirou. Faça login novamente.';
   }
   if (/^API\s+401/i.test(msg)) {

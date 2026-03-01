@@ -268,7 +268,7 @@ export default function ProfileScreen() {
       </TouchableOpacity>
       <View style={styles.nameRow}>
         <Text style={[styles.name, { color: colors.textPrimary }]}>{user?.name ?? 'Carregando...'}</Text>
-        {user?.kycStatus === 'VERIFIED' && (
+        {(user?.verified || user?.kycStatus === 'VERIFIED') && (
           <VerifiedBadge size={18} showLabel backgroundColor={colors.primary} />
         )}
       </View>

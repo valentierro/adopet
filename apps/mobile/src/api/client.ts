@@ -104,8 +104,16 @@ async function request<T>(
     'Content-Type': 'application/json',
     ...(init.headers as Record<string, string>),
   };
-  if (!skipAuth && tokenGetter?.()) {
-    headers['Authorization'] = `Bearer ${tokenGetter()}`;
+  // Para rotas autenticadas: garante que o token esteja disponível (evita race pós-login)
+  if (!skipAuth && tokenGetter) {
+    let token = tokenGetter();
+    if (!token) {
+      await delay(50);
+      token = tokenGetter();
+    }
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
   }
 
   const timeout = timeoutMs ?? REQUEST_TIMEOUT_MS;

@@ -156,6 +156,7 @@ Exporta: `types`, `schemas` (Zod), `utils/validation`. Usado por api e mobile. A
 | `./scripts/dev-mobile.sh` | Sobe Expo |
 | `./scripts/migrate.sh` | Aplica migrations |
 | `./scripts/seed.sh` | Seed do banco |
+| `./scripts/bump-version.sh <ver> <code>` | **Obrigatório antes do build:** atualiza version, buildNumber e versionCode em todos os arquivos. Ex: `./scripts/bump-version.sh 1.1.6 60` |
 | `./scripts/build-mobile-android.sh` | Build Android (EAS) |
 | `./scripts/build-mobile-ios.sh` | Build iOS (EAS) |
 | `pnpm dev` | API + mobile em paralelo |
@@ -216,3 +217,4 @@ Ao realizar alterações:
 6. **Migrations:** ao alterar `schema.prisma`, crie migration com `./scripts/migrate-new.sh "descricao"`.
 7. **Testes:** adicione ou atualize testes ao mudar lógica crítica.
 8. **Build:** verifique que `pnpm build` e os scripts de build mobile funcionam após mudanças estruturais.
+9. **Versão (build para loja):** sempre use `./scripts/bump-version.sh <versão> <versionCode>`. Atualiza `app.config.js`, `package.json` e `app-version.json`. O versionCode deve ser único e crescente por upload (Play Store/App Store).

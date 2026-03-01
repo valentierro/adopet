@@ -46,6 +46,7 @@ export type User = {
     name: string;
     slug: string;
     type?: string; // ONG | CLINIC | STORE
+    city?: string;
     subscriptionStatus?: string;
     planId?: string;
     isPaidPartner: boolean;
@@ -130,6 +131,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isLoading: false,
       });
       await setStoredTokens(res.accessToken, res.refreshToken);
+      // Aguarda um tick para o setAuthProvider do layout ser atualizado (evita 401 em getMe/requisições seguintes)
+      await new Promise((r) => setTimeout(r, 0));
       try {
         const me = await getMe();
         set({ user: me });
@@ -152,6 +155,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         try {
           set({ accessToken: res.accessToken, refreshToken: res.refreshToken, lastActivityAt: Date.now() });
           await setStoredTokens(res.accessToken, res.refreshToken);
+          await new Promise((r) => setTimeout(r, 0));
           const me = await getMe();
           set({ user: me });
         } catch {
@@ -177,6 +181,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if ('accessToken' in res) {
         set({ accessToken: res.accessToken, refreshToken: res.refreshToken, lastActivityAt: Date.now() });
         await setStoredTokens(res.accessToken, res.refreshToken);
+        await new Promise((r) => setTimeout(r, 0));
         try {
           const me = await getMe();
           set({ user: me });

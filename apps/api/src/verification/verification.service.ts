@@ -106,6 +106,20 @@ export class VerificationService {
     return !!v;
   }
 
+  /** Retorna o conjunto de IDs de usuários com verificação aprovada (evita N+1 no feed para selo de ONG). */
+  async getVerifiedUserIds(userIds: string[]): Promise<Set<string>> {
+    if (userIds.length === 0) return new Set();
+    const list = await this.prisma.verification.findMany({
+      where: {
+        type: 'USER_VERIFIED',
+        status: 'APPROVED',
+        userId: { in: userIds },
+      },
+      select: { userId: true },
+    });
+    return new Set(list.map((r) => r.userId));
+  }
+
   async isPetVerified(petId: string): Promise<boolean> {
     const v = await this.prisma.verification.findFirst({
       where: {

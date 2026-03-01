@@ -496,15 +496,20 @@ export class FeedService {
         : null;
 
     const itemPetIds = items.map(({ pet }) => pet.id);
-    const [verifiedIds, viewCounts] = await Promise.all([
+    const ownerIds = [...new Set(items.map(({ pet }) => pet.ownerId).filter(Boolean))];
+    const [verifiedIds, ownerVerifiedIds, viewCounts] = await Promise.all([
       this.verificationService.getVerifiedPetIds(itemPetIds),
+      this.verificationService.getVerifiedUserIds(ownerIds),
       this.petViewService.getViewCountsLast24h(itemPetIds),
     ]);
 
     return {
       items: items.map(({ pet }) => {
-        const dto = this.mapToDto(pet, lat, lng, verifiedIds.has(pet.id));
+        const petVerified = verifiedIds.has(pet.id);
         const confirmedPartners = confirmedPartnersByPetId.get(pet.id);
+        const ownerVerified = (confirmedPartners?.length ?? 0) > 0 && ownerVerifiedIds.has(pet.ownerId);
+        const verified = petVerified || ownerVerified;
+        const dto = this.mapToDto(pet, lat, lng, verified);
         if (confirmedPartners?.length) {
           dto.partner = {
             id: confirmedPartners[0].id,
@@ -597,15 +602,20 @@ export class FeedService {
     const hasMore = pets.length > pageSize;
     const items = pets.slice(0, pageSize);
     const itemPetIds = items.map((p) => p.id);
-    const [verifiedIds, viewCounts, confirmedPartnersByPetId] = await Promise.all([
+    const ownerIds = [...new Set(items.map((p) => p.ownerId).filter(Boolean))];
+    const [verifiedIds, ownerVerifiedIds, viewCounts, confirmedPartnersByPetId] = await Promise.all([
       this.verificationService.getVerifiedPetIds(itemPetIds),
+      ownerIds.length > 0 ? this.verificationService.getVerifiedUserIds(ownerIds) : Promise.resolve(new Set<string>()),
       this.petViewService.getViewCountsLast24h(itemPetIds),
       this.petPartnershipService.getConfirmedPartnersByPetIds(itemPetIds),
     ]);
     return {
       items: items.map((pet) => {
-        const dto = this.mapToDto(pet, undefined, undefined, verifiedIds.has(pet.id));
         const confirmedPartners = confirmedPartnersByPetId.get(pet.id);
+        const petVerified = verifiedIds.has(pet.id);
+        const ownerVerified = (confirmedPartners?.length ?? 0) > 0 && ownerVerifiedIds.has(pet.ownerId);
+        const verified = petVerified || ownerVerified;
+        const dto = this.mapToDto(pet, undefined, undefined, verified);
         if (confirmedPartners?.length) {
           dto.partner = {
             id: confirmedPartners[0].id,
@@ -709,8 +719,10 @@ export class FeedService {
       }
     }
     const petIds = withinRadius.map(({ p }) => p.id);
-    const [verifiedIds, confirmedPartnersByPetId] = await Promise.all([
+    const ownerIds = [...new Set(withinRadius.map(({ p }) => p.ownerId).filter(Boolean))];
+    const [verifiedIds, ownerVerifiedIds, confirmedPartnersByPetId] = await Promise.all([
       petIds.length > 0 ? this.verificationService.getVerifiedPetIds(petIds) : Promise.resolve(new Set<string>()),
+      ownerIds.length > 0 ? this.verificationService.getVerifiedUserIds(ownerIds) : Promise.resolve(new Set<string>()),
       this.petPartnershipService.getConfirmedPartnersByPetIds(petIds),
     ]);
     const matchScores =
@@ -721,6 +733,8 @@ export class FeedService {
       const confirmedPartners = confirmedPartnersByPetId.get(p.id) ?? [];
       const firstPartner = confirmedPartners[0];
       const score = matchScores[p.id];
+      const petVerified = verifiedIds.has(p.id);
+      const ownerVerified = confirmedPartners.length > 0 && ownerVerifiedIds.has(p.ownerId);
       return {
         id: p.id,
         name: p.name,
@@ -733,7 +747,7 @@ export class FeedService {
         longitude: p.longitude!,
         photoUrl: p.media[0]?.url ?? '',
         distanceKm,
-        verified: verifiedIds.has(p.id),
+        verified: petVerified || ownerVerified,
         ...(firstPartner != null && { partner: { isPaidPartner: firstPartner.isPaidPartner } }),
         ...(score != null && { matchScore: score }),
       };

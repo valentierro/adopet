@@ -110,10 +110,11 @@ export default function ProfileEditScreen() {
 
   useEffect(() => {
     if (user) {
+      const partnerCity = (user as { partner?: { city?: string } })?.partner?.city;
       setName(user.name ?? '');
       setUsername((user as { username?: string }).username ?? '');
       setPhone(formatPhoneDisplay(user.phone ?? ''));
-      setCity(user.city ?? '');
+      setCity(user.city ?? partnerCity ?? '');
       setBio(user.bio ?? '');
       setHousingType((user.housingType as 'CASA' | 'APARTAMENTO') || '');
       setHasYard(user.hasYard);
@@ -196,32 +197,36 @@ export default function ProfileEditScreen() {
     );
   }
 
+  const isPartner = !!(user?.partner || (user as { partnerMemberships?: unknown[] })?.partnerMemberships?.length);
   const handleSave = () => {
     if (!name.trim()) {
       Alert.alert('Erro', 'Informe seu nome.');
       return;
     }
-    const missing: string[] = [];
-    if (!housingType || housingType === '') missing.push('Tipo de moradia');
-    if (hasYard === undefined) missing.push('Tem quintal?');
-    if (hasOtherPets === undefined) missing.push('Tem outros pets?');
-    if (hasChildren === undefined) missing.push('Tem crianças em casa?');
-    if (!timeAtHome || timeAtHome === '') missing.push('Tempo em casa');
-    if (!petsAllowedAtHome || petsAllowedAtHome === '') missing.push('Pets permitidos no local');
-    if (!dogExperience || dogExperience === '') missing.push('Experiência com cachorro');
-    if (!catExperience || catExperience === '') missing.push('Experiência com gato');
-    if (!householdAgreesToAdoption || householdAgreesToAdoption === '') missing.push('Concordância em casa');
-    if (!activityLevel || activityLevel === '') missing.push('Nível de atividade');
-    if (!preferredPetAge || preferredPetAge === '') missing.push('Idade preferida do pet');
-    if (!commitsToVetCare || commitsToVetCare === '') missing.push('Cuidados veterinários');
-    if (!walkFrequency || walkFrequency === '') missing.push('Frequência de passeios');
-    if (!monthlyBudgetForPet || monthlyBudgetForPet === '') missing.push('Orçamento mensal para o pet');
-    if (missing.length > 0) {
-      Alert.alert(
-        'Campos obrigatórios',
-        'Para o match score funcionar corretamente, preencha: ' + missing.join(', ') + '.',
-      );
-      return;
+    // Parceiros (ONG/comercial) só precisam de nome, foto e telefone; demais campos são opcionais
+    if (!isPartner) {
+      const missing: string[] = [];
+      if (!housingType || housingType === '') missing.push('Tipo de moradia');
+      if (hasYard === undefined) missing.push('Tem quintal?');
+      if (hasOtherPets === undefined) missing.push('Tem outros pets?');
+      if (hasChildren === undefined) missing.push('Tem crianças em casa?');
+      if (!timeAtHome || timeAtHome === '') missing.push('Tempo em casa');
+      if (!petsAllowedAtHome || petsAllowedAtHome === '') missing.push('Pets permitidos no local');
+      if (!dogExperience || dogExperience === '') missing.push('Experiência com cachorro');
+      if (!catExperience || catExperience === '') missing.push('Experiência com gato');
+      if (!householdAgreesToAdoption || householdAgreesToAdoption === '') missing.push('Concordância em casa');
+      if (!activityLevel || activityLevel === '') missing.push('Nível de atividade');
+      if (!preferredPetAge || preferredPetAge === '') missing.push('Idade preferida do pet');
+      if (!commitsToVetCare || commitsToVetCare === '') missing.push('Cuidados veterinários');
+      if (!walkFrequency || walkFrequency === '') missing.push('Frequência de passeios');
+      if (!monthlyBudgetForPet || monthlyBudgetForPet === '') missing.push('Orçamento mensal para o pet');
+      if (missing.length > 0) {
+        Alert.alert(
+          'Campos obrigatórios',
+          'Para o match score funcionar corretamente, preencha: ' + missing.join(', ') + '.',
+        );
+        return;
+      }
     }
     const userInput = username.trim().toLowerCase().replace(/^@/, '');
     updateMutation.mutate({
@@ -304,7 +309,7 @@ export default function ProfileEditScreen() {
         />
         <TextInput
           style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
-          placeholder="Cidade"
+          placeholder={isPartner ? 'Cidade (vem do cadastro da ONG)' : 'Cidade'}
           placeholderTextColor={colors.textSecondary}
           value={city}
           onChangeText={setCity}

@@ -16,7 +16,7 @@ describe('FeedService', () => {
   };
   let reports: { getReportedPetIds: jest.Mock };
   let blocks: { getBlockedUserIds: jest.Mock; getBlockedByUserIds: jest.Mock };
-  let verification: { getVerifiedPetIds: jest.Mock };
+  let verification: { getVerifiedPetIds: jest.Mock; getVerifiedUserIds: jest.Mock };
 
   const lat = -23.55;
   const lng = -46.63;
@@ -47,7 +47,10 @@ describe('FeedService', () => {
       getBlockedUserIds: jest.fn().mockResolvedValue([]),
       getBlockedByUserIds: jest.fn().mockResolvedValue([]),
     };
-    verification = { getVerifiedPetIds: jest.fn().mockResolvedValue(new Set<string>()) };
+    verification = {
+      getVerifiedPetIds: jest.fn().mockResolvedValue(new Set<string>()),
+      getVerifiedUserIds: jest.fn().mockResolvedValue(new Set<string>()),
+    };
 
     const fullPrisma = {
       ...prisma,

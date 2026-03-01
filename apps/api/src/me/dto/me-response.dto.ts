@@ -100,6 +100,7 @@ export class MeResponseDto {
     name: string;
     slug: string;
     type: string; // ONG | CLINIC | STORE
+    city?: string;
     subscriptionStatus?: string;
     planId?: string;
     isPaidPartner: boolean;

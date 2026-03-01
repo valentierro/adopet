@@ -155,10 +155,13 @@ export class MeService {
       dto.username = normalized;
     }
     const matchFieldsSent = MeService.MATCH_PROFILE_KEYS.some((k) => dto[k] !== undefined);
-    const existing = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { avatarUrl: true, phone: true, city: true, missionProfileCompleteAt: true },
-    });
+    const [existing, isPartnerUser] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { avatarUrl: true, phone: true, city: true, missionProfileCompleteAt: true },
+      }),
+      this.prisma.partner.findFirst({ where: { userId }, select: { id: true } }).then((p) => !!p),
+    ]);
     const nextAvatar = dto.avatarUrl !== undefined ? dto.avatarUrl : existing?.avatarUrl;
     const nextPhone = dto.phone !== undefined ? dto.phone : existing?.phone;
     const nextCity = dto.city !== undefined ? dto.city : existing?.city;
@@ -195,7 +198,8 @@ export class MeService {
       }),
       this.verificationService.isUserVerified(userId),
     ]);
-    if (matchFieldsSent) {
+    // Parceiros (ONG/comercial) não precisam preencher campos de match score para adoção
+    if (matchFieldsSent && !isPartnerUser) {
       const missing: string[] = [];
       const u = user as Record<string, unknown>;
       for (const k of MeService.MATCH_PROFILE_KEYS) {
@@ -623,7 +627,7 @@ export class MeService {
     isAdmin?: boolean,
   ): MeResponseDto {
     const u = user as typeof user & {
-      partner?: { id: string; name: string; slug: string; type: string; subscriptionStatus: string | null; planId: string | null; isPaidPartner: boolean } | null;
+      partner?: { id: string; name: string; slug: string; type: string; city: string | null; subscriptionStatus: string | null; planId: string | null; isPaidPartner: boolean } | null;
       partnerMemberships?: Array<{ partner: { id: string; name: string; slug: string } }>;
     };
     return {
@@ -664,6 +668,7 @@ export class MeService {
             name: u.partner.name,
             slug: u.partner.slug,
             type: u.partner.type ?? 'STORE',
+            city: u.partner.city ?? undefined,
             subscriptionStatus: u.partner.subscriptionStatus ?? undefined,
             planId: u.partner.planId ?? undefined,
             isPaidPartner: !!u.partner.isPaidPartner,
