@@ -3,7 +3,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useRouter, useNavigation, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, FlatList, Pressable, Modal, useWindowDimensions, Dimensions, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl, FlatList, Pressable, Modal, useWindowDimensions, Dimensions, Alert, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
@@ -151,6 +151,9 @@ export default function FeedScreen() {
   const [triageModalRadiusKm, setTriageModalRadiusKm] = useState(300);
   /** Raio para visitantes (sem prefs): aplicado ao feed quando não há userId */
   const [guestRadiusKm, setGuestRadiusKm] = useState<number>(300);
+  const [nameSearch, setNameSearch] = useState('');
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [debouncedNameSearch, setDebouncedNameSearch] = useState('');
   const [deckHeight, setDeckHeight] = useState<number>(0);
   const [changingFilter, setChangingFilter] = useState(false);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -265,14 +268,28 @@ export default function FeedScreen() {
     }
   }, [showTriageModal, prefs?.radiusKm, userId, guestRadiusKm]);
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedNameSearch(nameSearch.trim()), 400);
+    return () => clearTimeout(t);
+  }, [nameSearch]);
+
+  useEffect(() => {
+    if (debouncedNameSearch) {
+      setCursor(null);
+      setAccumulatedItems(null);
+      setChangingFilter(true);
+    }
+  }, [debouncedNameSearch]);
+
   const effectiveRadiusKm = userId ? (prefs?.radiusKm ?? 300) : guestRadiusKm;
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
-    queryKey: [...FEED_QUERY_KEY, cursor, effectiveRadiusKm, speciesFilter, partnerFilter, userCoords?.lat, userCoords?.lng, triageFilters, sortByTrending],
+    queryKey: [...FEED_QUERY_KEY, cursor, effectiveRadiusKm, speciesFilter, partnerFilter, userCoords?.lat, userCoords?.lng, triageFilters, sortByTrending, debouncedNameSearch],
     queryFn: () =>
       fetchFeed({
         ...(userCoords && { lat: userCoords.lat, lng: userCoords.lng }),
         radiusKm: effectiveRadiusKm,
         cursor: cursor ?? undefined,
+        ...(debouncedNameSearch && { q: debouncedNameSearch }),
         species: speciesFilter,
         partnerFilter: partnerFilter !== 'all' ? partnerFilter : undefined,
         ...(sortByTrending && { sortBy: 'trending' }),
@@ -907,82 +924,197 @@ export default function FeedScreen() {
       <Text style={[styles.feedDisclaimer, { color: colors.textSecondary }]} numberOfLines={1}>
         Adoção responsável, voluntária e sem custos
       </Text>
-      <View style={[styles.chipsRow, styles.chipsRowFirst, { paddingBottom: spacing.sm }]}>
-        {chips.map(({ value, label }) => (
+      {effectiveViewMode === 'grid' ? (
+        <View style={[styles.filtersWrap, { borderBottomColor: colors.surface }]}>
           <TouchableOpacity
-            key={value}
-            style={[
-              styles.chip,
-              { borderColor: colors.textSecondary },
-              speciesFilter === value && { backgroundColor: colors.primary, borderColor: colors.primary },
-            ]}
-            onPress={() => {
-              setSpeciesFilter(value);
-              setCursor(null);
-              setAccumulatedItems(null);
-              setChangingFilter(true);
-            }}
+            style={[styles.collapsibleHeader, { backgroundColor: colors.surface }]}
+            onPress={() => setFiltersExpanded((e) => !e)}
+            activeOpacity={0.7}
           >
-            <Text
-              style={[
-                styles.chipText,
-                { color: speciesFilter === value ? '#fff' : colors.textSecondary },
-              ]}
-            >
-              {label}
-            </Text>
+            <Text style={[styles.collapsibleHeaderText, { color: colors.textPrimary }]}>Filtros e busca</Text>
+            <Ionicons name={filtersExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
           </TouchableOpacity>
-        ))}
-        <TouchableOpacity
-          style={[
-            styles.chip,
-            styles.chipRow,
-            { borderColor: colors.textSecondary },
-            hasTriageFilters && { backgroundColor: colors.primary, borderColor: colors.primary },
-          ]}
-          onPress={() => setShowTriageModal(true)}
-        >
-          <Ionicons name="options-outline" size={16} color={hasTriageFilters ? '#fff' : colors.textSecondary} />
-          <Text
-            style={[
-              styles.chipText,
-              { color: hasTriageFilters ? '#fff' : colors.textSecondary, marginLeft: 4 },
-            ]}
-            numberOfLines={1}
-          >
-            Filtros
-            {hasTriageFilters ? ' •' : ''}
-          </Text>
-        </TouchableOpacity>
-      </View>
-      <View style={[styles.chipsRow, { paddingBottom: spacing.sm }]}>
-        <Text style={[styles.chipLabel, { color: colors.textSecondary }]}>Parceria: </Text>
-        {partnerChips.map(({ value, label }) => (
-          <TouchableOpacity
-            key={value}
-            style={[
-              styles.chip,
-              { borderColor: colors.textSecondary },
-              partnerFilter === value && { backgroundColor: colors.primary, borderColor: colors.primary },
-            ]}
-            onPress={() => {
-              setPartnerFilter(value);
-              setCursor(null);
-              setAccumulatedItems(null);
-              setChangingFilter(true);
-            }}
-          >
-            <Text
+          {filtersExpanded && (
+            <>
+              <View style={[styles.feedSearchRow, { backgroundColor: colors.surface, borderColor: colors.textSecondary + '40' }]}>
+                <Ionicons name="search" size={18} color={colors.textSecondary} style={{ marginRight: spacing.xs }} />
+                <TextInput
+                  value={nameSearch}
+                  onChangeText={setNameSearch}
+                  placeholder="Buscar por nome"
+                  placeholderTextColor={colors.textSecondary + '99'}
+                  style={[styles.searchInput, { color: colors.textPrimary }]}
+                  returnKeyType="search"
+                />
+                {nameSearch.length > 0 && (
+                  <TouchableOpacity
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    onPress={() => setNameSearch('')}
+                  >
+                    <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <Text style={[styles.filterLabel, { color: colors.textSecondary, marginTop: spacing.xs }]}>Espécie</Text>
+              <View style={[styles.chipsRow, styles.chipsRowFirst, { paddingBottom: spacing.sm }]}>
+                {chips.map(({ value, label }) => (
+                  <TouchableOpacity
+                    key={value}
+                    style={[
+                      styles.chip,
+                      { borderColor: colors.textSecondary },
+                      speciesFilter === value && { backgroundColor: colors.primary, borderColor: colors.primary },
+                    ]}
+                    onPress={() => {
+                      setSpeciesFilter(value);
+                      setCursor(null);
+                      setAccumulatedItems(null);
+                      setChangingFilter(true);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: speciesFilter === value ? '#fff' : colors.textSecondary },
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={[
+                    styles.chip,
+                    styles.chipRow,
+                    { borderColor: colors.textSecondary },
+                    hasTriageFilters && { backgroundColor: colors.primary, borderColor: colors.primary },
+                  ]}
+                  onPress={() => setShowTriageModal(true)}
+                >
+                  <Ionicons name="options-outline" size={16} color={hasTriageFilters ? '#fff' : colors.textSecondary} />
+                  <Text
+                    style={[
+                      styles.chipText,
+                      { color: hasTriageFilters ? '#fff' : colors.textSecondary, marginLeft: 4 },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    Filtros
+                    {hasTriageFilters ? ' •' : ''}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>Parceria</Text>
+              <View style={[styles.chipsRow, { paddingBottom: spacing.sm }]}>
+                {partnerChips.map(({ value, label }) => (
+                  <TouchableOpacity
+                    key={value}
+                    style={[
+                      styles.chip,
+                      { borderColor: colors.textSecondary },
+                      partnerFilter === value && { backgroundColor: colors.primary, borderColor: colors.primary },
+                    ]}
+                    onPress={() => {
+                      setPartnerFilter(value);
+                      setCursor(null);
+                      setAccumulatedItems(null);
+                      setChangingFilter(true);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: partnerFilter === value ? '#fff' : colors.textSecondary },
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
+        </View>
+      ) : (
+        <>
+          <View style={[styles.chipsRow, styles.chipsRowFirst, { paddingBottom: spacing.sm, paddingHorizontal: spacing.md }]}>
+            {chips.map(({ value, label }) => (
+              <TouchableOpacity
+                key={value}
+                style={[
+                  styles.chip,
+                  { borderColor: colors.textSecondary },
+                  speciesFilter === value && { backgroundColor: colors.primary, borderColor: colors.primary },
+                ]}
+                onPress={() => {
+                  setSpeciesFilter(value);
+                  setCursor(null);
+                  setAccumulatedItems(null);
+                  setChangingFilter(true);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: speciesFilter === value ? '#fff' : colors.textSecondary },
+                  ]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
               style={[
-                styles.chipText,
-                { color: partnerFilter === value ? '#fff' : colors.textSecondary },
+                styles.chip,
+                styles.chipRow,
+                { borderColor: colors.textSecondary },
+                hasTriageFilters && { backgroundColor: colors.primary, borderColor: colors.primary },
               ]}
+              onPress={() => setShowTriageModal(true)}
             >
-              {label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+              <Ionicons name="options-outline" size={16} color={hasTriageFilters ? '#fff' : colors.textSecondary} />
+              <Text
+                style={[
+                  styles.chipText,
+                  { color: hasTriageFilters ? '#fff' : colors.textSecondary, marginLeft: 4 },
+                ]}
+                numberOfLines={1}
+              >
+                Filtros
+                {hasTriageFilters ? ' •' : ''}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View style={[styles.chipsRow, { paddingBottom: spacing.sm, paddingHorizontal: spacing.md }]}>
+            <Text style={[styles.chipLabel, { color: colors.textSecondary }]}>Parceria: </Text>
+            {partnerChips.map(({ value, label }) => (
+              <TouchableOpacity
+                key={value}
+                style={[
+                  styles.chip,
+                  { borderColor: colors.textSecondary },
+                  partnerFilter === value && { backgroundColor: colors.primary, borderColor: colors.primary },
+                ]}
+                onPress={() => {
+                  setPartnerFilter(value);
+                  setCursor(null);
+                  setAccumulatedItems(null);
+                  setChangingFilter(true);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: partnerFilter === value ? '#fff' : colors.textSecondary },
+                  ]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      )}
       {showTriageModal && (
         <Modal visible transparent animationType="fade">
           <Pressable style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]} onPress={() => setShowTriageModal(false)}>
@@ -1989,12 +2121,39 @@ const styles = StyleSheet.create({
   guestSlideLine2: { fontSize: 11, lineHeight: 14 },
   guestSlidesDots: { flexDirection: 'row', justifyContent: 'center', gap: 4, marginTop: spacing.sm, marginBottom: 0 },
   guestSlidesDot: { width: 5, height: 5, borderRadius: 2.5 },
-  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: spacing.md, paddingBottom: spacing.sm, alignItems: 'center' },
+  filtersWrap: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+  },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 10,
+  },
+  collapsibleHeaderText: { fontSize: 15, fontWeight: '600' },
+  filterLabel: { fontSize: 12, fontWeight: '600', marginBottom: spacing.xs, marginTop: spacing.sm },
+  feedSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    minHeight: 40,
+    marginBottom: spacing.sm,
+  },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingHorizontal: 0, paddingBottom: spacing.sm, alignItems: 'center' },
   chipsRowFirst: { paddingBottom: spacing.sm },
   chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: 20, borderWidth: 1 },
   chipRow: { flexDirection: 'row', alignItems: 'center', flexShrink: 0 },
   chipText: { fontSize: 14, fontWeight: '600' },
   chipLabel: { fontSize: 14, fontWeight: '500', marginRight: 4 },
+  searchInput: { flex: 1, fontSize: 14, paddingVertical: 4 },
   swipeHintDismiss: {
     marginLeft: 8,
     paddingVertical: 4,

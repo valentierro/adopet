@@ -588,34 +588,46 @@ export default function ProfileScreen() {
       </View>
 
       {/* Adoção */}
-      {pendingConfirmCount > 0 && (
-        <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
-          <TouchableOpacity
-            style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
-            onPress={() => setMenuAdocaoExpanded((e) => !e)}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="heart-outline" size={22} color={colors.primary} />
-            <Text style={[styles.menuSectionHeaderText, { color: colors.textPrimary }]}>Adoção</Text>
-            <Ionicons name={menuAdocaoExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
-          </TouchableOpacity>
-          {menuAdocaoExpanded && (
+      <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
+        <TouchableOpacity
+          style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
+          onPress={() => setMenuAdocaoExpanded((e) => !e)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="heart-outline" size={22} color={colors.primary} />
+          <Text style={[styles.menuSectionHeaderText, { color: colors.textPrimary }]}>Adoção</Text>
+          <Ionicons name={menuAdocaoExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
+        </TouchableOpacity>
+        {menuAdocaoExpanded && (
+          <>
+            {pendingConfirmCount > 0 && (
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                onPress={() => router.push('/adoption-confirm')}
+              >
+                <View style={styles.menuItemLeft}>
+                  <Ionicons name="checkmark-done-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                  <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Confirmar adoção</Text>
+                  <View style={[styles.pendingBadge, { backgroundColor: colors.primary }]}>
+                    <Text style={styles.pendingBadgeText}>{pendingConfirmCount}</Text>
+                  </View>
+                </View>
+                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={() => router.push('/adoption-confirm')}
+              onPress={() => router.push('/my-adoption-requests')}
             >
               <View style={styles.menuItemLeft}>
-                <Ionicons name="checkmark-done-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Confirmar adoção</Text>
-                <View style={[styles.pendingBadge, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.pendingBadgeText}>{pendingConfirmCount}</Text>
-                </View>
+                <Ionicons name="document-text-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Minhas solicitações</Text>
               </View>
               <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
             </TouchableOpacity>
-          )}
-        </View>
-      )}
+          </>
+        )}
+      </View>
 
       {/* Parceiro */}
       <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>

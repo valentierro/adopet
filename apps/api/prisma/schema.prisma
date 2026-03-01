@@ -83,6 +83,7 @@ model User {
   petPartnershipsConfirmed  PetPartnership[] @relation("PetPartnershipConfirmedBy")
   petPartnershipsCancelled  PetPartnership[] @relation("PetPartnershipCancelledBy")
   satisfactionSurveys       SatisfactionSurvey[]
+  adoptionRequestsAsAdopter AdoptionRequest[]
 }
 
 model InAppNotification {
@@ -174,6 +175,7 @@ model Partner {
   user                 User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   type                 String    // ONG | CLINIC | STORE
   partnershipRequests  PartnershipRequest[]
+  adoptionFormTemplates AdoptionFormTemplate[]
   name                 String
   slug                 String    @unique
   city                 String?
@@ -339,6 +341,7 @@ model Pet {
   conversations   Conversation[]
   views           PetView[]
   petPartnerships PetPartnership[]
+  adoptionRequests AdoptionRequest[]
 
   @@index([publicationStatus, status, id])
   @@index([publicationStatus, status, expiresAt, id])
@@ -431,6 +434,7 @@ model Conversation {
   type              String    @default("NORMAL") // NORMAL | ADOPTION_CONFIRMATION (conversa com Adopet para confirmar adoção)
   participants      ConversationParticipant[]
   messages          Message[]
+  adoptionRequests  AdoptionRequest[]
   lastReminderAt    DateTime? // último envio de lembrete "conversa pendente"
   listingRemovedAt  DateTime? // anúncio expirou por falta de prorrogação; exibir aviso no chat
   createdAt         DateTime  @default(now())
@@ -455,8 +459,10 @@ model Message {
   senderId       String?      // null = mensagem de sistema (ex.: anúncio expirado)
   sender         User?        @relation(fields: [senderId], references: [id], onDelete: Cascade)
   isSystem       Boolean      @default(false)
+  messageType    String       @default("TEXT") // TEXT | IMAGE | FORM_SENT | FORM_SUBMITTED
   content        String       @default("")
   imageUrl       String?      // foto enviada no chat
+  metadata       Json?        // FORM_SENT: { adoptionRequestId }; FORM_SUBMITTED: { adoptionRequestId }
   readAt         DateTime?
   createdAt      DateTime     @default(now())
   @@index([conversationId, createdAt])
@@ -555,6 +561,98 @@ model PetPartnership {
   @@unique([petId, partnerId])
   @@index([partnerId, status])
   @@index([petId])
+}
+
+// Formulário de adoção personalizado por ONG
+model AdoptionFormTemplate {
+  id        String   @id @default(uuid())
+  partnerId String
+  partner   Partner  @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  name      String   // ex: "Formulário padrão de adoção"
+  version   Int      @default(1)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  questions AdoptionFormQuestion[]
+  requests  AdoptionRequest[]
+
+  @@unique([partnerId, version])
+  @@index([partnerId])
+}
+
+model AdoptionFormQuestion {
+  id            String               @id @default(uuid())
+  templateId    String
+  template      AdoptionFormTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  sortOrder     Int                  @default(0)
+  type          String               // TEXT | TEXTAREA | CHECKBOX | SELECT_SINGLE | SELECT_MULTIPLE | NUMBER | DATE | FILE
+  label         String
+  required      Boolean              @default(true)
+  placeholder   String?
+  options       Json?                // para SELECT: [{ value, label }]
+  useForScoring Boolean              @default(false) // Match Score: usar esta pergunta na avaliação
+  weight        Int?                 // 0-10, quando useForScoring
+  scoringConfig Json?                // { "true":10, "false":0 } | { "optionValue": points } | { "ranges": [...] }
+  createdAt     DateTime             @default(now())
+
+  @@index([templateId])
+}
+
+// Solicitação de adoção (interessado + pet) com formulário
+model AdoptionRequest {
+  id               String    @id @default(uuid())
+  petId            String
+  pet              Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
+  adopterId        String
+  adopter          User      @relation(fields: [adopterId], references: [id], onDelete: Cascade)
+  conversationId   String
+  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  templateId       String?
+  template         AdoptionFormTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  status           String    // INTERESTED | FORM_SENT | FORM_SUBMITTED | APPROVED | REJECTED | ADOPTION_PROPOSED | ADOPTION_CONFIRMED | CANCELLED
+  formSentAt       DateTime?
+  formSentById     String?   // quem enviou (admin/membro ONG)
+  submittedAt      DateTime?
+  decidedAt        DateTime?
+  decidedById      String?   // admin que aprovou/rejeitou
+  rejectionFeedback String?  @db.Text
+  expiresAt        DateTime? // opcional: expiração do formulário
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  submission       AdoptionFormSubmission?
+  adoptionFormViewLogs AdoptionFormViewLog[]
+
+  @@unique([petId, adopterId])
+  @@index([petId])
+  @@index([adopterId])
+  @@index([conversationId])
+  @@index([status])
+}
+
+model AdoptionFormSubmission {
+  id                     String          @id @default(uuid())
+  requestId              String          @unique
+  request                AdoptionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  templateSnapshot       Json            // cópia do template no momento do envio (auditoria)
+  answers                Json            // { questionId: value }
+  consentAt              DateTime        // LGPD: quando usuário aceitou uso dos dados
+  submittedAt            DateTime        @default(now())
+  matchScore             Float?          // 0-100, calculado após submissão
+  matchScoreBreakdown    Json?           // [{ questionId, label, weight, points, maxPoints, ... }]
+  matchScoreCalculatedAt DateTime?       // auditoria
+
+  @@index([requestId])
+}
+
+// Auditoria LGPD: quem visualizou respostas do formulário
+model AdoptionFormViewLog {
+  id         String         @id @default(uuid())
+  requestId  String
+  request    AdoptionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  viewedById String
+  viewedAt   DateTime       @default(now())
+
+  @@index([requestId])
 }
 
 model FeatureFlag {

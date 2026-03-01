@@ -27,6 +27,11 @@ export class FeedQueryDto {
   @Max(500)
   radiusKm?: number;
 
+  @ApiPropertyOptional({ description: 'Busca por nome do pet (contém, case insensitive)' })
+  @IsOptional()
+  @IsString()
+  q?: string;
+
   @ApiPropertyOptional({ description: 'Cursor para paginação' })
   @IsOptional()
   @IsString()

@@ -255,6 +255,16 @@ export default function PartnerMyPetsScreen() {
                 {STATUS_LABEL[item.status] ?? item.status}
               </Text>
             </View>
+            <TouchableOpacity
+              style={[styles.solicitacoesLink, { borderColor: colors.primary + '60' }]}
+              onPress={(e) => {
+                e.stopPropagation();
+                router.push({ pathname: '/partner-adoption-requests', params: { petId: item.id } });
+              }}
+            >
+              <Ionicons name="list-outline" size={14} color={colors.primary} />
+              <Text style={[styles.solicitacoesLinkText, { color: colors.primary }]}>Ver solicitações</Text>
+            </TouchableOpacity>
             {formatPublicationDate(item.createdAt) ? (
               <Text style={[styles.gridCardMeta, { color: colors.textSecondary }]}>
                 Publicado em {formatPublicationDate(item.createdAt)}
@@ -305,6 +315,16 @@ export default function PartnerMyPetsScreen() {
               {STATUS_LABEL[item.status] ?? item.status}
             </Text>
           </View>
+          <TouchableOpacity
+            style={[styles.solicitacoesLink, { borderColor: colors.primary + '60', alignSelf: 'flex-start', marginTop: spacing.sm }]}
+            onPress={(e) => {
+              e.stopPropagation();
+              router.push({ pathname: '/partner-adoption-requests', params: { petId: item.id } });
+            }}
+          >
+            <Ionicons name="list-outline" size={14} color={colors.primary} />
+            <Text style={[styles.solicitacoesLinkText, { color: colors.primary }]}>Ver solicitações</Text>
+          </TouchableOpacity>
         </View>
         <Text style={[styles.arrow, { color: colors.textSecondary }]}>›</Text>
       </TouchableOpacity>
@@ -436,6 +456,18 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   gridMatchBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  solicitacoesLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  solicitacoesLinkText: { fontSize: 12, fontWeight: '600' },
   gridStatusBadge: { alignSelf: 'flex-start', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 6, marginTop: 3 },
   gridStatusText: { fontSize: 10, fontWeight: '600' },
 });

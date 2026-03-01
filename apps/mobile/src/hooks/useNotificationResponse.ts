@@ -20,6 +20,23 @@ export function useNotificationResponse(router: Router) {
       if (cancelled) return;
       const handleNotificationData = (data: Record<string, unknown> | undefined) => {
         if (!data) return;
+        const type = data.type;
+        const adoptionRequestId = data.adoptionRequestId;
+        if (type === 'ADOPTION_FORM_SENT' && typeof adoptionRequestId === 'string' && adoptionRequestId) {
+          router.push(`/adoption-form-fill/${adoptionRequestId}`);
+          return;
+        }
+        if (type === 'ADOPTION_FORM_SUBMITTED') {
+          const convId = data.conversationId;
+          if (typeof convId === 'string' && convId) {
+            router.push(`/(tabs)/chat/${convId}`);
+            return;
+          }
+          if (typeof adoptionRequestId === 'string' && adoptionRequestId) {
+            router.push('/partner-adoption-requests');
+            return;
+          }
+        }
         const conversationId = data.conversationId;
         if (typeof conversationId === 'string' && conversationId) {
           router.push(`/chat/${conversationId}`);

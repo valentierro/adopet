@@ -1039,8 +1039,165 @@ async function seedUserProfilesForMatch() {
   console.log(`Perfis preenchidos em ${userUpdated} usuário(s), preferências em ${prefsUpdated} para testar match score.`);
 }
 
+/** Seed de 10 pets (Pet1..Pet10) para o usuário ovalen507@gmail.com. Cria o usuário se não existir. */
+async function seedPetsForOvalen507() {
+  let user = await prisma.user.findUnique({
+    where: { email: 'ovalen507@gmail.com' },
+    select: { id: true, name: true },
+  });
+  if (!user) {
+    const passwordHash = await bcrypt.hash(SEED_PASSWORD, 10);
+    user = await prisma.user.create({
+      data: {
+        email: 'ovalen507@gmail.com',
+        passwordHash,
+        name: 'Ovalen507',
+      },
+      select: { id: true, name: true },
+    });
+    await prisma.userPreferences.create({
+      data: { userId: user.id, species: 'BOTH', radiusKm: 50 },
+    });
+    console.log('Usuário ovalen507@gmail.com criado (senha: ' + SEED_PASSWORD + ').');
+  }
+  const existing = await prisma.pet.count({
+    where: {
+      ownerId: user.id,
+      name: { in: ['Pet1', 'Pet2', 'Pet3', 'Pet4', 'Pet5', 'Pet6', 'Pet7', 'Pet8', 'Pet9', 'Pet10'] },
+    },
+  });
+  if (existing >= 10) {
+    console.log(`Usuário ${user.name} já possui 10 pets Pet1..Pet10. Pulando.`);
+    return;
+  }
+  const names = ['Pet1', 'Pet2', 'Pet3', 'Pet4', 'Pet5', 'Pet6', 'Pet7', 'Pet8', 'Pet9', 'Pet10'];
+  let created = 0;
+  for (let i = 0; i < names.length; i++) {
+    const name = names[i]!;
+    const exists = await prisma.pet.findFirst({
+      where: { ownerId: user.id, name },
+      select: { id: true },
+    });
+    if (exists) continue;
+    const isDog = i % 2 === 0;
+    const { lat, lng } = pickNeighborhood();
+    await prisma.pet.create({
+      data: {
+        name,
+        species: isDog ? 'DOG' : 'CAT',
+        breed: isDog ? pick(DOG_BREEDS) : pick(CAT_BREEDS),
+        age: randomAge(),
+        sex: Math.random() < 0.5 ? 'male' : 'female',
+        size: pick(SIZES),
+        vaccinated: Math.random() < 0.8,
+        neutered: Math.random() < 0.7,
+        description: isDog ? pick(DESCRIPTIONS_DOG) : pick(DESCRIPTIONS_CAT),
+        adoptionReason: pick(REASONS) ?? undefined,
+        status: 'AVAILABLE',
+        publicationStatus: 'APPROVED',
+        latitude: lat,
+        longitude: lng,
+        ownerId: user.id,
+        media: {
+          create: [
+            { url: seedPhotoUrl(isDog ? 'dogs' : 'cats', 300 + i), sortOrder: 0, isPrimary: true },
+          ],
+        },
+      },
+    });
+    created++;
+    console.log(`  [ovalen507] Criado: ${name} (${isDog ? 'cachorro' : 'gato'})`);
+  }
+  if (created > 0) console.log(`Seed ovalen507 concluído: ${created} pet(s) Pet1..Pet10.`);
+}
+
 /**
- * Único usuário do seed que é parceiro (conta vinculada a um estabelecimento).
+ * ONG de teste com usuário para login no portal.
+ * Login: ong@adopet.com.br / admin123 — acessa o Portal do parceiro ONG no app.
+ */
+const PARCEIRO_ONG_EMAIL = 'ong@adopet.com.br';
+const PARCEIRO_ONG_USER_ID = '44444444-4444-4444-4444-444444444444';
+
+async function seedParceiroOngUser() {
+  const passwordHash = await bcrypt.hash(SEED_PASSWORD, 10);
+  const user = await prisma.user.upsert({
+    where: { email: PARCEIRO_ONG_EMAIL },
+    update: { passwordHash, name: 'ONG Teste' },
+    create: {
+      id: PARCEIRO_ONG_USER_ID,
+      email: PARCEIRO_ONG_EMAIL,
+      passwordHash,
+      name: 'ONG Teste',
+    },
+  });
+  await prisma.userPreferences.upsert({
+    where: { userId: user.id },
+    update: {},
+    create: { userId: user.id, species: 'BOTH', radiusKm: 50 },
+  });
+
+  let partner = await prisma.partner.findFirst({
+    where: { userId: user.id },
+  });
+  if (!partner) {
+    const recifeCoords = coordsForCity('Recife');
+    partner = await prisma.partner.create({
+      data: {
+        userId: user.id,
+        type: 'ONG',
+        name: 'ONG Adopet Teste',
+        slug: 'ong-teste-adopet',
+        city: 'Recife',
+        latitude: recifeCoords?.latitude,
+        longitude: recifeCoords?.longitude,
+        description: 'ONG de teste para acessar o portal no app. Resgate e adoção responsável de cães e gatos.',
+        website: 'https://exemplo.com',
+        email: PARCEIRO_ONG_EMAIL,
+        phone: '(81) 99999-4444',
+        active: true,
+        approvedAt: new Date(),
+        activatedAt: new Date(),
+        isPaidPartner: false,
+      },
+    });
+    console.log('Parceiro ONG (com usuário) criado: ONG Adopet Teste');
+  }
+  // Garante que todos os pets do usuário ONG tenham partnerId = esta ONG (necessário para o botão "Enviar formulário" no chat)
+  const updated = await prisma.pet.updateMany({
+    where: { ownerId: user.id, OR: [{ partnerId: null }, { partnerId: { not: partner.id } }] },
+    data: { partnerId: partner.id },
+  });
+  if (updated.count > 0) {
+    console.log(`  ${updated.count} pet(s) do ONG Teste com partnerId corrigido (botão "Enviar formulário" habilitado)`);
+  }
+  // Garante template de formulário (obrigatório para enviar formulário ao interessado)
+  const existingTemplate = await prisma.adoptionFormTemplate.findFirst({
+    where: { partnerId: partner.id },
+    select: { id: true },
+  });
+  if (!existingTemplate) {
+    const template = await prisma.adoptionFormTemplate.create({
+      data: {
+        partnerId: partner.id,
+        name: 'Formulário padrão de adoção',
+        version: 1,
+        active: true,
+        questions: {
+          create: [
+            { sortOrder: 0, type: 'TEXT', label: 'Por que você quer adotar este pet?', required: true },
+            { sortOrder: 1, type: 'TEXTAREA', label: 'Conte um pouco sobre você e sua rotina', required: true },
+            { sortOrder: 2, type: 'CHECKBOX', label: 'Concordo em fornecer informações verdadeiras e assumir a responsabilidade pela adoção', required: true },
+          ],
+        },
+      },
+    });
+    console.log(`  Template de formulário criado para ONG Teste (${template.id})`);
+  }
+  return partner.id;
+}
+
+/**
+ * Único usuário do seed que é parceiro comercial (conta vinculada a um estabelecimento).
  * Login: parceiro@adopet.com.br / admin123 — acessa o Portal do parceiro no app.
  */
 const PARCEIRO_COMERCIAL_EMAIL = 'parceiro@adopet.com.br';
@@ -1241,6 +1398,8 @@ async function main() {
   try {
     // Usuário parceiro comercial para testar portal (parceiro@adopet.com.br)
     await seedParceiroComercialUser();
+    // Usuário parceiro ONG para testar portal (ong@adopet.com.br)
+    await seedParceiroOngUser();
     // Cupons e serviços dos parceiros comerciais (visíveis na página do parceiro e marketplace)
     await seedPartnerCoupons();
     await seedPartnerServices();
@@ -1301,6 +1460,9 @@ async function main() {
   await seedPetPreferencesForMatch();
   await seedUserProfilesForMatch();
 
+  // 10 pets para usuário ovalen507@gmail.com (Pet1, Pet2, ... Pet10)
+  await seedPetsForOvalen507();
+
   console.log('');
   console.log('========================================');
   console.log('  Seed finalizado com sucesso!');
@@ -1308,7 +1470,8 @@ async function main() {
   console.log('');
   console.log('  Login admin: admin@adopet.com.br / ' + SEED_PASSWORD);
   console.log('  Login admin (teste): admin-teste@adopet.com.br / ' + SEED_PASSWORD);
-  console.log('  Login parceiro (portal): ' + PARCEIRO_COMERCIAL_EMAIL + ' / ' + SEED_PASSWORD);
+  console.log('  Login parceiro comercial (portal): ' + PARCEIRO_COMERCIAL_EMAIL + ' / ' + SEED_PASSWORD);
+  console.log('  Login parceiro ONG (portal): ' + PARCEIRO_ONG_EMAIL + ' / ' + SEED_PASSWORD);
   console.log('  Para ver o link Administração, defina no .env da API:');
   console.log('  ADMIN_USER_IDS=' + ADMIN_TESTE_USER_ID);
   console.log('');

@@ -20,7 +20,13 @@ export class ConversationListItemDto {
   otherUser: { id: string; name: string; avatarUrl?: string; kycVerified?: boolean };
 
   @ApiProperty({ required: false })
-  lastMessage?: { content: string; createdAt: string; senderId: string };
+  lastMessage?: {
+    content: string;
+    createdAt: string;
+    senderId: string;
+    messageType?: string;
+    metadata?: Record<string, unknown>;
+  };
 
   @ApiProperty({ description: 'Mensagens não lidas (enviadas pelo outro)' })
   unreadCount: number;

@@ -3,9 +3,12 @@ import { api } from './client';
 export type MessageItem = {
   id: string;
   conversationId: string;
-  senderId: string;
+  senderId?: string;
+  isSystem?: boolean;
+  messageType?: string;
   content: string;
   imageUrl?: string;
+  metadata?: Record<string, unknown>;
   createdAt: string;
   readAt?: string;
 };

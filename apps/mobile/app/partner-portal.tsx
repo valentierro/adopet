@@ -304,6 +304,22 @@ export default function PartnerPortalScreen() {
             <>
               <TouchableOpacity
                 style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                onPress={() => router.push('/partner-adoption-forms')}
+              >
+                <Ionicons name="document-text-outline" size={22} color={colors.primary} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Formulários de adoção</Text>
+                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                onPress={() => router.push('/partner-adoption-requests')}
+              >
+                <Ionicons name="list-outline" size={22} color={colors.primary} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Solicitações de adoção</Text>
+                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
                 onPress={() => router.push('/partner-members')}
               >
                 <Ionicons name="people-outline" size={22} color={colors.primary} />

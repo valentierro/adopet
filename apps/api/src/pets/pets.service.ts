@@ -1465,12 +1465,13 @@ export class PetsService {
       if (pet.ownerId === userId) {
         console.warn('[PetsService] confirmAdoption: não cria Adoption quando adotante é o próprio tutor (petId=%s)', petId);
       } else {
-        const [adopter, isPartner] = await Promise.all([
+        const [adopter, isPartner, tutorIsPartner] = await Promise.all([
           this.prisma.user.findUnique({
             where: { id: userId },
             select: { kycStatus: true },
           }),
           this.isUserPartner(userId),
+          this.isUserPartner(pet.ownerId),
         ]);
         if (!isPartner && adopter?.kycStatus !== 'VERIFIED') {
           throw new ForbiddenException({
@@ -1478,7 +1479,10 @@ export class PetsService {
             message: 'É necessário completar a verificação de identidade (KYC) para confirmar a adoção.',
           });
         }
-        await this.adminService.createAdoption(petId, undefined, false, responsibilityTermAccepted ? new Date() : undefined);
+        // Parceiros (ONG e comercial) passam por processo próprio de criação de conta e são considerados verificados.
+        // Quando o tutor é parceiro, a adoção é auto-confirmada pela Adopet (sem fila de validação).
+        const fromAdopetConfirmation = tutorIsPartner;
+        await this.adminService.createAdoption(petId, undefined, fromAdopetConfirmation, responsibilityTermAccepted ? new Date() : undefined);
       }
     }
     return { confirmed: true };

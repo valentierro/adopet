@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { PrismaService } from '../prisma/prisma.service';
 import { BlocksService } from '../moderation/blocks.service';
 import { TypingService } from './typing.service';
+import { PetPartnershipService } from '../pet-partnership/pet-partnership.service';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { IN_APP_NOTIFICATION_TYPES } from '../notifications/in-app-notifications.service';
 import type { ConversationListItemDto } from './dto/conversation-response.dto';
@@ -12,6 +13,7 @@ export class ConversationsService {
     private readonly prisma: PrismaService,
     private readonly blocksService: BlocksService,
     private readonly typingService: TypingService,
+    private readonly petPartnershipService: PetPartnershipService,
     private readonly inAppNotifications: InAppNotificationsService,
   ) {}
 
@@ -177,7 +179,7 @@ export class ConversationsService {
         kycVerified?: boolean;
         isPartner?: boolean;
       };
-      pet?: { name: string; photoUrl?: string; species?: string; size?: string; age?: number; adoptionFinalized?: boolean; adopterHasConfirmed?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string; canAdopterDecline?: boolean };
+      pet?: { name: string; photoUrl?: string; species?: string; size?: string; age?: number; adoptionFinalized?: boolean; adopterHasConfirmed?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string; canAdopterDecline?: boolean; canSendAdoptionForm?: boolean };
       otherUserTyping?: boolean;
       otherUserDeactivated?: boolean;
     } = {
@@ -203,6 +205,16 @@ export class ConversationsService {
       ...(otherUserDeactivated && { otherUserDeactivated: true }),
     };
     if (conv.pet) {
+      const isTutor = conv.pet.ownerId === userId;
+      let canSendAdoptionForm = false;
+      if (isTutor && conv.pet.partnerId && conv.pet.status !== 'ADOPTED') {
+        try {
+          const userPartnerId = await this.petPartnershipService.getPartnerIdForUser(userId);
+          canSendAdoptionForm = !!userPartnerId && userPartnerId === conv.pet.partnerId;
+        } catch {
+          // user is not partner or pet doesn't belong to their partner
+        }
+      }
       result.pet = {
         name: conv.pet.name,
         photoUrl: conv.pet.media?.[0]?.url,
@@ -212,9 +224,10 @@ export class ConversationsService {
         adoptionFinalized,
         ...(adopterHasConfirmed && { adopterHasConfirmed: true }),
         pendingAdopterId: conv.pet.pendingAdopterId ?? undefined,
-        isTutor: conv.pet.ownerId === userId,
+        isTutor,
         status: conv.pet.status,
         ...(canAdopterDecline && { canAdopterDecline: true }),
+        ...(canSendAdoptionForm && { canSendAdoptionForm: true }),
       };
     }
     return result;
@@ -289,7 +302,13 @@ export class ConversationsService {
           kycVerified: other?.kycStatus === 'VERIFIED',
         },
         lastMessage: last
-          ? { content: last.content, createdAt: last.createdAt.toISOString(), senderId: last.senderId ?? '' }
+          ? {
+              content: last.content,
+              createdAt: last.createdAt.toISOString(),
+              senderId: last.senderId ?? '',
+              messageType: (last as { messageType?: string }).messageType,
+              metadata: (last as { metadata?: unknown }).metadata as Record<string, unknown> | undefined,
+            }
           : undefined,
         unreadCount: unreadByConv[c.id] ?? 0,
       };
@@ -359,7 +378,13 @@ export class ConversationsService {
           kycVerified: other?.kycStatus === 'VERIFIED',
         },
         lastMessage: last
-          ? { content: last.content, createdAt: last.createdAt.toISOString(), senderId: last.senderId ?? '' }
+          ? {
+              content: last.content,
+              createdAt: last.createdAt.toISOString(),
+              senderId: last.senderId ?? '',
+              messageType: (last as { messageType?: string }).messageType,
+              metadata: (last as { metadata?: unknown }).metadata as Record<string, unknown> | undefined,
+            }
           : undefined,
         unreadCount: unreadByConv[c.id] ?? 0,
       };

@@ -16,6 +16,7 @@ import {
   Modal,
   FlatList,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -35,6 +36,39 @@ import {
   buildLocationString,
   type CityOption,
 } from '../../src/utils/brazilLocations';
+
+function base64ToUint8Array(base64: string): Uint8Array {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < chars.length; i++) lookup[chars.charCodeAt(i)] = i;
+  const len = base64.replace(/=+$/, '').length;
+  const placeholders = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  const outputLen = (len * 3) / 4 - placeholders;
+  const bytes = new Uint8Array(outputLen);
+  let p = 0;
+  for (let i = 0; i < len; i += 4) {
+    const b1 = lookup[base64.charCodeAt(i)];
+    const b2 = lookup[base64.charCodeAt(i + 1)];
+    const b3 = lookup[base64.charCodeAt(i + 2)];
+    const b4 = lookup[base64.charCodeAt(i + 3)];
+    bytes[p++] = (b1 << 2) | (b2 >> 4);
+    if (p < outputLen) bytes[p++] = ((b2 & 15) << 4) | (b3 >> 2);
+    if (p < outputLen) bytes[p++] = ((b3 & 3) << 6) | b4;
+  }
+  return bytes;
+}
+
+async function uriToUint8Array(uri: string): Promise<Uint8Array> {
+  if (uri.startsWith('blob:')) {
+    const res = await fetch(uri);
+    if (!res.ok) throw new Error('Falha ao ler a imagem.');
+    const buf = await res.arrayBuffer();
+    return new Uint8Array(buf);
+  }
+  const base64 = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+  if (!base64 || base64.length === 0) throw new Error('Imagem vazia ou inacessível.');
+  return base64ToUint8Array(base64);
+}
 
 const STEPS = ['Fotos', 'Detalhes', 'Saúde', 'Comportamento', 'Descrição', 'Publicar'];
 
@@ -305,20 +339,31 @@ export default function AddPetWizardScreen() {
     if (imageUris.length === 0) return true;
     setUploading(true);
     const keys: { key: string; isPrimary: boolean }[] = [];
+    const ALLOWED_EXT = ['jpg', 'jpeg', 'png', 'webp', 'gif'] as const;
     try {
       for (let i = 0; i < imageUris.length; i++) {
         const uri = imageUris[i];
-        const ext = uri.split('.').pop()?.toLowerCase() || 'jpg';
-        const filename = `photo-${i}.${ext === 'jpg' ? 'jpg' : ext}`;
-        const { uploadUrl, key } = await presign(filename, `image/${ext === 'jpg' ? 'jpeg' : ext}`);
-        const response = await fetch(uri);
-        const blob = await response.blob();
+        const pathWithoutQuery = uri.split('?')[0].split('#')[0];
+        const rawExt = pathWithoutQuery.split('.').pop()?.toLowerCase() || '';
+        const ext = ALLOWED_EXT.includes(rawExt as (typeof ALLOWED_EXT)[number]) ? rawExt : 'jpg';
+        const filename = `photo-${i}.${ext === 'jpeg' ? 'jpg' : ext}`;
+        const contentType =
+          ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/jpeg';
+        const { uploadUrl, key } = await presign(filename, contentType);
+        const bytes = await uriToUint8Array(uri);
+        const body =
+          bytes.byteLength === bytes.buffer.byteLength
+            ? bytes.buffer
+            : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
         const putRes = await fetch(uploadUrl, {
           method: 'PUT',
-          body: blob,
-          headers: { 'Content-Type': blob.type || 'image/jpeg' },
+          body,
+          headers: { 'Content-Type': contentType },
         });
-        if (!putRes.ok) throw new Error(`Upload falhou: ${putRes.status}`);
+        if (!putRes.ok) {
+          const errText = await putRes.text().catch(() => '');
+          throw new Error(errText || `Upload falhou: ${putRes.status}`);
+        }
         keys.push({ key, isPrimary: i === 0 });
       }
       setUploadedKeys(keys);

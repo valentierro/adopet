@@ -33,6 +33,8 @@ export type FeedParams = {
   lng?: number;
   radiusKm?: number;
   cursor?: string;
+  /** Busca por nome do pet */
+  q?: string;
   /** Quantidade máxima de itens (1–500). Ex.: carrossel da home usa limit alto. */
   limit?: number;
   species?: FeedSpeciesFilter;
@@ -52,6 +54,7 @@ export async function fetchFeed(params: FeedParams = {}): Promise<FeedResponse> 
   if (params.lng != null) query.lng = String(params.lng);
   if (params.radiusKm != null) query.radiusKm = String(params.radiusKm);
   if (params.cursor) query.cursor = params.cursor;
+  if (params.q?.trim()) query.q = params.q.trim();
   if (params.limit != null) query.limit = String(params.limit);
   if (params.species) query.species = params.species;
   if (params.size) query.size = params.size;

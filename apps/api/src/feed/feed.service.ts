@@ -203,6 +203,7 @@ export class FeedService {
       radiusKm: queryRadiusKm,
       cursor,
       userId,
+      q: queryQ,
       species: querySpecies,
       breed: queryBreed,
       sex: querySex,
@@ -223,7 +224,7 @@ export class FeedService {
 
     // Listagem por dono (ex.: "Ver anúncios" no perfil do tutor): sem geo, ordenação por data
     if (queryOwnerId) {
-      return this.getFeedByOwnerId(queryOwnerId, cursor ?? undefined, userId);
+      return this.getFeedByOwnerId(queryOwnerId, cursor ?? undefined, userId, query.q);
     }
 
     const [prefs, swipedPetIds, reportedPetIds, blockedByMe, blockedMe, favoritePets, adopterProfile] = await Promise.all([
@@ -278,12 +279,14 @@ export class FeedService {
     const breedFilters = queryBreed?.split(',').map((b) => b.trim()).filter(Boolean) ?? [];
     const sexFilter = querySex?.toLowerCase().trim() || null;
     const sizeFilter = querySize?.toLowerCase().trim() || null;
+    const nameSearch = queryQ?.trim() || null;
     const now = new Date();
     const baseWhere = {
       status: 'AVAILABLE' as const,
       publicationStatus: 'APPROVED' as const,
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       owner: { deactivatedAt: null },
+      ...(nameSearch && nameSearch.length > 0 ? { name: { contains: nameSearch, mode: 'insensitive' as const } } : {}),
       ...(speciesFilter ? { species: { equals: speciesFilter, mode: 'insensitive' as const } } : {}),
       ...(sexFilter === 'male' || sexFilter === 'female' ? { sex: sexFilter } : {}),
       ...(sizeFilter && ['small', 'medium', 'large', 'xlarge'].includes(sizeFilter) ? { size: sizeFilter } : {}),
@@ -539,9 +542,11 @@ export class FeedService {
     ownerId: string,
     cursor: string | undefined,
     userId: string | undefined,
+    q?: string,
   ): Promise<FeedResponseDto> {
     const pageSize = DEFAULT_PAGE_SIZE;
     const reportedPetIds = await this.reportsService.getReportedPetIds();
+    const nameSearch = q?.trim() || null;
     const now = new Date();
     const where = {
       ownerId,
@@ -549,6 +554,7 @@ export class FeedService {
       status: 'AVAILABLE' as const,
       publicationStatus: 'APPROVED' as const,
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      ...(nameSearch && nameSearch.length > 0 ? { name: { contains: nameSearch, mode: 'insensitive' as const } } : {}),
       ...(reportedPetIds.length > 0 ? { id: { notIn: reportedPetIds } } : {}),
     };
     const [totalCount, adopterProfile, prefs] = await Promise.all([

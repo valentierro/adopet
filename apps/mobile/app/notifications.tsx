@@ -230,6 +230,13 @@ export default function NotificationsScreen() {
         case 'ADOPTION_CONFIRMATION_REQUESTED':
           router.push('/(tabs)/adoption-confirm');
           break;
+        case 'ADOPTION_FORM_SENT':
+          if (meta.adoptionRequestId) {
+            router.push(`/adoption-form-fill/${meta.adoptionRequestId}`);
+          } else if (meta.conversationId) {
+            router.push(`/chat/${meta.conversationId}`);
+          }
+          break;
         case 'NEW_MESSAGE':
         case 'NEW_CONVERSATION':
           if (meta.conversationId) {

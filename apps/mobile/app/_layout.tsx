@@ -96,6 +96,7 @@ function RootLayout() {
       refreshTokens,
       () => {
         if (sessionExpiredShownRef.current) return;
+        if (!useAuthStore.getState().accessToken) return; // usuário deslogou; não mostrar "sessão expirada"
         sessionExpiredShownRef.current = true;
         useAuthStore.getState().setSessionExpiredModalVisible(true);
       },
@@ -201,6 +202,10 @@ function RootLayout() {
         <Stack.Screen name="partner-service-edit" options={{ title: 'Serviço' }} />
         <Stack.Screen name="partner-analytics" options={{ title: 'Analytics' }} />
         <Stack.Screen name="partner-members" options={{ title: 'Membros da ONG', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="partner-adoption-forms" options={{ title: 'Formulários de adoção', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="partner-adoption-form-intro" options={{ title: 'Novo formulário', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="partner-adoption-form-edit" options={{ title: 'Formulário de adoção', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="partner-adoption-requests" options={{ title: 'Solicitações de adoção', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="partner-members-bulk" options={{ title: 'Importar membros em lote', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="partner-member-profile" options={{ title: 'Perfil do membro' }} />
         <Stack.Screen name="partner-subscription" options={{ title: 'Assinatura', ...profileMenuHeaderOptions }} />
@@ -212,6 +217,8 @@ function RootLayout() {
         <Stack.Screen name="privacy" options={{ title: 'Política de Privacidade', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="bug-report-suggestion" options={{ title: 'Bug report / Sugestões', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="kyc" options={{ title: 'Solicitar verificação (KYC)', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="my-adoption-requests" options={{ title: 'Minhas solicitações', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="adoption-form-fill/[requestId]" options={{ title: 'Formulário de adoção', ...profileMenuHeaderOptions }} />
         <Stack.Screen name="survey" options={{ title: 'Pesquisa de satisfação', ...profileMenuHeaderOptions }} />
       </Stack>
       <UpdateAvailableModal

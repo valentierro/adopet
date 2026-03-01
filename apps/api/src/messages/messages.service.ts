@@ -119,8 +119,10 @@ export class MessagesService {
     conversationId: string;
     senderId: string | null;
     isSystem: boolean;
+    messageType: string;
     content: string;
     imageUrl: string | null;
+    metadata: unknown;
     createdAt: Date;
     readAt: Date | null;
   }): MessageItemDto {
@@ -129,13 +131,21 @@ export class MessagesService {
       const base = this.config.get<string>('S3_PUBLIC_BASE')?.replace(/\/$/, '');
       if (base) imageUrl = `${base}/${imageUrl}`;
     }
+    const metadata =
+      m.metadata != null
+        ? (typeof m.metadata === 'object' && m.metadata !== null
+            ? (m.metadata as Record<string, unknown>)
+            : undefined)
+        : undefined;
     return {
       id: m.id,
       conversationId: m.conversationId,
       ...(m.senderId != null && { senderId: m.senderId }),
       isSystem: m.isSystem,
+      messageType: m.messageType ?? 'TEXT',
       content: m.content,
       imageUrl,
+      ...(metadata && { metadata }),
       createdAt: m.createdAt.toISOString(),
       readAt: m.readAt?.toISOString(),
     };

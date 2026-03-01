@@ -31,6 +31,16 @@ export const IN_APP_NOTIFICATION_TYPES = {
   PET_PARTNERSHIP_REJECTED: 'PET_PARTNERSHIP_REJECTED',
   PET_PARTNERSHIP_CANCELLED_BY_PARTNER: 'PET_PARTNERSHIP_CANCELLED_BY_PARTNER',
   SATISFACTION_SURVEY: 'SATISFACTION_SURVEY',
+  /** Parceiro enviou formulário de adoção para o interessado. */
+  ADOPTION_FORM_SENT: 'ADOPTION_FORM_SENT',
+  /** Interessado preencheu e enviou o formulário de adoção. */
+  ADOPTION_FORM_SUBMITTED: 'ADOPTION_FORM_SUBMITTED',
+  /** Parceiro aprovou o interessado (proposta de adoção). */
+  ADOPTION_PROPOSED: 'ADOPTION_PROPOSED',
+  /** Parceiro rejeitou a solicitação de adoção. */
+  ADOPTION_REQUEST_REJECTED: 'ADOPTION_REQUEST_REJECTED',
+  /** Parceiro excluiu o formulário; formulário enviado ou aguardando análise foi cancelado. */
+  ADOPTION_FORM_CANCELLED_BY_PARTNER: 'ADOPTION_FORM_CANCELLED_BY_PARTNER',
 } as const;
 
 export type InAppNotificationType = (typeof IN_APP_NOTIFICATION_TYPES)[keyof typeof IN_APP_NOTIFICATION_TYPES];

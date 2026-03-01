@@ -311,7 +311,7 @@ export class StripeService {
       const partnerId = session.metadata?.partnerId as string | undefined;
       const planId = session.metadata?.planId as string | undefined;
       if (partnerId && subscriptionId) {
-        await this.prisma.partner.update({
+        const partner = await this.prisma.partner.update({
           where: { id: partnerId },
           data: {
             stripeSubscriptionId: subscriptionId,
@@ -320,7 +320,12 @@ export class StripeService {
             isPaidPartner: true,
             approvedAt: new Date(),
           },
+          select: { userId: true },
         });
+        // Parceiros pagos ganham selo verificado ao confirmar pagamento — não fazem KYC
+        if (partner.userId) {
+          await this.grantVerifiedBadgeIfMissing(partner.userId);
+        }
         if (this.emailService.isConfigured()) {
           const partner = await this.prisma.partner.findUnique({
             where: { id: partnerId },
@@ -417,6 +422,18 @@ export class StripeService {
           },
         });
       }
+    }
+  }
+
+  /** Concede selo verificado (USER_VERIFIED) ao usuário se ainda não tiver. Parceiros não fazem KYC. */
+  private async grantVerifiedBadgeIfMissing(userId: string): Promise<void> {
+    const existing = await this.prisma.verification.findFirst({
+      where: { userId, type: 'USER_VERIFIED', status: 'APPROVED' },
+    });
+    if (!existing) {
+      await this.prisma.verification.create({
+        data: { userId, type: 'USER_VERIFIED', status: 'APPROVED' },
+      });
     }
   }
 }

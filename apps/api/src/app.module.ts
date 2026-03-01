@@ -26,6 +26,8 @@ import { AdminModule } from './admin/admin.module';
 import { BugReportsModule } from './bug-reports/bug-reports.module';
 import { PartnerRecommendationsModule } from './partner-recommendations/partner-recommendations.module';
 import { PartnersModule } from './partners/partners.module';
+import { AdoptionFormsModule } from './adoption-forms/adoption-forms.module';
+import { AdoptionRequestsModule } from './adoption-requests/adoption-requests.module';
 import { MarketplaceModule } from './marketplace/marketplace.module';
 import { PublicModule } from './public/public.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -69,6 +71,8 @@ import { FeatureFlagModule } from './feature-flag/feature-flag.module';
     BugReportsModule,
     PartnerRecommendationsModule,
     PartnersModule,
+    AdoptionFormsModule,
+    AdoptionRequestsModule,
     MarketplaceModule,
     PublicModule,
   ],

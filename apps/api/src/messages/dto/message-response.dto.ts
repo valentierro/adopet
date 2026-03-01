@@ -13,11 +13,22 @@ export class MessageItemDto {
   @ApiProperty({ description: 'True para mensagens geradas pelo sistema' })
   isSystem: boolean;
 
+  @ApiProperty({
+    enum: ['TEXT', 'IMAGE', 'FORM_SENT', 'FORM_SUBMITTED'],
+    description: 'Tipo da mensagem',
+  })
+  messageType: string;
+
   @ApiProperty()
   content: string;
 
   @ApiProperty({ required: false })
   imageUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Metadados específicos do tipo, ex.: FORM_SENT/FORM_SUBMITTED: { adoptionRequestId }',
+  })
+  metadata?: Record<string, unknown>;
 
   @ApiProperty()
   createdAt: string;

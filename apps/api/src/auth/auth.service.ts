@@ -306,10 +306,20 @@ export class AuthService {
       throw new UnauthorizedException('Email ou senha inválidos');
     }
     // Marca parceria como ativa no primeiro login do parceiro (conta com userId no Partner)
-    await this.prisma.partner.updateMany({
+    const activated = await this.prisma.partner.updateMany({
       where: { userId: user.id, activatedAt: null },
       data: { activatedAt: new Date() },
     });
+    // ONGs ganham selo verificado no primeiro acesso — não fazem KYC. Parceiros pagos recebem após confirmação do pagamento.
+    if (activated.count > 0) {
+      const isOng = await this.prisma.partner.findFirst({
+        where: { userId: user.id, type: 'ONG' },
+        select: { id: true },
+      });
+      if (isOng) {
+        await this.grantVerifiedBadgeIfMissing(user.id);
+      }
+    }
     return this.issueTokens(user.id, user.email);
   }
 
@@ -645,5 +655,17 @@ export class AuthService {
       data: { passwordHash },
     });
     return { message: 'Senha alterada com sucesso.' };
+  }
+
+  /** Concede selo verificado (USER_VERIFIED) ao usuário se ainda não tiver. Parceiros não fazem KYC. */
+  private async grantVerifiedBadgeIfMissing(userId: string): Promise<void> {
+    const existing = await this.prisma.verification.findFirst({
+      where: { userId, type: 'USER_VERIFIED', status: 'APPROVED' },
+    });
+    if (!existing) {
+      await this.prisma.verification.create({
+        data: { userId, type: 'USER_VERIFIED', status: 'APPROVED' },
+      });
+    }
   }
 }

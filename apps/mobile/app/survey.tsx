@@ -6,13 +6,14 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   TextInput,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, PrimaryButton } from '../src/components';
+import { ScreenContainer, PrimaryButton, SecondaryButton, Toast } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { submitSatisfactionSurvey } from '../src/api/me';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
@@ -38,6 +39,8 @@ export default function SurveyScreen() {
     overallScore: 0,
   });
   const [comment, setComment] = useState('');
+  const [summaryModalVisible, setSummaryModalVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const updateScore = useCallback((key: string, value: number) => {
     setScores((prev) => ({ ...prev, [key]: value }));
@@ -57,14 +60,14 @@ export default function SurveyScreen() {
       });
     },
     onSuccess: () => {
+      setSummaryModalVisible(false);
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'adoptions'] });
-      Alert.alert('Obrigado!', 'Sua avaliação foi enviada e nos ajuda a melhorar o app.', [
-        { text: 'OK', onPress: () => router.back() },
-      ]);
+      setToastMessage('Obrigado! Sua avaliação foi enviada e nos ajuda a melhorar o app.');
+      router.back();
     },
     onError: (e: unknown) => {
-      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível enviar. Tente novamente.'));
+      setToastMessage(getFriendlyErrorMessage(e, 'Não foi possível enviar. Tente novamente.'));
     },
   });
 
@@ -122,17 +125,53 @@ export default function SurveyScreen() {
         </View>
 
         <PrimaryButton
-          title={mutation.isPending ? 'Enviando...' : 'Enviar avaliação'}
-          onPress={() => mutation.mutate({ scores, comment })}
-          disabled={!canSubmit || mutation.isPending}
+          title="Enviar avaliação"
+          onPress={() => setSummaryModalVisible(true)}
+          disabled={!canSubmit}
           style={styles.submitBtn}
         />
-        {mutation.isPending && (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator size="small" color={colors.primary} />
-          </View>
-        )}
+
+        <Modal visible={summaryModalVisible} transparent animationType="fade">
+          <Pressable style={styles.modalOverlay} onPress={() => !mutation.isPending && setSummaryModalVisible(false)}>
+            <Pressable style={[styles.summaryModal, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+              <Text style={[styles.summaryTitle, { color: colors.textPrimary }]}>Resumo da avaliação</Text>
+              <Text style={[styles.summarySubtitle, { color: colors.textSecondary }]}>Confira antes de enviar:</Text>
+              <View style={styles.summaryScores}>
+                {PILLARS.map(({ key, label }) => (
+                  <View key={key} style={[styles.summaryRow, { borderBottomColor: colors.border }]}>
+                    <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>{label}</Text>
+                    <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{scores[key]}/5</Text>
+                  </View>
+                ))}
+              </View>
+              {comment.trim() ? (
+                <View style={styles.summaryCommentWrap}>
+                  <Text style={[styles.summaryCommentLabel, { color: colors.textSecondary }]}>Comentário:</Text>
+                  <Text style={[styles.summaryCommentText, { color: colors.textPrimary }]} numberOfLines={4}>
+                    {comment.trim()}
+                  </Text>
+                </View>
+              ) : null}
+              <View style={styles.summaryActions}>
+                <SecondaryButton
+                  title="Cancelar"
+                  onPress={() => setSummaryModalVisible(false)}
+                  disabled={mutation.isPending}
+                  style={styles.summaryBtn}
+                />
+                <PrimaryButton
+                  title={mutation.isPending ? 'Enviando...' : 'Enviar'}
+                  onPress={() => mutation.mutate({ scores, comment })}
+                  disabled={mutation.isPending}
+                  style={styles.summaryBtn}
+                />
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
       </ScrollView>
+      <Toast message={toastMessage} onHide={() => setToastMessage(null)} duration={3000} />
     </ScreenContainer>
   );
 }
@@ -173,5 +212,39 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   submitBtn: { marginBottom: spacing.sm },
-  loadingWrap: { alignItems: 'center', padding: spacing.sm },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  summaryModal: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: spacing.lg,
+  },
+  summaryTitle: { fontSize: 18, fontWeight: '700', marginBottom: 4 },
+  summarySubtitle: { fontSize: 14, marginBottom: spacing.md },
+  summaryScores: { marginBottom: spacing.md },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+  },
+  summaryLabel: { fontSize: 14 },
+  summaryValue: { fontSize: 15, fontWeight: '600' },
+  summaryCommentWrap: {
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(128,128,128,0.3)',
+  },
+  summaryCommentLabel: { fontSize: 13, marginBottom: 4 },
+  summaryCommentText: { fontSize: 14, lineHeight: 20 },
+  summaryActions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' },
+  summaryBtn: { flex: 1 },
 });

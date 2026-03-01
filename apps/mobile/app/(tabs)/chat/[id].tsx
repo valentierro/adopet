@@ -26,6 +26,8 @@ import { useAuthStore } from '../../../src/stores/authStore';
 import { getMessages, sendMessage, type SendMessagePayload } from '../../../src/api/messages';
 import { getConversation, postConversationTyping } from '../../../src/api/conversations';
 import { confirmAdoption, patchPetStatus, getMatchScore, cancelAdoption, declineAdoption } from '../../../src/api/pets';
+import { sendAdoptionForm, listAdoptionRequests } from '../../../src/api/adoption-requests';
+import { listAdoptionFormTemplates } from '../../../src/api/adoption-forms';
 import { presign } from '../../../src/api/uploads';
 import { BASE_URL } from '../../../src/api/client';
 import { createReport } from '../../../src/api/reports';
@@ -392,6 +394,91 @@ export default function ChatRoomScreen() {
 
   const canAdopterDeclineAdoption = !!conversation?.pet?.canAdopterDecline && !!conversation.petId;
 
+  const canSendAdoptionForm = !!conversation?.pet?.canSendAdoptionForm && !!id && !!otherUserId;
+  const { data: adoptionRequestsForPet } = useQuery({
+    queryKey: ['me', 'partner', 'adoption-requests', conversation?.petId],
+    queryFn: () => listAdoptionRequests(conversation!.petId!),
+    enabled: canSendAdoptionForm && !!conversation?.petId,
+  });
+  const { data: adoptionFormTemplates } = useQuery({
+    queryKey: ['me', 'partner', 'adoption-forms'],
+    queryFn: listAdoptionFormTemplates,
+    enabled: canSendAdoptionForm,
+  });
+  const formAlreadySentForThisAdopter =
+    canSendAdoptionForm &&
+    !!otherUserId &&
+    !!adoptionRequestsForPet?.some(
+      (r) =>
+        r.adopterId === otherUserId &&
+        ['FORM_SENT', 'FORM_SUBMITTED', 'APPROVED', 'ADOPTION_PROPOSED', 'ADOPTION_CONFIRMED', 'REJECTED'].includes(r.status),
+    );
+  const formMatchScore =
+    canSendAdoptionForm &&
+    otherUserId &&
+    adoptionRequestsForPet?.find(
+      (r) =>
+        r.adopterId === otherUserId &&
+        ['FORM_SUBMITTED', 'APPROVED', 'ADOPTION_PROPOSED', 'ADOPTION_CONFIRMED'].includes(r.status),
+    )?.submission?.matchScore;
+  const [showFormTemplatePicker, setShowFormTemplatePicker] = useState(false);
+  const [formSendToast, setFormSendToast] = useState<string | null>(null);
+  const [showKycInfoBeforeFormModal, setShowKycInfoBeforeFormModal] = useState(false);
+  const [pendingFormSendTemplateId, setPendingFormSendTemplateId] = useState<string | undefined>(undefined);
+  const sendAdoptionFormMutation = useMutation({
+    mutationFn: (templateId?: string) =>
+      sendAdoptionForm({ conversationId: id!, ...(templateId && { templateId }) }),
+    onSuccess: () => {
+      setShowFormTemplatePicker(false);
+      setFormSendToast('Formulário enviado! O interessado receberá no chat.');
+      queryClient.invalidateQueries({ queryKey: ['messages', id] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'adoption-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'adoption-requests', conversation?.petId] });
+    },
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível enviar o formulário.'));
+    },
+  });
+
+  const doSendForm = useCallback(
+    (templateId?: string) => {
+      sendAdoptionFormMutation.mutate(templateId);
+    },
+    [sendAdoptionFormMutation],
+  );
+
+  const requestSendForm = useCallback(
+    (templateId?: string) => {
+      if (!canMarkAsAdopterWithoutKyc) {
+        setPendingFormSendTemplateId(templateId);
+        setShowKycInfoBeforeFormModal(true);
+        return;
+      }
+      doSendForm(templateId);
+    },
+    [canMarkAsAdopterWithoutKyc, doSendForm],
+  );
+
+  const handleConfirmSendFormAfterKycInfo = useCallback(() => {
+    doSendForm(pendingFormSendTemplateId);
+    setShowKycInfoBeforeFormModal(false);
+    setPendingFormSendTemplateId(undefined);
+  }, [doSendForm, pendingFormSendTemplateId]);
+
+  const handleSendFormPress = useCallback(() => {
+    const templates = adoptionFormTemplates ?? [];
+    if (templates.length > 1) {
+      setShowFormTemplatePicker(true);
+      return;
+    }
+    if (templates.length === 1) {
+      requestSendForm(templates[0]!.id);
+      return;
+    }
+    requestSendForm();
+  }, [adoptionFormTemplates, requestSendForm]);
+
   const confirmAdoptionMutation = useMutation({
     mutationFn: (responsibilityTermAccepted: boolean) =>
       confirmAdoption(conversation!.petId!, { responsibilityTermAccepted }),
@@ -656,22 +743,32 @@ export default function ChatRoomScreen() {
                 </Text>
               ) : null}
             </View>
-            {matchScoreData?.score != null ? (
-              <TouchableOpacity
-                style={styles.chatInfoBarMatch}
-                onPress={() => setShowMatchScoreModal(true)}
-                activeOpacity={0.8}
-                accessibilityLabel={`Match ${matchScoreData.score}% ${isTutorView ? 'com este adotante' : 'com você'}. Toque para ver detalhes.`}
-                accessibilityRole="button"
-              >
-                <MatchScoreBadge
-                  data={matchScoreData}
-                  size="medium"
-                  contextLabel={isTutorView ? 'com este adotante' : 'com você'}
-                />
-                <Ionicons name="chevron-down" size={14} color={getMatchScoreColor(matchScoreData.score)} style={styles.chatMatchBadgeChevron} />
-              </TouchableOpacity>
-            ) : null}
+            <View style={styles.chatInfoBarMatchRow}>
+              {matchScoreData?.score != null ? (
+                <TouchableOpacity
+                  style={styles.chatInfoBarMatch}
+                  onPress={() => setShowMatchScoreModal(true)}
+                  activeOpacity={0.8}
+                  accessibilityLabel={`Match ${matchScoreData.score}% ${isTutorView ? 'com este adotante' : 'com você'}. Toque para ver detalhes.`}
+                  accessibilityRole="button"
+                >
+                  <MatchScoreBadge
+                    data={matchScoreData}
+                    size="medium"
+                    contextLabel={isTutorView ? 'com este adotante' : 'com você'}
+                  />
+                  <Ionicons name="chevron-down" size={14} color={getMatchScoreColor(matchScoreData.score)} style={styles.chatMatchBadgeChevron} />
+                </TouchableOpacity>
+              ) : null}
+              {formMatchScore != null && typeof formMatchScore === 'number' ? (
+                <View style={[styles.chatFormMatchBadge, { backgroundColor: getMatchScoreColor(formMatchScore) + '25' }]}>
+                  <Ionicons name="document-text" size={14} color={getMatchScoreColor(formMatchScore)} />
+                  <Text style={[styles.chatFormMatchText, { color: getMatchScoreColor(formMatchScore) }]}>
+                    {Math.round(formMatchScore)}% formulário
+                  </Text>
+                </View>
+              ) : null}
+            </View>
           </View>
         </View>
       ) : null}
@@ -748,6 +845,42 @@ export default function ChatRoomScreen() {
                     <Ionicons name="close-circle-outline" size={22} color={colors.error || '#dc2626'} />
                     <Text style={[styles.confirmAdoptionBtnText, { color: colors.error || '#dc2626' }]}>
                       Cancelar processo de adoção
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+            {canSendAdoptionForm && (
+              <TouchableOpacity
+                style={[
+                  styles.confirmAdoptionBtn,
+                  {
+                    backgroundColor: formAlreadySentForThisAdopter ? colors.surface : colors.surface,
+                    borderWidth: 2,
+                    borderColor: formAlreadySentForThisAdopter ? colors.textSecondary + '50' : colors.primary + '80',
+                    opacity: formAlreadySentForThisAdopter ? 0.7 : 1,
+                  },
+                ]}
+                onPress={() => {
+                  if (formAlreadySentForThisAdopter) return;
+                  handleSendFormPress();
+                }}
+                disabled={sendAdoptionFormMutation.isPending || formAlreadySentForThisAdopter}
+              >
+                {sendAdoptionFormMutation.isPending ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : formAlreadySentForThisAdopter ? (
+                  <>
+                    <Ionicons name="checkmark-done" size={22} color={colors.textSecondary} />
+                    <Text style={[styles.confirmAdoptionBtnText, { color: colors.textSecondary }]}>
+                      Formulário já enviado
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="document-text-outline" size={22} color={colors.primary} />
+                    <Text style={[styles.confirmAdoptionBtnText, { color: colors.primary }]}>
+                      Enviar formulário de adoção
                     </Text>
                   </>
                 )}
@@ -864,52 +997,168 @@ export default function ChatRoomScreen() {
             ) : null}
           </>
         }
-        renderItem={({ item }) => (
-          <View
-            style={[
-              styles.bubble,
-              item.senderId === userId
-                ? [styles.bubbleRight, { backgroundColor: colors.primary }]
-                : [styles.bubbleLeft, { backgroundColor: colors.surface }],
-            ]}
-          >
-            {item.imageUrl ? (
-              <TouchableOpacity
-                activeOpacity={0.9}
-                onPress={() => setFullScreenImageUri(resolveImageUri(item.imageUrl!))}
-              >
-                <Image
-                  source={{ uri: resolveImageUri(item.imageUrl!) }}
-                  style={[styles.bubbleImage, item.content ? { marginBottom: 4 } : null]}
-                  resizeMode="cover"
-                />
-              </TouchableOpacity>
-            ) : null}
-            {item.content ? (
-              <Text
+        renderItem={({ item }) => {
+          const adoptionRequestId = item.messageType && item.metadata && typeof item.metadata.adoptionRequestId === 'string'
+            ? item.metadata.adoptionRequestId
+            : null;
+          const isFormSent = item.messageType === 'FORM_SENT';
+          const isFormSentToMe = isFormSent && item.senderId !== userId && adoptionRequestId;
+          const isFormSentByMe = isFormSent && item.senderId === userId;
+          const isFormSubmitted = item.messageType === 'FORM_SUBMITTED';
+          const formAlreadyFilled =
+            adoptionRequestId &&
+            messages.some(
+              (m) =>
+                m.messageType === 'FORM_SUBMITTED' &&
+                m.metadata &&
+                typeof m.metadata === 'object' &&
+                (m.metadata as { adoptionRequestId?: string }).adoptionRequestId === adoptionRequestId,
+            );
+
+          if (isFormSentToMe) {
+            return (
+              <View style={[styles.bubble, styles.bubbleLeft, { backgroundColor: colors.surface }]}>
+                <View style={[styles.formCard, { borderColor: colors.primary + '40' }]}>
+                  <Ionicons name="document-text-outline" size={24} color={colors.primary} />
+                  <Text style={[styles.formCardTitle, { color: colors.textPrimary }]}>Formulário de adoção</Text>
+                  <Text style={[styles.formCardText, { color: colors.textSecondary }]}>
+                    {formAlreadyFilled
+                      ? 'Você já preencheu e enviou este formulário.'
+                      : `${otherUserName} enviou um formulário para você preencher.`}
+                  </Text>
+                  {formAlreadyFilled ? (
+                    <View style={[styles.formCardBtn, styles.formCardBtnDisabled, { backgroundColor: colors.textSecondary + '30' }]}>
+                      <Ionicons name="checkmark-circle" size={18} color={colors.textSecondary} />
+                      <Text style={[styles.formCardBtnText, { color: colors.textSecondary }]}>Formulário enviado</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.formCardBtn, { backgroundColor: colors.primary }]}
+                      onPress={() => router.push(`/adoption-form-fill/${adoptionRequestId}`)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.formCardBtnText}>Preencher formulário</Text>
+                      <Ionicons name="arrow-forward" size={18} color="#fff" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            );
+          }
+
+          if (isFormSentByMe) {
+            return (
+              <View style={[styles.bubble, styles.bubbleRight, { backgroundColor: colors.primary }]}>
+                <View style={styles.formSubmittedRow}>
+                  <Ionicons name="document-text-outline" size={20} color="#fff" />
+                  <Text style={[styles.bubbleText, { color: '#fff' }]}>
+                    {item.content || `Formulário enviado para ${otherUserName}`}
+                  </Text>
+                </View>
+                <View style={styles.bubbleMetaRow}>
+                  <Text style={[styles.bubbleMetaText, { color: 'rgba(255,255,255,0.8)' }]}>
+                    {item.readAt ? 'Lida' : 'Enviada'}
+                  </Text>
+                  <Ionicons
+                    name={item.readAt ? 'checkmark-done' : 'checkmark'}
+                    size={12}
+                    color="rgba(255,255,255,0.8)"
+                    style={styles.bubbleMetaIcon}
+                  />
+                </View>
+              </View>
+            );
+          }
+
+          if (isFormSubmitted) {
+            return (
+              <View
                 style={[
-                  styles.bubbleText,
-                  { color: item.senderId === userId ? '#fff' : colors.textPrimary },
+                  styles.bubble,
+                  item.senderId === userId
+                    ? [styles.bubbleRight, { backgroundColor: colors.primary }]
+                    : [styles.bubbleLeft, { backgroundColor: colors.surface }],
                 ]}
               >
-                {item.content}
-              </Text>
-            ) : null}
-            {item.senderId === userId ? (
-              <View style={styles.bubbleMetaRow}>
-                <Text style={[styles.bubbleMetaText, { color: 'rgba(255,255,255,0.8)' }]}>
-                  {item.readAt ? 'Lida' : 'Enviada'}
-                </Text>
-                <Ionicons
-                  name={item.readAt ? 'checkmark-done' : 'checkmark'}
-                  size={12}
-                  color="rgba(255,255,255,0.8)"
-                  style={styles.bubbleMetaIcon}
-                />
+                <View style={styles.formSubmittedRow}>
+                  <Ionicons
+                    name="checkmark-done-circle"
+                    size={20}
+                    color={item.senderId === userId ? '#fff' : colors.primary}
+                  />
+                  <Text
+                    style={[
+                      styles.bubbleText,
+                      { color: item.senderId === userId ? '#fff' : colors.textPrimary },
+                    ]}
+                  >
+                    {item.content || 'Formulário preenchido'}
+                  </Text>
+                </View>
+                {item.senderId === userId ? (
+                  <View style={styles.bubbleMetaRow}>
+                    <Text style={[styles.bubbleMetaText, { color: 'rgba(255,255,255,0.8)' }]}>
+                      {item.readAt ? 'Lida' : 'Enviada'}
+                    </Text>
+                    <Ionicons
+                      name={item.readAt ? 'checkmark-done' : 'checkmark'}
+                      size={12}
+                      color="rgba(255,255,255,0.8)"
+                      style={styles.bubbleMetaIcon}
+                    />
+                  </View>
+                ) : null}
               </View>
-            ) : null}
-          </View>
-        )}
+            );
+          }
+
+          return (
+            <View
+              style={[
+                styles.bubble,
+                item.senderId === userId
+                  ? [styles.bubbleRight, { backgroundColor: colors.primary }]
+                  : [styles.bubbleLeft, { backgroundColor: colors.surface }],
+              ]}
+            >
+              {item.imageUrl ? (
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => setFullScreenImageUri(resolveImageUri(item.imageUrl!))}
+                >
+                  <Image
+                    source={{ uri: resolveImageUri(item.imageUrl!) }}
+                    style={[styles.bubbleImage, item.content ? { marginBottom: 4 } : null]}
+                    resizeMode="cover"
+                  />
+                </TouchableOpacity>
+              ) : null}
+              {item.content ? (
+                <Text
+                  style={[
+                    styles.bubbleText,
+                    { color: item.senderId === userId ? '#fff' : colors.textPrimary },
+                  ]}
+                >
+                  {item.content}
+                </Text>
+              ) : null}
+              {item.senderId === userId ? (
+                <View style={styles.bubbleMetaRow}>
+                  <Text style={[styles.bubbleMetaText, { color: 'rgba(255,255,255,0.8)' }]}>
+                    {item.readAt ? 'Lida' : 'Enviada'}
+                  </Text>
+                  <Ionicons
+                    name={item.readAt ? 'checkmark-done' : 'checkmark'}
+                    size={12}
+                    color="rgba(255,255,255,0.8)"
+                    style={styles.bubbleMetaIcon}
+                  />
+                </View>
+              ) : null}
+            </View>
+          );
+        }}
       />
       {!conversation?.otherUserDeactivated ? (
         <View style={[styles.inputRow, { backgroundColor: colors.surface, borderTopColor: colors.background }]}>
@@ -973,6 +1222,94 @@ export default function ChatRoomScreen() {
               onPress={handleEnviarDenuncia}
               disabled={reportUserMutation.isPending}
             />
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+
+    <Modal visible={showFormTemplatePicker} transparent animationType="fade" onRequestClose={() => setShowFormTemplatePicker(false)}>
+      <Pressable style={[styles.reportModalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]} onPress={() => setShowFormTemplatePicker(false)}>
+        <Pressable
+          style={[styles.reportModalBox, { backgroundColor: colors.surface, maxWidth: 360 }]}
+          onPress={(e) => e.stopPropagation()}
+        >
+          <Text style={[styles.reportModalTitle, { color: colors.textPrimary, marginBottom: spacing.md }]}>
+            Escolha o formulário para enviar
+          </Text>
+          <Text style={[{ color: colors.textSecondary, fontSize: 14, marginBottom: spacing.md }]}>
+            O interessado receberá no chat e poderá preenchê-lo no app.
+          </Text>
+          <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator>
+            {(adoptionFormTemplates ?? []).map((t) => (
+              <TouchableOpacity
+                key={t.id}
+                style={[
+                  styles.formTemplateOption,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.primary + '60',
+                    borderWidth: 1,
+                    marginBottom: spacing.sm,
+                  },
+                ]}
+                onPress={() => {
+                  requestSendForm(t.id);
+                }}
+                disabled={sendAdoptionFormMutation.isPending}
+              >
+                <Ionicons name="document-text-outline" size={22} color={colors.primary} />
+                <Text style={[styles.confirmAdoptionBtnText, { color: colors.textPrimary, flex: 1 }]}>{t.name}</Text>
+                <Text style={[{ color: colors.textSecondary, fontSize: 12 }]}>
+                  {t.questions.length} pergunta{t.questions.length !== 1 ? 's' : ''}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <View style={[styles.reportModalActions, { marginTop: spacing.md }]}>
+            <SecondaryButton title="Cancelar" onPress={() => setShowFormTemplatePicker(false)} />
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+
+    <Modal
+      visible={showKycInfoBeforeFormModal}
+      transparent
+      animationType="fade"
+      onRequestClose={() => {
+        setShowKycInfoBeforeFormModal(false);
+        setPendingFormSendTemplateId(undefined);
+      }}
+    >
+      <Pressable
+        style={[styles.reportModalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
+        onPress={() => {
+          setShowKycInfoBeforeFormModal(false);
+          setPendingFormSendTemplateId(undefined);
+        }}
+      >
+        <Pressable
+          style={[styles.reportModalBox, { backgroundColor: colors.surface, maxWidth: 360 }]}
+          onPress={(e) => e.stopPropagation()}
+        >
+          <Text style={[styles.reportModalTitle, { color: colors.textPrimary, marginBottom: spacing.md }]}>
+            Interessado sem verificação de identidade
+          </Text>
+          <Text style={[{ color: colors.textSecondary, fontSize: 14, marginBottom: spacing.md, lineHeight: 22 }]}>
+            {otherUserName} ainda não finalizou a verificação de identidade (KYC). Ele poderá responder e enviar o formulário normalmente, mas você só poderá marcá-lo como adotante após ele concluir a verificação em Perfil → Verificação de identidade.
+          </Text>
+          <Text style={[{ color: colors.textSecondary, fontSize: 13, marginBottom: spacing.lg }]}>
+            Deseja enviar o formulário mesmo assim?
+          </Text>
+          <View style={[styles.reportModalActions, { gap: spacing.sm }]}>
+            <SecondaryButton
+              title="Cancelar"
+              onPress={() => {
+                setShowKycInfoBeforeFormModal(false);
+                setPendingFormSendTemplateId(undefined);
+              }}
+            />
+            <PrimaryButton title="Entendi, enviar" onPress={handleConfirmSendFormAfterKycInfo} />
           </View>
         </Pressable>
       </Pressable>
@@ -1326,6 +1663,7 @@ export default function ChatRoomScreen() {
       })()}
 
     <Toast message={reminderToast} onHide={() => setReminderToast(null)} />
+    <Toast message={formSendToast} onHide={() => setFormSendToast(null)} />
     </>
   );
 }
@@ -1435,6 +1773,12 @@ const styles = StyleSheet.create({
   chatInfoBarPetName: { fontSize: 14, marginTop: 1, fontWeight: '500' },
   chatInfoBarBasicInfo: { fontSize: 12, marginTop: 1, opacity: 0.95 },
   chatInfoBarProfileLine: { fontSize: 11, marginTop: 2, opacity: 0.9 },
+  chatInfoBarMatchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   chatInfoBarMatch: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1442,6 +1786,15 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   chatMatchBadgeChevron: { marginLeft: 2 },
+  chatFormMatchBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  chatFormMatchText: { fontSize: 13, fontWeight: '700' },
   modalOverlay: {
     position: 'absolute',
     top: 0,
@@ -1605,6 +1958,25 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 4,
   },
+  formCard: {
+    padding: spacing.md,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  formCardTitle: { fontSize: 15, fontWeight: '600', marginBottom: 4 },
+  formCardText: { fontSize: 14, marginBottom: spacing.sm },
+  formCardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 10,
+  },
+  formCardBtnDisabled: { opacity: 0.9 },
+  formCardBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  formSubmittedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -1653,6 +2025,13 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   reportModalActions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' },
+  formTemplateOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderRadius: 10,
+    gap: spacing.sm,
+  },
   imageViewerOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.9)',

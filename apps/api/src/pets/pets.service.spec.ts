@@ -10,6 +10,7 @@ import { AdminService } from '../admin/admin.service';
 import { SimilarPetsEngineService } from '../similar-pets-engine/similar-pets-engine.service';
 import { MatchEngineService } from '../match-engine/match-engine.service';
 import { PetViewService } from './pet-view.service';
+import { PetPartnershipService } from '../pet-partnership/pet-partnership.service';
 
 jest.mock('../common/geocoding', () => ({
   reverseGeocode: jest.fn().mockResolvedValue(null),
@@ -21,7 +22,11 @@ describe('PetsService', () => {
     pet: { create: jest.Mock; findUnique: jest.Mock; update: jest.Mock; count: jest.Mock };
     petMedia: { create: jest.Mock };
     partner: { findFirst: jest.Mock; findUnique: jest.Mock; findMany: jest.Mock };
+    partnerMember: { findFirst: jest.Mock };
+    user: { findUnique: jest.Mock };
+    adoption: { findUnique: jest.Mock };
   };
+  let adminCreateAdoption: jest.Mock;
 
   const basePet = {
     id: 'pet-1',
@@ -52,6 +57,7 @@ describe('PetsService', () => {
   };
 
   beforeEach(async () => {
+    adminCreateAdoption = jest.fn().mockResolvedValue({ id: 'a1', petId: 'p1', confirmedByAdopet: false });
     prisma = {
       pet: {
         create: jest.fn(),
@@ -65,6 +71,9 @@ describe('PetsService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
       },
+      partnerMember: { findFirst: jest.fn().mockResolvedValue(null) },
+      user: { findUnique: jest.fn().mockResolvedValue(null) },
+      adoption: { findUnique: jest.fn().mockResolvedValue(null) },
     };
 
     const verification = {
@@ -76,7 +85,7 @@ describe('PetsService', () => {
     const config = { get: jest.fn().mockReturnValue(50) };
     const push = { sendToUser: jest.fn().mockResolvedValue(undefined) };
     const inAppNotifications = { create: jest.fn().mockResolvedValue(undefined) };
-    const admin = { notifyNewPetSubmission: jest.fn().mockResolvedValue(undefined) };
+    const admin = { notifyNewPetSubmission: jest.fn().mockResolvedValue(undefined), createAdoption: adminCreateAdoption };
     const similarPetsEngine = { getSimilarPetIds: jest.fn().mockResolvedValue([]) };
     const matchEngine = { getMatchScore: jest.fn(), getMatchScoresForAdopter: jest.fn().mockResolvedValue({}) };
     const petViewService = { recordView: jest.fn().mockResolvedValue(undefined), getViewCountsLast24h: jest.fn().mockResolvedValue(new Map()) };
@@ -94,6 +103,15 @@ describe('PetsService', () => {
         { provide: SimilarPetsEngineService, useValue: similarPetsEngine },
         { provide: MatchEngineService, useValue: matchEngine },
         { provide: PetViewService, useValue: petViewService },
+        {
+          provide: PetPartnershipService,
+          useValue: {
+            getConfirmedPartnersForPet: jest.fn().mockResolvedValue([]),
+            getConfirmedPartnersByPetIds: jest.fn().mockResolvedValue(new Map()),
+            getPetIdsWithPendingPartnership: jest.fn().mockResolvedValue(new Set()),
+            syncPetPartnerships: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
     service = module.get<PetsService>(PetsService);
@@ -301,6 +319,48 @@ describe('PetsService', () => {
         isDocile: true,
         isTrained: false,
       });
+    });
+  });
+
+  describe('confirmAdoption', () => {
+    it('quando tutor é parceiro, createAdoption é chamado com fromAdopetConfirmation=true', async () => {
+      prisma.pet.findUnique.mockResolvedValue({
+        id: 'p1',
+        ownerId: 'tutor-partner',
+        pendingAdopterId: 'adopter-1',
+        status: 'ADOPTED',
+        adopterConfirmedAt: null,
+        adoption: null,
+      });
+      prisma.pet.update.mockResolvedValue({});
+      prisma.user.findUnique.mockResolvedValue({ id: 'adopter-1', kycStatus: 'VERIFIED' });
+      prisma.partner.findUnique.mockImplementation((args: { where: { userId: string } }) =>
+        args.where.userId === 'tutor-partner' ? Promise.resolve({ id: 'partner-1' }) : Promise.resolve(null),
+      );
+      prisma.partnerMember.findFirst.mockResolvedValue(null);
+
+      await service.confirmAdoption('p1', 'adopter-1', true);
+
+      expect(adminCreateAdoption).toHaveBeenCalledWith('p1', undefined, true, expect.any(Date));
+    });
+
+    it('quando tutor não é parceiro, createAdoption é chamado com fromAdopetConfirmation=false', async () => {
+      prisma.pet.findUnique.mockResolvedValue({
+        id: 'p1',
+        ownerId: 'tutor-common',
+        pendingAdopterId: 'adopter-1',
+        status: 'ADOPTED',
+        adopterConfirmedAt: null,
+        adoption: null,
+      });
+      prisma.pet.update.mockResolvedValue({});
+      prisma.user.findUnique.mockResolvedValue({ id: 'adopter-1', kycStatus: 'VERIFIED' });
+      prisma.partner.findUnique.mockResolvedValue(null);
+      prisma.partnerMember.findFirst.mockResolvedValue(null);
+
+      await service.confirmAdoption('p1', 'adopter-1', true);
+
+      expect(adminCreateAdoption).toHaveBeenCalledWith('p1', undefined, false, expect.any(Date));
     });
   });
 });

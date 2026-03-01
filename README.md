@@ -86,10 +86,23 @@ export COREPACK_HOME="$(pwd)/.cache/corepack"
 # ou: pnpm dev:mobile
 ```
 
-Com o Metro rodando:
-- **`i`** — abre no simulador iOS
-- **`a`** — abre no emulador Android
-- **QR code** — Expo Go no celular (mesma rede)
+Com o Metro rodando, você pode abrir o app de várias formas:
+
+| Modo | Tecla | Descrição |
+|------|-------|-----------|
+| **Web** | `w` | App no navegador (emulador web) — ideal para testes rápidos sem emulador |
+| **Android** | `a` | Emulador Android — requer [Android Studio](https://developer.android.com/studio) com um AVD criado |
+| **iOS** | `i` | Simulador iOS — requer Xcode (apenas Mac) |
+| **Expo Go** | — | Escaneie o **QR code** com o app [Expo Go](https://expo.dev/go) no celular (mesma rede Wi‑Fi) |
+
+**Abrir direto na web (sem abrir o Metro interativo):**
+```bash
+cd apps/mobile && npx expo start --web
+```
+
+**Dicas:**
+- **Expo Go:** instale no celular e escaneie o QR code; `EXPO_PUBLIC_API_URL` no `.env` deve apontar para uma URL acessível (ex.: IP da máquina ou API em nuvem).
+- **Emulador Android:** abra o Android Studio → Device Manager → crie/inicie um AVD antes de pressionar `a`.
 
 ### Tudo junto
 
@@ -103,8 +116,10 @@ pnpm dev
 
 | Plataforma | Comando | Requisito |
 |------------|---------|-----------|
+| Web | tecla `w` ou `npx expo start --web` | Nenhum — roda no navegador |
 | iOS | `./scripts/mobile-ios.sh` ou tecla `i` | Xcode instalado |
-| Android | `./scripts/mobile-android.sh` ou tecla `a` | Android Studio + emulador |
+| Android | `./scripts/mobile-android.sh` ou tecla `a` | Android Studio + emulador (AVD) |
+| Expo Go | Escanear QR code no app Expo Go | Celular e mesma rede Wi‑Fi |
 
 ---
 
@@ -163,7 +178,7 @@ Perfis em `apps/mobile/eas.json`: `development`, `preview`, `production`.
 | `./scripts/migrate-new.sh "nome"` | Cria nova migration |
 | `./scripts/seed.sh` | Executa seed do banco |
 | `./scripts/dev-api.sh` | Sobe a API |
-| `./scripts/dev-mobile.sh` | Sobe o app (Expo) |
+| `./scripts/dev-mobile.sh` | Sobe o app (Expo); use `w` para web, `a` para Android, `i` para iOS |
 | `./scripts/mobile-ios.sh` | Abre no simulador iOS |
 | `./scripts/mobile-android.sh` | Abre no emulador Android |
 | `./scripts/build-mobile-android.sh` | Build Android (EAS) |
@@ -190,6 +205,52 @@ Perfis em `apps/mobile/eas.json`: `development`, `preview`, `production`.
 
 - **api:** `apps/api/.env` — `DATABASE_URL`, `JWT_SECRET`, `S3_*`, etc. (ver `apps/api/.env.example`)
 - **mobile:** `apps/mobile/.env` — `EXPO_PUBLIC_API_URL` (URL da API)
+
+---
+
+## Troubleshooting
+
+Problemas comuns e como resolver.
+
+### Setup e dependências
+
+| Problema | Solução |
+|----------|---------|
+| Erro de permissão no cache do pnpm | `export COREPACK_HOME="$(pwd)/.cache/corepack"` e `./scripts/pnpm-with-cache.sh install` |
+| `pnpm` não encontrado | `corepack enable` (Node 18+ inclui Corepack) |
+| Shared não compila | `pnpm --filter @adopet/shared build` antes de rodar API ou mobile |
+
+### API
+
+| Problema | Solução |
+|----------|---------|
+| "Can't reach database server" | Suba o Postgres: `./scripts/infra-up.sh`. Se usar Neon, verifique a `DATABASE_URL` e liberação de IP. |
+| API não inicia (porta em uso) | Verifique se outra instância está rodando; altere `PORT` no `.env` se necessário. |
+| Migrations falham | `./scripts/migrate.sh` — se o banco estiver vazio, rode `./scripts/seed.sh` depois. |
+
+### Mobile (Expo)
+
+| Problema | Solução |
+|----------|---------|
+| "Unable to connect" no Expo Go | Celular e PC na **mesma rede Wi‑Fi**. Use o IP da máquina no `.env`: `EXPO_PUBLIC_API_URL=http://SEU_IP:3000`. Teste no navegador do celular: `http://SEU_IP:3000/v1/health`. |
+| Firewall bloqueando | Libere a porta 3000 para a rede local (Mac: Preferências do Sistema → Segurança → Firewall → Opções). |
+| "getDevServer is not a function" | `cd apps/mobile && node scripts/patch-expo-router-getDevServer.js && pnpm reset-cache` |
+| App trava ou dá crash no iOS | `cd apps/mobile && pnpm reset-cache`, depois `pnpm dev` e pressione `i`. Se persistir: [IOS_EMULATOR.md](apps/mobile/IOS_EMULATOR.md). |
+| Alterou `.env` e não refletiu | Pare o Metro (Ctrl+C) e rode `pnpm dev:mobile` de novo — variáveis `EXPO_PUBLIC_*` são carregadas na inicialização. |
+| Emulador Android não abre | Crie um AVD no Android Studio (Device Manager). Inicie o emulador antes de pressionar `a`. |
+| Metro / bundler com cache antigo | `cd apps/mobile && npx expo start --clear` ou `pnpm reset-cache` |
+
+### Build (EAS)
+
+| Problema | Solução |
+|----------|---------|
+| Build falha no EAS | Verifique variáveis: `eas secret:list`. Confirme `EXPO_PUBLIC_API_URL`, `GOOGLE_MAPS_API_KEY` (Android) e `GOOGLE_MAPS_API_KEY_IOS` (iOS). Logs em [expo.dev](https://expo.dev). |
+
+**Documentação detalhada:**
+- [Manutenção e troubleshooting](docs/maintenance.md)
+- [Setup Expo Go no celular](apps/mobile/SETUP_EXPO_GO.md)
+- [Simulador iOS](apps/mobile/IOS_EMULATOR.md)
+- [Deploy na Vercel](apps/api/VERCEL_DEPLOY.md)
 
 ---
 

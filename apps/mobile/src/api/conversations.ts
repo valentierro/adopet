@@ -41,7 +41,7 @@ export type ConversationDetail = {
     /** Parceiro (dono de ONG/estabelecimento ou membro) não precisa de KYC para adoção */
     isPartner?: boolean;
   };
-  pet?: { name: string; photoUrl?: string; species?: string; size?: string; age?: number; adoptionFinalized?: boolean; adopterHasConfirmed?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string; canAdopterDecline?: boolean };
+  pet?: { name: string; photoUrl?: string; species?: string; size?: string; age?: number; adoptionFinalized?: boolean; adopterHasConfirmed?: boolean; pendingAdopterId?: string; isTutor?: boolean; status?: string; canAdopterDecline?: boolean; canSendAdoptionForm?: boolean };
   otherUserTyping?: boolean;
   /** Quando true, o outro participante saiu/foi desativado; chat bloqueado para novas mensagens. */
   otherUserDeactivated?: boolean;
