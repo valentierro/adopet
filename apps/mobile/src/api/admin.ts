@@ -320,6 +320,8 @@ export type PartnerAdminItem = {
   canResendConfirmation?: boolean;
   rejectionReason?: string | null;
   isPaidPartner?: boolean;
+  /** Data em que a assinatura será desativada (cancelamento agendado); null quando não há */
+  subscriptionCancellationAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };

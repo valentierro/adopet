@@ -181,10 +181,10 @@ export class MeController {
   }
 
   @Get('partner/subscription-details')
-  @ApiOperation({ summary: 'Datas da assinatura: último pagamento e próximo vencimento (portal do parceiro)' })
+  @ApiOperation({ summary: 'Datas da assinatura: último pagamento, próximo vencimento, cancelamento agendado (portal do parceiro)' })
   async getMyPartnerSubscriptionDetails(
     @CurrentUser() user: { id: string },
-  ): Promise<{ lastPaymentAt: string | null; nextBillingAt: string | null }> {
+  ): Promise<{ lastPaymentAt: string | null; nextBillingAt: string | null; cancelAtPeriodEnd: boolean; cancellationDate: string | null }> {
     return this.stripeService.getSubscriptionBillingInfo(user.id);
   }
 

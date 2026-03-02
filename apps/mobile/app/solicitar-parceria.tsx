@@ -22,7 +22,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ScreenContainer, PrimaryButton, Toast } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { useAuthStore } from '../src/stores/authStore';
-import { createPartnerCheckoutSession, registerAsPartner } from '../src/api/partner';
+import { partnerSignup as partnerSignupApi, createPartnerCheckoutSession, registerAsPartner } from '../src/api/partner';
 import { postPartnershipRequest } from '../src/api/partnership';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
 import { formatPhoneInput, getPhoneDigits } from '../src/utils/phoneMask';
@@ -127,6 +127,9 @@ export default function SolicitarParceriaScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  /** Modal "Conta criada" para parceiro comercial: redirecionar para login antes do Stripe */
+  const [showPartnerCreatedModal, setShowPartnerCreatedModal] = useState(false);
+  const [stripeUrlForRedirect, setStripeUrlForRedirect] = useState<string | null>(null);
 
   const [cnpj, setCnpj] = useState('');
   const [cep, setCep] = useState('');
@@ -154,8 +157,6 @@ export default function SolicitarParceriaScreen() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [planoPagamento, setPlanoPagamento] = useState<'BASIC' | 'DESTAQUE' | 'PREMIUM'>('BASIC');
 
-  const partnerSignup = useAuthStore((s) => s.partnerSignup);
-  const isLoading = useAuthStore((s) => s.isLoading);
   const queryClient = useQueryClient();
   const isLoggedIn = !!useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
@@ -336,8 +337,9 @@ export default function SolicitarParceriaScreen() {
       return;
     }
 
+    setSubmitting(true);
     try {
-      const res = await partnerSignup({
+      const res = await partnerSignupApi({
         email: emailTrim,
         password,
         name: nomeTrim,
@@ -357,34 +359,31 @@ export default function SolicitarParceriaScreen() {
           'Enviamos um e-mail de confirmação. Clique no link para ativar sua conta. Depois faça login e, em Perfil, conclua o pagamento para ativar seu portal de parceiro.',
           [{ text: 'Ir para o login', onPress: () => router.replace('/(auth)/login') }],
         );
-      } else {
+        return;
+      }
+      let stripeUrl: string | null = null;
+      const accessToken = res && 'accessToken' in res ? res.accessToken : null;
+      if (accessToken) {
         try {
-          const { url } = await createPartnerCheckoutSession({
-            planId: planoPagamento,
-            successUrl: `${LANDING_BASE}/partner-success`,
-            cancelUrl: `${LANDING_BASE}/partner-cancel`,
-          });
-          const canOpen = await Linking.canOpenURL(url);
-          if (canOpen) {
-            Linking.openURL(url);
-            Alert.alert(
-              'Conta criada',
-              'Conclua o pagamento na próxima tela para ativar seu portal de parceiro. Depois volte ao app.',
-              [{ text: 'OK', onPress: () => router.replace('/(tabs)') }],
-            );
-          } else {
-            Alert.alert('Próximo passo', 'Acesse o link de pagamento pelo computador ou copie e cole no navegador.', [{ text: 'OK', onPress: () => router.replace('/(tabs)') }]);
-          }
-        } catch (paymentError: unknown) {
-          Alert.alert(
-            'Conta criada',
-            'Sua conta foi criada. Para ativar o portal do parceiro, faça login e use Perfil → Assinatura do parceiro.',
-            [{ text: 'Ir para o app', onPress: () => router.replace('/(tabs)') }],
+          const { url } = await createPartnerCheckoutSession(
+            {
+              planId: planoPagamento,
+              successUrl: `${LANDING_BASE}/partner-success`,
+              cancelUrl: `${LANDING_BASE}/partner-cancel`,
+            },
+            { token: accessToken },
           );
+          stripeUrl = url;
+        } catch {
+          stripeUrl = null;
         }
       }
+      setStripeUrlForRedirect(stripeUrl);
+      setShowPartnerCreatedModal(true);
     } catch (e: unknown) {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível criar a conta. Tente novamente.'));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -682,12 +681,12 @@ export default function SolicitarParceriaScreen() {
                     ? submitting
                       ? 'Abrindo pagamento...'
                       : 'Continuar para pagamento'
-                    : isLoading
+                    : submitting
                       ? 'Criando conta...'
                       : 'Criar conta e ir para pagamento'
                 }
                 onPress={isLoggedIn ? handleSubmitComercialLogado : handleSubmitComercialCadastro}
-                disabled={isLoggedIn ? submitting : isLoading || !acceptedTerms}
+                disabled={isLoggedIn ? submitting : submitting || !acceptedTerms}
                 style={styles.submitBtn}
               />
             </>
@@ -820,6 +819,46 @@ export default function SolicitarParceriaScreen() {
                 onPress={() => {
                   setShowSuccessModal(false);
                   router.replace('/(auth)/login');
+                }}
+                style={styles.successModalBtn}
+              />
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
+
+      {tipo === 'comercial' && (
+        <Modal visible={showPartnerCreatedModal} transparent animationType="fade">
+          <Pressable
+            style={styles.successModalOverlay}
+            onPress={() => {
+              setShowPartnerCreatedModal(false);
+              router.replace('/(auth)/login');
+              if (stripeUrlForRedirect) {
+                Linking.canOpenURL(stripeUrlForRedirect).then((ok) => ok && Linking.openURL(stripeUrlForRedirect!));
+              }
+            }}
+          >
+            <Pressable style={[styles.successModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+              <View style={[styles.successModalIconWrap, { backgroundColor: colors.primary + '20' }]}>
+                <Ionicons name="checkmark-circle" size={56} color={colors.primary} />
+              </View>
+              <Text style={[styles.successModalTitle, { color: colors.textPrimary }]}>Conta criada</Text>
+              <Text style={[styles.successModalMessage, { color: colors.textSecondary }]}>
+                Sua conta foi criada com sucesso. Agora você será redirecionado para o Stripe para concluir o pagamento e ativar os benefícios de parceiro.
+                {'\n\n'}
+                Também pode fazer o pagamento depois: faça login no app e acesse Perfil → Portal do parceiro → Assinatura.
+              </Text>
+              <PrimaryButton
+                title="Ir para o login"
+                onPress={() => {
+                  setShowPartnerCreatedModal(false);
+                  const url = stripeUrlForRedirect;
+                  setStripeUrlForRedirect(null);
+                  router.replace('/(auth)/login');
+                  if (url) {
+                    Linking.canOpenURL(url).then((ok) => ok && Linking.openURL(url));
+                  }
                 }}
                 style={styles.successModalBtn}
               />

@@ -201,6 +201,8 @@ model Partner {
   stripeCustomerId     String?
   stripeSubscriptionId String?
   planId               String?   // BASIC | DESTAQUE | PREMIUM
+  subscriptionCancellationAt DateTime? // quando a assinatura terminará (cancel_at_period_end); para admin e app
+  subscriptionCancellationReminderPeriodEnd DateTime? // period_end para o qual já enviamos lembrete 3 dias antes
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
   pets                 Pet[]

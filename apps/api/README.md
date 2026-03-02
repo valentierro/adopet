@@ -161,6 +161,13 @@ Em produção, use **AWS S3** (ou outro S3-compatível) e defina `S3_ENDPOINT` a
 
 O checkout do Stripe abre no navegador; quando o pagamento é concluído, o Stripe envia um **webhook** (`checkout.session.completed`) para a API. Só assim o backend marca o parceiro como pago (`isPaidPartner = true`) e o app libera o Portal do parceiro.
 
+**Eventos usados pelo webhook:**
+- `checkout.session.completed` — primeiro pagamento confirmado → e-mail de boas-vindas ao parceiro
+- `invoice.paid` (com `billing_reason = subscription_cycle`) — renovação de assinatura → e-mail de agradecimento pela renovação
+- `customer.subscription.updated` / `customer.subscription.deleted` — atualiza status e envia e-mail quando a parceria termina
+
+Em **produção**, configure o webhook no Dashboard do Stripe e inclua os eventos acima (ou envie “all events” para cobrir tudo).
+
 Em **localhost** o Stripe não consegue acessar sua máquina. Use o **Stripe CLI** para encaminhar os eventos:
 
 ### 1. Instalar o Stripe CLI

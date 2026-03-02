@@ -46,8 +46,24 @@ export class AdoptionFormsService {
     return partnerId;
   }
 
+  /** Parceiro comercial sem assinatura ativa não pode gerenciar formulários de adoção. */
+  private async ensureCommercialPartnerPaid(partnerId: string): Promise<void> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { id: partnerId },
+      select: { type: true, isPaidPartner: true },
+    });
+    if (!partner) return;
+    const typeNorm = (partner.type ?? 'ONG').toUpperCase();
+    if (typeNorm !== 'ONG' && !partner.isPaidPartner) {
+      throw new ForbiddenException(
+        'Assinatura inativa. Renove para acessar o portal do parceiro e gerenciar formulários.',
+      );
+    }
+  }
+
   async listTemplates(userId: string): Promise<AdoptionFormTemplateWithQuestions[]> {
     const partnerId = await this.ensurePartner(userId);
+    await this.ensureCommercialPartnerPaid(partnerId);
     const templates = await this.prisma.adoptionFormTemplate.findMany({
       where: { partnerId, active: true },
       include: {
@@ -60,6 +76,7 @@ export class AdoptionFormsService {
 
   async getOne(userId: string, id: string): Promise<AdoptionFormTemplateWithQuestions> {
     const partnerId = await this.ensurePartner(userId);
+    await this.ensureCommercialPartnerPaid(partnerId);
     const template = await this.prisma.adoptionFormTemplate.findFirst({
       where: { id, partnerId },
       include: { questions: { orderBy: { sortOrder: 'asc' } } },
@@ -70,6 +87,7 @@ export class AdoptionFormsService {
 
   async create(userId: string, dto: CreateFormTemplateDto): Promise<AdoptionFormTemplateWithQuestions> {
     const partnerId = await this.ensurePartner(userId);
+    await this.ensureCommercialPartnerPaid(partnerId);
     const maxVersion = await this.prisma.adoptionFormTemplate.aggregate({
       where: { partnerId },
       _max: { version: true },
@@ -103,6 +121,7 @@ export class AdoptionFormsService {
 
   async update(userId: string, id: string, dto: UpdateFormTemplateDto): Promise<AdoptionFormTemplateWithQuestions> {
     const partnerId = await this.ensurePartner(userId);
+    await this.ensureCommercialPartnerPaid(partnerId);
     const existing = await this.prisma.adoptionFormTemplate.findFirst({
       where: { id, partnerId },
       include: { questions: true },
@@ -179,6 +198,7 @@ export class AdoptionFormsService {
 
   async deactivate(userId: string, id: string): Promise<{ message: string }> {
     const partnerId = await this.ensurePartner(userId);
+    await this.ensureCommercialPartnerPaid(partnerId);
     const existing = await this.prisma.adoptionFormTemplate.findFirst({
       where: { id, partnerId },
     });

@@ -152,10 +152,10 @@ describe('PartnersService', () => {
       for (const call of createCalls) {
         const [userId, type, title, body, metadata] = call as [string, string, string, string, Record<string, unknown>];
         expect(type).toBe(IN_APP_NOTIFICATION_TYPES.PARTNERSHIP_ENDED_ONG);
-        expect(title).toBe('Parceria da ONG encerrada');
+        expect(title).toBe('Parceria encerrada 📋');
         expect(body).toContain(partnerName);
-        expect(body).toContain('encerrada pela nossa equipe');
-        expect(body).toContain('Sua conta continua ativa');
+        expect(body).toContain('foi encerrada');
+        expect(body).toContain('sua conta continua ativa');
         expect(metadata).toEqual({ partnerName });
       }
     });
@@ -185,7 +185,7 @@ describe('PartnersService', () => {
       expect(inAppNotificationsService.create).toHaveBeenCalledWith(
         adminUserId,
         IN_APP_NOTIFICATION_TYPES.PARTNERSHIP_ENDED_ONG,
-        'Parceria da ONG encerrada',
+        'Parceria encerrada 📋',
         expect.stringContaining(partnerName),
         { partnerName },
       );
@@ -247,14 +247,17 @@ describe('PartnersService', () => {
       const result = await service.endPartnership(paidPartnerId);
 
       expect(stripeService.cancelSubscriptionAtPeriodEnd).toHaveBeenCalledWith(subscriptionId);
-      expect(prisma.partner.update).not.toHaveBeenCalled();
+      expect(prisma.partner.update).toHaveBeenCalledWith({
+        where: { id: paidPartnerId },
+        data: { subscriptionCancellationAt: periodEnd, subscriptionCancellationReminderPeriodEnd: null },
+      });
       expect(result.active).toBe(true);
 
       expect(inAppNotificationsService.create).toHaveBeenCalledTimes(1);
       expect(inAppNotificationsService.create).toHaveBeenCalledWith(
         adminUserId,
         IN_APP_NOTIFICATION_TYPES.PARTNERSHIP_ENDED_PAID_SCHEDULED,
-        'Parceria paga encerrada',
+        'Parceria paga encerrada 📋',
         expect.stringContaining(paidPartnerName),
         expect.objectContaining({ partnerName: paidPartnerName, periodEndFormatted: expect.any(String) }),
       );

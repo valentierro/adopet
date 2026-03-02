@@ -215,8 +215,11 @@ export type CreateCheckoutSessionBody = {
   cancelUrl: string;
 };
 
-export async function createPartnerCheckoutSession(body: CreateCheckoutSessionBody): Promise<{ url: string }> {
-  return api.post<{ url: string }>('/me/partner/checkout-session', body);
+export async function createPartnerCheckoutSession(
+  body: CreateCheckoutSessionBody,
+  options?: { token?: string | null },
+): Promise<{ url: string }> {
+  return api.post<{ url: string }>('/me/partner/checkout-session', body, options);
 }
 
 export async function createPartnerBillingPortalSession(returnUrl: string): Promise<{ url: string }> {
@@ -226,6 +229,10 @@ export async function createPartnerBillingPortalSession(returnUrl: string): Prom
 export type PartnerSubscriptionDetails = {
   lastPaymentAt: string | null;
   nextBillingAt: string | null;
+  /** true quando o parceiro cancelou ou a Adopet encerrou e a assinatura segue ativa até o fim do período */
+  cancelAtPeriodEnd: boolean;
+  /** Data em que a parceria será desativada (quando cancelAtPeriodEnd) */
+  cancellationDate: string | null;
 };
 
 export async function getPartnerSubscriptionDetails(): Promise<PartnerSubscriptionDetails> {

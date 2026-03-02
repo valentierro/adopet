@@ -71,6 +71,10 @@ export function useNotificationResponse(router: Router) {
           router.replace('/partner-my-pets');
           return;
         }
+        if (screen === 'partnerSubscription') {
+          router.replace('/partner-subscription');
+          return;
+        }
       };
 
       sub = Notifications.addNotificationResponseReceivedListener((response) => {

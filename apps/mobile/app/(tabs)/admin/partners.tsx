@@ -53,6 +53,7 @@ export default function AdminPartnersScreen() {
     'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'
   >('PENDING');
   const [partnerTypeFilter, setPartnerTypeFilter] = useState<'ALL' | 'ONG' | 'CLINIC' | 'STORE'>('ONG');
+  const [cancellationFilter, setCancellationFilter] = useState<'ALL' | 'CANCELLING'>('ALL');
   const [partnerRecommendationTypeFilter, setPartnerRecommendationTypeFilter] = useState<
     'ALL' | 'ONG' | 'CLINIC' | 'STORE'
   >('ALL');
@@ -467,6 +468,32 @@ export default function AdminPartnersScreen() {
                   </TouchableOpacity>
                 ))}
               </View>
+              <View style={[styles.rowWrap, { marginBottom: spacing.sm, flexWrap: 'wrap', gap: spacing.xs }]}>
+                <Text style={[styles.chipText, { color: colors.textSecondary, marginRight: spacing.xs }]}>Cancelamento:</Text>
+                {(['ALL', 'CANCELLING'] as const).map((t) => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[
+                      styles.chip,
+                      {
+                        backgroundColor: cancellationFilter === t ? (colors.error || '#dc2626') + '20' : colors.surface,
+                        borderWidth: 1,
+                        borderColor: cancellationFilter === t ? (colors.error || '#dc2626') : colors.background,
+                      },
+                    ]}
+                    onPress={() => setCancellationFilter(t)}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: cancellationFilter === t ? (colors.error || '#dc2626') : colors.textSecondary },
+                      ]}
+                    >
+                      {t === 'ALL' ? 'Todos' : 'Em cancelamento'}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
               {pendingPartnerIds.length > 0 && (
                 <View
                   style={[
@@ -505,17 +532,22 @@ export default function AdminPartnersScreen() {
                 </View>
               )}
               {(() => {
-                const filtered =
+                let filtered =
                   partnerTypeFilter === 'ALL'
                     ? partnersList
                     : partnersList.filter((p: PartnerAdminItem) => p.type === partnerTypeFilter);
+                if (cancellationFilter === 'CANCELLING') {
+                  filtered = filtered.filter((p: PartnerAdminItem) => !!p.subscriptionCancellationAt);
+                }
                 if (filtered.length === 0) {
                   return (
                     <View style={[styles.emptyBlock, { backgroundColor: colors.surface }]}>
                       <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
                         {partnersList.length === 0
                           ? 'Nenhum parceiro cadastrado.'
-                          : `Nenhum parceiro do tipo ${getPartnerTypeLabel(partnerTypeFilter)}.`}
+                          : cancellationFilter === 'CANCELLING'
+                            ? 'Nenhum parceiro em cancelamento.'
+                            : `Nenhum parceiro do tipo ${getPartnerTypeLabel(partnerTypeFilter)}.`}
                       </Text>
                     </View>
                   );
@@ -629,6 +661,24 @@ export default function AdminPartnersScreen() {
                               <Ionicons name="star" size={14} color={colors.accent || '#f59e0b'} />
                               <Text style={[styles.resolvedText, { color: colors.accent || '#f59e0b' }]}>
                                 Pago
+                              </Text>
+                            </View>
+                          ) : null}
+                          {p.subscriptionCancellationAt ? (
+                            <View
+                              style={[
+                                styles.resolvedBadge,
+                                {
+                                  backgroundColor: (colors.error || '#dc2626') + '18',
+                                  alignSelf: 'flex-start',
+                                  marginTop: spacing.xs,
+                                  marginRight: spacing.xs,
+                                },
+                              ]}
+                            >
+                              <Ionicons name="calendar-outline" size={14} color={colors.error || '#dc2626'} />
+                              <Text style={[styles.resolvedText, { color: colors.error || '#dc2626' }]}>
+                                Cancelamento em {new Date(p.subscriptionCancellationAt).toLocaleDateString('pt-BR')}
                               </Text>
                             </View>
                           ) : null}

@@ -80,6 +80,8 @@ export default function PartnerSubscriptionScreen() {
   };
   const lastPaymentLabel = formatDate(subscriptionDetails?.lastPaymentAt);
   const nextBillingLabel = formatDate(subscriptionDetails?.nextBillingAt);
+  const cancellationDateLabel = formatDate(subscriptionDetails?.cancellationDate);
+  const isCancellationScheduled = !!subscriptionDetails?.cancelAtPeriodEnd && !!subscriptionDetails?.cancellationDate;
 
   const handlePayOrReactivate = async () => {
     if (!partner) return;
@@ -163,17 +165,40 @@ export default function PartnerSubscriptionScreen() {
                 <Text style={[styles.billingLabel, { color: colors.textSecondary }]}>
                   Último pagamento: <Text style={[styles.billingValue, { color: colors.textPrimary }]}>{lastPaymentLabel ?? '—'}</Text>
                 </Text>
-                <Text style={[styles.billingLabel, { color: colors.textSecondary }]}>
-                  Próximo vencimento: <Text style={[styles.billingValue, { color: colors.textPrimary }]}>{nextBillingLabel ?? '—'}</Text>
-                </Text>
+                {!isCancellationScheduled && (
+                  <Text style={[styles.billingLabel, { color: colors.textSecondary }]}>
+                    Próximo vencimento: <Text style={[styles.billingValue, { color: colors.textPrimary }]}>{nextBillingLabel ?? '—'}</Text>
+                  </Text>
+                )}
+                {isCancellationScheduled && (
+                  <View style={[styles.cancellationAlert, { backgroundColor: (colors.error || '#dc2626') + '18', borderColor: (colors.error || '#dc2626') + '40' }]}>
+                    <Text style={[styles.cancellationAlertTitle, { color: colors.error || '#dc2626' }]}>Cancelamento agendado</Text>
+                    <Text style={[styles.cancellationAlertText, { color: colors.textPrimary }]}>
+                      Sua parceria será desativada em {cancellationDateLabel}. Você mantém acesso até lá.
+                    </Text>
+                  </View>
+                )}
               </View>
             )}
           </View>
           <Text style={[styles.para, { color: colors.textSecondary }]}>
             {partner.isPaidPartner
-              ? 'Sua assinatura está ativa. Use o botão abaixo para gerenciar forma de pagamento ou cancelar quando quiser.'
+              ? isCancellationScheduled
+                ? 'Você mantém acesso até a data acima. Nenhuma nova cobrança será feita. Se mudar de ideia, reative pelo portal antes dessa data.'
+                : 'Sua assinatura está ativa. Use o botão abaixo para gerenciar forma de pagamento ou cancelar quando quiser.'
               : 'Conclua o pagamento para ativar seu portal de parceiro e publicar cupons de desconto para os usuários do app.'}
           </Text>
+          {partner.isPaidPartner && (
+            <View style={[styles.procedureCard, { backgroundColor: colors.surface, borderColor: colors.textSecondary + '30' }]}>
+              <Text style={[styles.procedureTitle, { color: colors.textPrimary }]}>Como funciona o cancelamento</Text>
+              <Text style={[styles.procedureText, { color: colors.textSecondary }]}>
+                1. Toque em <Text style={{ fontWeight: '600' }}>Gerenciar assinatura / cancelar</Text> e abra o portal seguro do Stripe.{'\n\n'}
+                2. No portal, você pode atualizar o cartão ou <Text style={{ fontWeight: '600' }}>cancelar a assinatura</Text>. O cancelamento é ao final do período já pago — não há cobrança extra.{'\n\n'}
+                3. Você continua com acesso ao portal e sua página no app até a data do fim do período. Depois disso, sua página sai do app automaticamente.{'\n\n'}
+                4. Se mudar de ideia antes da data, você pode reativar pelo mesmo portal.
+              </Text>
+            </View>
+          )}
           {!partner.isPaidPartner && (
             <PrimaryButton title={loadingCheckout ? 'Abrindo...' : 'Ir para pagamento'} onPress={handlePayOrReactivate} disabled={loadingCheckout} />
           )}
@@ -230,7 +255,23 @@ const styles = StyleSheet.create({
   },
   billingLabel: { fontSize: 13, marginBottom: 2 },
   billingValue: { fontWeight: '600' },
+  cancellationAlert: {
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  cancellationAlertTitle: { fontSize: 14, fontWeight: '700', marginBottom: 4 },
+  cancellationAlertText: { fontSize: 13, lineHeight: 18 },
   para: { fontSize: 15, lineHeight: 22, marginBottom: spacing.xl },
+  procedureCard: {
+    padding: spacing.lg,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: spacing.xl,
+  },
+  procedureTitle: { fontSize: 16, fontWeight: '700', marginBottom: spacing.sm },
+  procedureText: { fontSize: 14, lineHeight: 22 },
   secondButton: { marginTop: spacing.md },
   historyCard: {
     padding: spacing.lg,

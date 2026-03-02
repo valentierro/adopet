@@ -1013,6 +1013,7 @@ export class PartnersService {
         activatedAt: true,
         rejectionReason: true,
         isPaidPartner: true,
+        subscriptionCancellationAt: true,
         createdAt: true,
         updatedAt: true,
         userId: true,
@@ -1241,12 +1242,17 @@ export class PartnersService {
         throw new BadRequestException(`${msg}. Você pode desativar o parceiro manualmente (Editar → Ativo desligado).`);
       }
       // Parceria paga: não desativar agora; o webhook subscription.deleted fará active=false quando o período acabar.
+      await this.prisma.partner.update({
+        where: { id: partnerId },
+        data: { subscriptionCancellationAt: periodEnd, subscriptionCancellationReminderPeriodEnd: null },
+      });
       const updated = await this.prisma.partner.findUniqueOrThrow({
         where: { id: partnerId },
         select: {
           id: true, type: true, name: true, slug: true, city: true, description: true, website: true, logoUrl: true,
           phone: true, email: true, address: true, documentType: true, document: true, legalName: true, tradeName: true, planId: true,
           active: true, approvedAt: true, activatedAt: true, rejectionReason: true, isPaidPartner: true,
+          subscriptionCancellationAt: true,
           createdAt: true, updatedAt: true, userId: true,
         },
       });
@@ -1417,6 +1423,7 @@ export class PartnersService {
     activatedAt: Date | null;
     rejectionReason: string | null;
     isPaidPartner: boolean;
+    subscriptionCancellationAt?: Date | null;
     createdAt: Date;
     updatedAt: Date;
     userId?: string | null;
@@ -1433,6 +1440,7 @@ export class PartnersService {
       activatedAt: p.activatedAt?.toISOString() ?? undefined,
       canResendConfirmation: !!p.userId && !p.activatedAt,
       rejectionReason: p.rejectionReason ?? undefined,
+      subscriptionCancellationAt: p.subscriptionCancellationAt?.toISOString() ?? undefined,
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString(),
     };

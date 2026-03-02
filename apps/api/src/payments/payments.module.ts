@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { StripeService } from './stripe.service';
 import { PaymentsController } from './payments.controller';
+import { PartnerSubscriptionCleanupScheduler } from './partner-subscription-cleanup.scheduler';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -9,7 +10,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 @Module({
   imports: [ConfigModule, PrismaModule, EmailModule, NotificationsModule],
   controllers: [PaymentsController],
-  providers: [StripeService],
+  providers: [StripeService, PartnerSubscriptionCleanupScheduler],
   exports: [StripeService],
 })
 export class PaymentsModule {}

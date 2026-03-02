@@ -64,6 +64,10 @@ function routeForNotification(router: ReturnType<typeof useRouter>, n: InAppNoti
     case 'ONG_PET_PENDING_APPROVAL':
       router.push('/partner-my-pets');
       break;
+    case 'PARTNERSHIP_PAYMENT_PAST_DUE':
+    case 'PARTNERSHIP_ENDED_PAID_TODAY':
+      router.push('/partner-subscription');
+      break;
     default:
       break;
   }

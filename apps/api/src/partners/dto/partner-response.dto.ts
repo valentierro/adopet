@@ -71,6 +71,9 @@ export class PartnerAdminDto extends PartnerPublicDto {
   @ApiPropertyOptional({ description: 'Motivo da rejeição (quando não aprovado)' })
   rejectionReason?: string | null;
 
+  @ApiPropertyOptional({ description: 'Data em que a assinatura será desativada (cancel_at_period_end); null quando não há cancelamento agendado' })
+  subscriptionCancellationAt?: string | null;
+
   @ApiProperty()
   createdAt: string;
 

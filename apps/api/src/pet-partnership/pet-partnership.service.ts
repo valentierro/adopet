@@ -174,8 +174,24 @@ export class PetPartnershipService {
       .catch((e) => console.warn('[PetPartnershipService] notifyPartnerNewRequest failed', e));
   }
 
+  /** Parceiro comercial sem assinatura ativa não pode gerenciar parcerias. ONG não exige pagamento. */
+  private async ensureCommercialPartnerPaid(partnerId: string): Promise<void> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { id: partnerId },
+      select: { type: true, isPaidPartner: true },
+    });
+    if (!partner) return;
+    const typeNorm = (partner.type ?? 'ONG').toUpperCase();
+    if (typeNorm !== 'ONG' && !partner.isPaidPartner) {
+      throw new ForbiddenException(
+        'Assinatura inativa. Renove para acessar o portal do parceiro e gerenciar solicitações de parceria.',
+      );
+    }
+  }
+
   /** Lista solicitações pendentes do parceiro do usuário. */
   async listPendingRequestsForPartner(partnerId: string): Promise<PetPartnershipRequestItem[]> {
+    await this.ensureCommercialPartnerPaid(partnerId);
     const list = await this.prisma.petPartnership.findMany({
       where: { partnerId, status: 'PENDING' },
       include: {
@@ -219,6 +235,7 @@ export class PetPartnershipService {
     if (!pp || pp.status !== 'PENDING') throw new NotFoundException('Solicitação não encontrada ou já respondida.');
     const partnerId = await this.getPartnerIdForUser(userId);
     if (partnerId !== pp.partnerId) throw new ForbiddenException('Você não pode confirmar esta solicitação.');
+    await this.ensureCommercialPartnerPaid(pp.partnerId);
     const now = new Date();
     await this.prisma.petPartnership.update({
       where: { id: partnershipId },
@@ -257,6 +274,7 @@ export class PetPartnershipService {
     if (!pp || pp.status !== 'PENDING') throw new NotFoundException('Solicitação não encontrada ou já respondida.');
     const partnerId = await this.getPartnerIdForUser(userId);
     if (partnerId !== pp.partnerId) throw new ForbiddenException('Você não pode rejeitar esta solicitação.');
+    await this.ensureCommercialPartnerPaid(pp.partnerId);
     const now = new Date();
     await this.prisma.petPartnership.update({
       where: { id: partnershipId },
@@ -276,6 +294,7 @@ export class PetPartnershipService {
 
   /** Lista parcerias confirmadas do parceiro (anúncios em parceria). */
   async listConfirmedForPartner(partnerId: string): Promise<PetPartnershipItem[]> {
+    await this.ensureCommercialPartnerPaid(partnerId);
     const [list, partner, members] = await Promise.all([
       this.prisma.petPartnership.findMany({
         where: { partnerId, status: 'CONFIRMED' },
@@ -328,6 +347,7 @@ export class PetPartnershipService {
     if (!pp || pp.status !== 'CONFIRMED') throw new NotFoundException('Parceria não encontrada ou já encerrada.');
     const partnerId = await this.getPartnerIdForUser(userId);
     if (partnerId !== pp.partnerId) throw new ForbiddenException('Você não pode encerrar esta parceria.');
+    await this.ensureCommercialPartnerPaid(pp.partnerId);
     const now = new Date();
     await this.prisma.petPartnership.update({
       where: { id: partnershipId },

@@ -79,6 +79,20 @@ Cada recurso é um **módulo NestJS** com:
 - `src/app-bootstrap.ts` — criação do app (main.ts e Vercel)
 - `prisma/schema.prisma` — modelos do banco
 
+### Parceria paga — cancelamento e assinatura
+
+Fluxo de cancelamento para parceiros comerciais (assinatura Stripe):
+
+1. **Parceiro cancela** via portal Stripe (Gerenciar assinatura no app). O Stripe define `cancel_at_period_end` — assinatura termina ao fim do período já pago.
+2. **Admin encerra** via painel: chama `cancelSubscriptionAtPeriodEnd` no Stripe; parceiro mantém acesso até o fim do período.
+3. **Webhook `customer.subscription.updated`**: quando `cancel_at_period_end` vira true, envia e-mail de confirmação e grava `subscriptionCancellationAt` no Partner.
+4. **Webhook `customer.subscription.deleted`**: desativa o parceiro, envia e-mail e notificação in-app.
+5. **Job diário** (`PartnerSubscriptionCleanupScheduler`): roda 1x/dia e:
+   - `runExpiredSubscriptionCleanup`: fallback para webhook; desativa parceiros cuja assinatura expirou (cancel_at_period_end + período passou).
+   - `runCancellationReminderJob`: envia lembrete 3 dias antes do fim para quem está em cancelamento.
+
+Admin: lista de parceiros mostra `subscriptionCancellationAt` e filtro "Em cancelamento". App: tela Assinatura exibe o procedimento de cancelamento e o alerta quando há cancelamento agendado.
+
 ---
 
 ## 4. Mobile (apps/mobile)
