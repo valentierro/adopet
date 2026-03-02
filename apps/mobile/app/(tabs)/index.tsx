@@ -27,7 +27,7 @@ import { useClientConfig } from '../../src/hooks/useClientConfig';
 import { useAuthStore } from '../../src/stores/authStore';
 import { getMe, getTutorStats, getMyAdoptions, getPreferences, getPendingAdoptionConfirmations, getMyNotificationsUnreadCount } from '../../src/api/me';
 import { getAdminStats } from '../../src/api/admin';
-import { getPartnerAnalytics } from '../../src/api/partner';
+import { getPartnerAnalytics, getMyPartnerOngPetsPendingCount } from '../../src/api/partner';
 import { getMinePets } from '../../src/api/pets';
 import { getFavorites } from '../../src/api/favorites';
 import { getConversations } from '../../src/api/conversations';
@@ -296,6 +296,12 @@ export default function DashboardScreen() {
     enabled: isNonOngPartnerEarly,
     staleTime: 60_000,
   });
+  const { data: ongPetsPendingCount = 0 } = useQuery({
+    queryKey: ['me', 'partner', 'ong-pets', 'pending-count'],
+    queryFn: getMyPartnerOngPetsPendingCount,
+    enabled: !!(user?.partner?.type === 'ONG'),
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
     const uid = user?.id;
@@ -318,7 +324,10 @@ export default function DashboardScreen() {
       if (isNonOngPartnerEarly) {
         queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'analytics'] });
       }
-    }, [refetchAll, isAdmin, isNonOngPartnerEarly, queryClient]),
+      if (isOngAdmin) {
+        queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'ong-pets', 'pending-count'] });
+      }
+    }, [refetchAll, isAdmin, isNonOngPartnerEarly, isOngAdmin, queryClient]),
   );
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [showVerifiedInfoModal, setShowVerifiedInfoModal] = useState(false);
@@ -359,6 +368,7 @@ export default function DashboardScreen() {
 
   const isPartnerOrMember =
     !!(user?.partner || (user?.partnerMemberships && user.partnerMemberships.length > 0));
+  const isOngAdmin = !!(user?.partner?.type === 'ONG');
   const isOngUser =
     !!(user?.partner?.type === 'ONG' || (user?.partnerMemberships && user.partnerMemberships.length > 0));
   const profileKey: ProfileKey = isAdmin ? 'admin' : isPartnerOrMember || isOngUser ? 'partner' : 'user';
@@ -763,7 +773,7 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        {isOngUser && (
+        {isOngAdmin && (
           <View style={styles.homeShortcutsRow}>
             <TouchableOpacity
               onPress={() => router.push('/partner-portal')}
@@ -783,6 +793,11 @@ export default function DashboardScreen() {
               <View style={[styles.homeShortcutIconWrap, { backgroundColor: colors.primary + '30' }]}>
                 <Ionicons name="megaphone" size={26} color={colors.primary} />
               </View>
+              {ongPetsPendingCount > 0 && (
+                <View style={[styles.homeShortcutBadge, { backgroundColor: '#D97706' }]}>
+                  <Text style={styles.homeShortcutBadgeText}>{ongPetsPendingCount}</Text>
+                </View>
+              )}
               <Text style={[styles.homeShortcutLabel, { color: colors.textPrimary }]} numberOfLines={1}>Anúncios da ONG</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -1778,8 +1793,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
   },
+  homeShortcutBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  homeShortcutBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   ongShortcutCard: {
     borderWidth: 1,
+    position: 'relative',
   },
   sectionTitleRow: {
     flexDirection: 'row',

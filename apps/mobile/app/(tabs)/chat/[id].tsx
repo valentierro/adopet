@@ -394,7 +394,8 @@ export default function ChatRoomScreen() {
 
   const canAdopterDeclineAdoption = !!conversation?.pet?.canAdopterDecline && !!conversation.petId;
 
-  const canSendAdoptionForm = !!conversation?.pet?.canSendAdoptionForm && !!id && !!otherUserId;
+  const canSendAdoptionForm =
+    !!conversation?.pet?.canSendAdoptionForm && !!id && !!otherUserId;
   const { data: adoptionRequestsForPet } = useQuery({
     queryKey: ['me', 'partner', 'adoption-requests', conversation?.petId],
     queryFn: () => listAdoptionRequests(conversation!.petId!),
@@ -850,7 +851,7 @@ export default function ChatRoomScreen() {
                 )}
               </TouchableOpacity>
             )}
-            {canSendAdoptionForm && (
+            {canSendAdoptionForm && (adoptionFormTemplates?.length ?? 0) >= 1 && (
               <TouchableOpacity
                 style={[
                   styles.confirmAdoptionBtn,
@@ -894,20 +895,18 @@ export default function ChatRoomScreen() {
                   </Text>
                 )}
                 <TouchableOpacity
-                  style={[styles.confirmAdoptionBtn, { backgroundColor: colors.primary }, !canMarkAsAdopterWithoutKyc && { opacity: 0.85 }]}
+                  style={[
+                    styles.confirmAdoptionBtn,
+                    { backgroundColor: colors.primary },
+                    !canMarkAsAdopterWithoutKyc && { opacity: 0.5 },
+                  ]}
                   onPress={() => {
-                  if (!canMarkAsAdopterWithoutKyc) {
-                    Alert.alert(
-                      'Verificação pendente',
-                      `${otherUserName} ainda não finalizou a verificação de identidade (KYC). A pessoa precisa completar em Perfil → Verificação de identidade para que você possa marcá-la como adotante. Parceiros (ONG/estabelecimento) estão isentos.`,
-                    );
-                    return;
-                  }
-                  setAdoptionChecklist({});
-                  setShowAdoptionChecklistModal(true);
-                }}
-                disabled={tutorConfirmAdoptionMutation.isPending}
-              >
+                    if (!canMarkAsAdopterWithoutKyc) return;
+                    setAdoptionChecklist({});
+                    setShowAdoptionChecklistModal(true);
+                  }}
+                  disabled={tutorConfirmAdoptionMutation.isPending || !canMarkAsAdopterWithoutKyc}
+                >
                 {tutorConfirmAdoptionMutation.isPending ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (

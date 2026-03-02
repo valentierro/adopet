@@ -131,6 +131,9 @@ export class PartnerMeDto {
   @ApiPropertyOptional({ description: 'Plano atual: BASIC | DESTAQUE | PREMIUM' })
   planId?: string;
 
+  @ApiPropertyOptional({ description: 'Usuário é o admin da ONG (Partner.userId). Apenas para type=ONG.' })
+  isOngAdmin?: boolean;
+
   @ApiProperty()
   createdAt: string;
 

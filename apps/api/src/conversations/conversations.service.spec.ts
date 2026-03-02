@@ -3,6 +3,8 @@ import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { BlocksService } from '../moderation/blocks.service';
 import { TypingService } from './typing.service';
+import { PetPartnershipService } from '../pet-partnership/pet-partnership.service';
+import { AdoptionFormsService } from '../adoption-forms/adoption-forms.service';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { ConversationsService } from './conversations.service';
 
@@ -43,6 +45,8 @@ describe('ConversationsService', () => {
           },
         },
         { provide: TypingService, useValue: { setTyping: jest.fn() } },
+        { provide: PetPartnershipService, useValue: { getPartnerIdForUser: jest.fn() } },
+        { provide: AdoptionFormsService, useValue: { listTemplates: jest.fn().mockResolvedValue([]) } },
         { provide: InAppNotificationsService, useValue: { create: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();

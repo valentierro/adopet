@@ -68,6 +68,8 @@ export type PartnerMe = {
   isPaidPartner: boolean;
   subscriptionStatus?: string;
   planId?: string;
+  /** true quando o usuário é o admin da ONG (dono do Partner) */
+  isOngAdmin?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -394,5 +396,61 @@ export async function getMyPartnerPetPartnerships(): Promise<PetPartnershipItem[
 
 export async function cancelPetPartnership(partnershipId: string): Promise<{ message: string }> {
   return api.post<{ message: string }>(`/me/partner/pet-partnerships/${partnershipId}/cancel`);
+}
+
+// --- Anúncios da ONG (admin) ---
+
+export type OngPetItem = {
+  id: string;
+  name: string;
+  species: string;
+  age: number;
+  sex: string;
+  size: string;
+  vaccinated: boolean;
+  neutered: boolean;
+  description: string;
+  status: string;
+  publicationStatus?: string;
+  photos?: string[];
+  createdAt: string;
+  verified?: boolean;
+  ownerName?: string;
+  partner?: { id: string; name: string; slug: string; logoUrl?: string; isPaidPartner?: boolean };
+  favoritesCount?: number;
+};
+
+export type OngPetsPage = {
+  items: OngPetItem[];
+  nextCursor: string | null;
+};
+
+export async function getMyPartnerOngPets(opts?: {
+  cursor?: string;
+  species?: 'BOTH' | 'DOG' | 'CAT';
+  publicationStatus?: string;
+}): Promise<OngPetsPage> {
+  const params: Record<string, string> = {};
+  if (opts?.cursor) params.cursor = opts.cursor;
+  if (opts?.species && opts.species !== 'BOTH') params.species = opts.species;
+  if (opts?.publicationStatus) params.publicationStatus = opts.publicationStatus;
+  return api.get<OngPetsPage>('/me/partner/ong-pets', params);
+}
+
+export async function getMyPartnerOngPetsPendingCount(): Promise<number> {
+  const res = await api.get<{ count: number }>('/me/partner/ong-pets/pending-count');
+  return res?.count ?? 0;
+}
+
+export async function approveOngPet(petId: string): Promise<OngPetItem> {
+  return api.post<OngPetItem>(`/me/partner/ong-pets/${petId}/approve`);
+}
+
+export async function rejectOngPet(petId: string, reason?: string): Promise<OngPetItem> {
+  return api.post<OngPetItem>(`/me/partner/ong-pets/${petId}/reject`, reason ? { reason } : {});
+}
+
+export async function deleteOngPet(petId: string): Promise<{ message: string }> {
+  return api.delete<{ message: string }>(`/me/partner/ong-pets/${petId}`);
 }
 

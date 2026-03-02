@@ -15,21 +15,26 @@ import type { FeedResponseDto } from './dto/feed-response.dto';
 import type { PetResponseDto } from '../pets/dto/pet-response.dto';
 
 const DEFAULT_PAGE_SIZE = 20;
-const CANDIDATE_POOL_SIZE = 500;
+/** Tamanho do batch por request; oversampling para compensar filtro de raio (vários são filtrados fora). */
+const FEED_BATCH_SIZE = 200;
 const CURSOR_SEP = '|';
 
-/** Pesos do score de relevância (soma = 1). Match score tem peso relevante para priorizar pets que combinam com o perfil. */
-const WEIGHT_DISTANCE = 0.28;
-const WEIGHT_RECENCY = 0.20;
-const WEIGHT_ENGAGEMENT = 0.12;
+/** Pesos do score de relevância (soma = 1). Recência priorizada; similar reduzido (vazio para novos usuários). */
+const WEIGHT_DISTANCE = 0.26;
+const WEIGHT_RECENCY = 0.28;
+const WEIGHT_ENGAGEMENT = 0.11;
 const WEIGHT_COMPATIBILITY = 0.05;
-const WEIGHT_SIMILAR = 0.10;
+const WEIGHT_SIMILAR = 0.05;
 const WEIGHT_MATCH = 0.25;
 
 /** Decay para recência: exp(-DECAY_RECENCY * days). Quanto maior, mais penaliza pet antigo. */
 const DECAY_RECENCY = 0.08;
 
-/** Boost de score para pets de parceiro pago (destaque no feed). Valor alto para priorizar à frente de pets sem parceria. */
+/** Boost para pets criados nos últimos N dias (destaque para anúncios novos). */
+const RECENCY_BOOST_DAYS = 7;
+const RECENCY_BOOST = 0.06;
+
+/** Boost de score para pets de parceiro pago (destaque no feed). */
 const BOOST_PAID_PARTNER = 0.22;
 
 /** Peso das conversas no trending: cada conversa ativa vale mais que um favorito (engajamento mais forte). */
@@ -151,21 +156,17 @@ export class FeedService {
   }
 
   /**
-   * Codifica cursor de paginação: score e id do último item (para ordenação por relevância).
-   * Score arredondado para evitar problemas de precisão ao decodificar.
+   * Cursor simples: apenas o id do último item (paginação por id no banco).
+   * Aceita formato legado "score|id" para compatibilidade.
    */
-  private encodeCursor(score: number, id: string): string {
-    const s = Math.round(score * 1e10) / 1e10;
-    return `${s}${CURSOR_SEP}${id}`;
+  private encodeCursor(id: string): string {
+    return id;
   }
 
-  private decodeCursor(cursor: string): { score: number; id: string } | null {
+  private decodeCursorToId(cursor: string): string | null {
     const i = cursor.indexOf(CURSOR_SEP);
-    if (i === -1) return null;
-    const score = parseFloat(cursor.slice(0, i));
-    const id = cursor.slice(i + 1);
-    if (Number.isNaN(score) || !id) return null;
-    return { score, id };
+    const id = i >= 0 ? cursor.slice(i + 1) : cursor;
+    return id?.trim() || null;
   }
 
   /**
@@ -317,18 +318,26 @@ export class FeedService {
     const include = {
       media: { orderBy: { sortOrder: 'asc' as const } },
       owner: { select: { city: true } },
-      partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+      partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
     };
 
+    /** totalCount apenas na primeira página (sem cursor); count com mesmos filtros (sem raio). */
+    const totalCountPromise = !cursor
+      ? this.prisma.pet.count({ where })
+      : Promise.resolve(0);
+
+    const cursorId = cursor ? this.decodeCursorToId(cursor) : null;
     const candidates = await this.prisma.pet.findMany({
-      where,
-      take: CANDIDATE_POOL_SIZE,
+      where: cursorId ? { AND: [where, { id: { lt: cursorId } }] } : where,
+      take: FEED_BATCH_SIZE,
       orderBy: { id: 'desc' },
       include,
     });
 
+    const [totalCount] = await Promise.all([totalCountPromise]);
+
     if (candidates.length === 0) {
-      return { items: [], nextCursor: null, totalCount: 0 };
+      return { items: [], nextCursor: null, totalCount };
     }
 
     const petIds = candidates.map((p) => p.id);
@@ -402,12 +411,18 @@ export class FeedService {
         similarToFavorites,
         matchScoreNorm,
       );
-      const hasConfirmedPartners = (confirmedPartnersByPetId.get(pet.id)?.length ?? 0) > 0;
+      const confirmedPartners = confirmedPartnersByPetId.get(pet.id);
+      const hasConfirmedPartners = (confirmedPartners?.length ?? 0) > 0;
+      const hasPartnerFromPet = !!pet.partnerId && !!pet.partner;
+      const hasPartner = hasConfirmedPartners || hasPartnerFromPet;
       const isPaidPartner =
-        hasConfirmedPartners && (confirmedPartnersByPetId.get(pet.id)?.some((p) => p.isPaidPartner) ?? false);
-      const hasPartner = hasConfirmedPartners;
+        (hasConfirmedPartners && (confirmedPartners?.some((p) => p.isPaidPartner) ?? false)) ||
+        (hasPartnerFromPet && (pet.partner as { isPaidPartner?: boolean })?.isPaidPartner === true);
       if (isPaidPartner) {
         score = Math.min(1, score + BOOST_PAID_PARTNER);
+      }
+      if (daysSinceCreated <= RECENCY_BOOST_DAYS) {
+        score = Math.min(1, score + RECENCY_BOOST);
       }
       return { pet, score, distanceKm, matchScoreNorm: matchScoreNorm ?? 0, isPaidPartner, hasPartner };
     });
@@ -456,44 +471,11 @@ export class FeedService {
       });
     }
 
-    let startIndex = 0;
-    if (cursor) {
-      const decoded = this.decodeCursor(cursor);
-      if (decoded) {
-        const idx = withinRadius.findIndex((s) => s.pet.id === decoded.id);
-        if (idx >= 0) {
-          startIndex = idx + 1;
-        } else if (querySortBy === 'trending') {
-          const lastScore = (decoded as { score: number }).score;
-          const idxAfter = withinRadius.findIndex(
-            (s) =>
-              ((s as { trendingScore?: number }).trendingScore ?? 0) < lastScore ||
-              (((s as { trendingScore?: number }).trendingScore ?? 0) === lastScore && s.pet.id <= decoded.id),
-          );
-          startIndex = idxAfter === -1 ? withinRadius.length : idxAfter;
-        } else {
-          const idxAfter = withinRadius.findIndex(
-            (s) =>
-              s.score < decoded.score ||
-              (s.score === decoded.score && s.pet.id <= decoded.id),
-          );
-          startIndex = idxAfter === -1 ? withinRadius.length : idxAfter;
-        }
-      }
-    }
-
-    const slice = withinRadius.slice(startIndex, startIndex + pageSize + 1);
-    const hasMore = slice.length > pageSize;
-    const items = slice.slice(0, pageSize);
+    const items = withinRadius.slice(0, pageSize);
     const lastItem = items[items.length - 1];
-    const cursorScore =
-      querySortBy === 'trending' && lastItem
-        ? (lastItem as { trendingScore?: number }).trendingScore ?? lastItem.score
-        : lastItem?.score;
+    const hasMore = withinRadius.length > pageSize;
     const nextCursor =
-      hasMore && items.length > 0 && cursorScore != null
-        ? this.encodeCursor(cursorScore, lastItem!.pet.id)
-        : null;
+      hasMore && lastItem ? this.encodeCursor(lastItem.pet.id) : null;
 
     const itemPetIds = items.map(({ pet }) => pet.id);
     const ownerIds = [...new Set(items.map(({ pet }) => pet.ownerId).filter(Boolean))];
@@ -527,6 +509,18 @@ export class FeedService {
             isPaidPartner: p.isPaidPartner,
             type: p.type,
           }));
+        } else if (pet.partner) {
+          const p = pet.partner as { id: string; name: string; slug: string; logoUrl?: string | null; isPaidPartner?: boolean; type?: string };
+          const typeNorm = (p.type ?? 'ONG').toUpperCase();
+          dto.partner = {
+            id: p.id,
+            name: p.name,
+            slug: p.slug,
+            logoUrl: p.logoUrl ?? undefined,
+            isPaidPartner: p.isPaidPartner ?? false,
+            type: typeNorm,
+          };
+          dto.partners = [dto.partner];
         }
         if (adopterProfile) {
           const profileForMatch = { ...adopterProfile, sizePref: prefs?.sizePref ?? undefined, speciesPref: prefs?.species ?? undefined, sexPref: prefs?.sexPref ?? undefined } as AdopterProfile;
@@ -538,7 +532,7 @@ export class FeedService {
         return dto;
       }),
       nextCursor,
-      totalCount: withinRadius.length,
+      totalCount,
     };
   }
 
@@ -590,7 +584,7 @@ export class FeedService {
     const include = {
       media: { orderBy: { sortOrder: 'asc' as const } },
       owner: { select: { city: true } },
-      partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+      partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
     };
     const pets = await this.prisma.pet.findMany({
       where,
@@ -633,6 +627,18 @@ export class FeedService {
             isPaidPartner: p.isPaidPartner,
             type: p.type,
           }));
+        } else if (pet.partner) {
+          const p = pet.partner as { id: string; name: string; slug: string; logoUrl?: string | null; isPaidPartner?: boolean; type?: string };
+          const typeNorm = (p.type ?? 'ONG').toUpperCase();
+          dto.partner = {
+            id: p.id,
+            name: p.name,
+            slug: p.slug,
+            logoUrl: p.logoUrl ?? undefined,
+            isPaidPartner: p.isPaidPartner ?? false,
+            type: typeNorm,
+          };
+          dto.partners = [dto.partner];
         }
         if (adopterProfile) {
           const profileForMatch = { ...adopterProfile, sizePref: prefs?.sizePref ?? undefined, speciesPref: prefs?.species ?? undefined, sexPref: prefs?.sexPref ?? undefined } as AdopterProfile;
@@ -900,7 +906,7 @@ export class FeedService {
         ...(excludeOwnerIds.length > 0 ? { ownerId: { notIn: excludeOwnerIds } } : {}),
       },
       select: { id: true, latitude: true, longitude: true },
-      take: 500,
+      take: 2000,
     });
     const idsInRadius: string[] = [];
     for (const p of candidates) {

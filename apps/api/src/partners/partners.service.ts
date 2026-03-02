@@ -91,12 +91,12 @@ export class PartnersService {
     const partnerAsAdmin = await this.prisma.partner.findUnique({
       where: { userId },
     });
-    if (partnerAsAdmin) return this.toMeDto(partnerAsAdmin);
+    if (partnerAsAdmin) return this.toMeDto(partnerAsAdmin, userId);
     const membership = await this.prisma.partnerMember.findFirst({
       where: { userId },
       include: { partner: true },
     });
-    return membership?.partner ? this.toMeDto(membership.partner) : null;
+    return membership?.partner ? this.toMeDto(membership.partner, userId) : null;
   }
 
   private ensurePaidPartner<T extends { isPaidPartner: boolean }>(partner: T | null): asserts partner is T {
@@ -326,7 +326,7 @@ export class PartnersService {
       where: { userId },
       data,
     });
-    return this.toMeDto(updated);
+    return this.toMeDto(updated, userId);
   }
 
   /** Lista parceiros ativos e aprovados (público – app). Parceiros pagos aparecem mesmo sem approvedAt. q = busca por nome ou slug (autocomplete). */
@@ -1504,6 +1504,7 @@ export class PartnersService {
   private toMeDto(p: {
     id: string;
     type: string;
+    userId: string | null;
     name: string;
     slug: string;
     city: string | null;
@@ -1521,7 +1522,7 @@ export class PartnersService {
     planId: string | null;
     createdAt: Date;
     updatedAt: Date;
-  }): PartnerMeDto {
+  }, currentUserId: string): PartnerMeDto {
     let galleryUrls: string[] | undefined;
     if (p.galleryUrls) {
       try {
@@ -1531,6 +1532,7 @@ export class PartnersService {
         galleryUrls = undefined;
       }
     }
+    const isOngAdmin = p.type === 'ONG' && p.userId === currentUserId;
     return {
       id: p.id,
       type: p.type,
@@ -1549,6 +1551,7 @@ export class PartnersService {
       isPaidPartner: p.isPaidPartner,
       subscriptionStatus: p.subscriptionStatus ?? undefined,
       planId: p.planId ?? undefined,
+      isOngAdmin,
       createdAt: p.createdAt.toISOString(),
       updatedAt: p.updatedAt.toISOString(),
     };

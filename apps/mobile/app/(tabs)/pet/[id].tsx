@@ -30,6 +30,7 @@ import { getMe } from '../../../src/api/me';
 import { createConversation } from '../../../src/api/conversations';
 import { createReport } from '../../../src/api/reports';
 import { setPetPublication } from '../../../src/api/admin';
+import { getMyPartner, approveOngPet, rejectOngPet } from '../../../src/api/partner';
 import { getVerificationStatus } from '../../../src/api/verification';
 import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
 import { getMatchScoreColor } from '../../../src/utils/matchScoreColor';
@@ -234,6 +235,17 @@ export default function PetDetailsScreen() {
   const isOwner = !!userId && !!pet && userId === pet.ownerId;
   const isAdmin = user?.isAdmin === true;
   const isPendingPublication = pet?.publicationStatus === 'PENDING';
+  const isPendingOngApproval = pet?.publicationStatus === 'PENDING_ONG_APPROVAL';
+  const { data: partner } = useQuery({
+    queryKey: ['me', 'partner'],
+    queryFn: getMyPartner,
+    enabled: !!userId && !!pet?.partner?.id,
+  });
+  const isOngAdminOfPet =
+    isPendingOngApproval &&
+    !!partner?.isOngAdmin &&
+    partner?.type === 'ONG' &&
+    partner?.id === (pet as { partner?: { id?: string } })?.partner?.id;
   const setPublicationMutation = useMutation({
     mutationFn: (status: 'APPROVED' | 'REJECTED') => setPetPublication(id!, status),
     onSuccess: (_, status) => {
@@ -249,6 +261,32 @@ export default function PetDetailsScreen() {
     },
     onError: (e: unknown) => {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível atualizar o anúncio.'));
+    },
+  });
+  const approveOngMutation = useMutation({
+    mutationFn: () => approveOngPet(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pet', id] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'ong-pets'] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'ong-pets', 'pending-count'] });
+      Alert.alert('Sucesso', 'Anúncio aprovado com sucesso. O pet já aparece no feed.', [{ text: 'OK', onPress: () => router.back() }]);
+    },
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível aprovar o anúncio.'));
+    },
+  });
+  const rejectOngMutation = useMutation({
+    mutationFn: (reason: string) => rejectOngPet(id!, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pet', id] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'ong-pets'] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'ong-pets', 'pending-count'] });
+      setShowRejectOngModal(false);
+      setRejectOngReason('');
+      Alert.alert('Sucesso', 'Anúncio rejeitado. O membro será notificado com o motivo informado.', [{ text: 'OK', onPress: () => router.back() }]);
+    },
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível rejeitar o anúncio.'));
     },
   });
   const { data: similarPets = [] } = useQuery({
@@ -314,6 +352,8 @@ export default function PetDetailsScreen() {
 
   const [tutorModalVisible, setTutorModalVisible] = useState(false);
   const [showCompleteProfileModal, setShowCompleteProfileModal] = useState(false);
+  const [showRejectOngModal, setShowRejectOngModal] = useState(false);
+  const [rejectOngReason, setRejectOngReason] = useState('');
   const [showMatchScoreModal, setShowMatchScoreModal] = useState(false);
   const [matchSectionExpanded, setMatchSectionExpanded] = useState(true);
   const [mismatchSectionExpanded, setMismatchSectionExpanded] = useState(true);
@@ -551,7 +591,7 @@ export default function PetDetailsScreen() {
           </Text>
         </View>
       )}
-      {(pet.partner || (pet as { partners?: Array<{ id: string; name: string }> }).partners?.length) && (
+      {(pet.partner || (pet as { partners?: Array<{ id: string; name: string; logoUrl?: string }> }).partners?.length) && (
         <TouchableOpacity
           style={[styles.partnerBanner, { backgroundColor: '#f9731618', borderColor: '#f9731650' }]}
           onPress={() => {
@@ -564,7 +604,18 @@ export default function PetDetailsScreen() {
           }}
           activeOpacity={0.8}
         >
-          <Ionicons name={(pet.partner as { isPaidPartner?: boolean })?.isPaidPartner ? 'star' : 'heart'} size={18} color="#ea580c" />
+          {(() => {
+            const partnerData = pet.partner ?? (pet as { partners?: Array<{ logoUrl?: string; isPaidPartner?: boolean }> }).partners?.[0];
+            const logoUrl = partnerData?.logoUrl;
+            if (logoUrl) {
+              return (
+                <View style={styles.partnerBannerLogoWrap}>
+                  <Image source={{ uri: logoUrl }} style={styles.partnerBannerLogo} contentFit="contain" />
+                </View>
+              );
+            }
+            return <Ionicons name={(pet.partner as { isPaidPartner?: boolean })?.isPaidPartner ? 'star' : 'heart'} size={18} color="#ea580c" />;
+          })()}
           <View style={styles.partnerBannerTextWrap}>
             <Text style={[styles.partnerBannerLabel, { color: colors.textSecondary }]}>Anúncio em parceria</Text>
             <Text style={[styles.partnerBannerText, { color: colors.textPrimary }]}>
@@ -842,7 +893,7 @@ export default function PetDetailsScreen() {
                       source={{ uri: photo ?? 'https://picsum.photos/seed/pet/200/200' }}
                       style={styles.similarThumb}
                     />
-                    {typeof item.matchScore === 'number' && (
+                    {userId && typeof item.matchScore === 'number' && (
                       <View
                         style={[
                           styles.similarScoreBadge,
@@ -874,7 +925,9 @@ export default function PetDetailsScreen() {
               <View style={[styles.ownerCard, { backgroundColor: colors.surface }]}>
                 <View style={styles.ownerRow}>
                   {pet.owner.avatarUrl ? (
-                    <Image source={{ uri: pet.owner.avatarUrl }} style={styles.ownerAvatar} />
+                    <TouchableOpacity onPress={() => setFullScreenPhoto(pet.owner!.avatarUrl!)} activeOpacity={0.9} accessibilityLabel="Ver foto do tutor em tamanho real">
+                      <Image source={{ uri: pet.owner.avatarUrl }} style={styles.ownerAvatar} />
+                    </TouchableOpacity>
                   ) : (
                     <View style={[styles.ownerAvatarPlaceholder, { backgroundColor: colors.background }]}>
                       <Text style={[styles.ownerAvatarText, { color: colors.textSecondary }]}>
@@ -922,7 +975,9 @@ export default function PetDetailsScreen() {
             >
               <View style={styles.ownerRow}>
                 {pet.owner.avatarUrl ? (
-                  <Image source={{ uri: pet.owner.avatarUrl }} style={styles.ownerAvatar} />
+                  <TouchableOpacity onPress={() => setFullScreenPhoto(pet.owner!.avatarUrl!)} activeOpacity={0.9} accessibilityLabel="Ver foto do tutor em tamanho real">
+                    <Image source={{ uri: pet.owner.avatarUrl }} style={styles.ownerAvatar} />
+                  </TouchableOpacity>
                 ) : (
                   <View style={[styles.ownerAvatarPlaceholder, { backgroundColor: colors.background }]}>
                     <Text style={[styles.ownerAvatarText, { color: colors.textSecondary }]}>
@@ -957,7 +1012,9 @@ export default function PetDetailsScreen() {
               <Pressable style={[styles.modalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
                 <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Perfil do tutor</Text>
                 {pet.owner.avatarUrl ? (
-                  <Image source={{ uri: pet.owner.avatarUrl }} style={styles.modalAvatar} />
+                  <TouchableOpacity onPress={() => setFullScreenPhoto(pet.owner!.avatarUrl!)} activeOpacity={0.9} accessibilityLabel="Ver foto do tutor em tamanho real">
+                    <Image source={{ uri: pet.owner.avatarUrl }} style={styles.modalAvatar} />
+                  </TouchableOpacity>
                 ) : (
                   <View style={[styles.modalAvatarPlaceholder, { backgroundColor: colors.background }]}>
                     <Text style={[styles.modalAvatarText, { color: colors.textSecondary }]}>
@@ -1054,6 +1111,30 @@ export default function PetDetailsScreen() {
               </Text>
             </View>
           )
+        ) : isOngAdminOfPet ? (
+          <>
+            <PrimaryButton
+              title={approveOngMutation.isPending ? 'Aprovando...' : `Aprovar anúncio de ${pet.owner?.name ?? 'membro'}`}
+              onPress={() => approveOngMutation.mutate()}
+              disabled={approveOngMutation.isPending}
+            />
+            <SecondaryButton
+              title={rejectOngMutation.isPending ? 'Rejeitando...' : 'Rejeitar anúncio'}
+              onPress={() => {
+                setRejectOngReason('');
+                setShowRejectOngModal(true);
+              }}
+              disabled={rejectOngMutation.isPending}
+              style={[styles.pendingPublicationBtn, { borderColor: colors.error || '#DC2626' }]}
+            />
+          </>
+        ) : isPendingOngApproval ? (
+          <View style={[styles.pendingPublicationInfo, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons name="time-outline" size={24} color={colors.textSecondary} />
+            <Text style={[styles.pendingPublicationInfoText, { color: colors.textSecondary }]}>
+              Este anúncio está aguardando aprovação da ONG e ainda não foi publicado.
+            </Text>
+          </View>
         ) : pet.status === 'ADOPTED' ? (
           <TouchableOpacity
             style={[styles.adoptedCta, { backgroundColor: '#d97706' }]}
@@ -1099,7 +1180,7 @@ export default function PetDetailsScreen() {
             disabled={addFavMutation.isPending}
           />
         )}
-        {!isPendingPublication && pet.status !== 'ADOPTED' && (
+        {!isPendingPublication && !isPendingOngApproval && pet.status !== 'ADOPTED' && (
           <>
             <TouchableOpacity onPress={handleCompartilhar} style={styles.shareLink}>
               <Ionicons name="share-outline" size={20} color={colors.primary} />
@@ -1162,6 +1243,44 @@ export default function PetDetailsScreen() {
                 title={reportMutation.isPending ? 'Enviando...' : 'Enviar'}
                 onPress={handleEnviarDenuncia}
                 disabled={reportMutation.isPending}
+              />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={showRejectOngModal} transparent animationType="fade">
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => !rejectOngMutation.isPending && setShowRejectOngModal(false)}
+        >
+          <Pressable style={[styles.modalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Rejeitar anúncio</Text>
+            <Text style={[styles.rejectOngModalSubtitle, { color: colors.textSecondary }]}>
+              Informe o motivo da rejeição para {pet.owner?.name ?? 'o membro'}. O membro será notificado.
+            </Text>
+            <TextInput
+              style={[styles.reportModalInput, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.background }]}
+              value={rejectOngReason}
+              onChangeText={setRejectOngReason}
+              placeholder="Motivo da rejeição (obrigatório)"
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              numberOfLines={3}
+              maxLength={500}
+            />
+            <View style={styles.modalActions}>
+              <SecondaryButton
+                title="Cancelar"
+                onPress={() => !rejectOngMutation.isPending && setShowRejectOngModal(false)}
+              />
+              <PrimaryButton
+                title={rejectOngMutation.isPending ? 'Rejeitando...' : 'Rejeitar'}
+                onPress={() => {
+                  const reason = rejectOngReason.trim();
+                  if (reason) rejectOngMutation.mutate(reason);
+                }}
+                disabled={!rejectOngReason.trim() || rejectOngMutation.isPending}
               />
             </View>
           </Pressable>
@@ -1249,6 +1368,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     marginBottom: spacing.md,
+  },
+  partnerBannerLogoWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  partnerBannerLogo: {
+    width: 28,
+    height: 28,
   },
   partnerBannerTextWrap: { flex: 1, minWidth: 0 },
   partnerBannerLabel: { fontSize: 12, marginBottom: 2 },
@@ -1570,6 +1702,10 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     minHeight: 80,
     textAlignVertical: 'top',
+    marginBottom: spacing.md,
+  },
+  rejectOngModalSubtitle: {
+    fontSize: 14,
     marginBottom: spacing.md,
   },
   modalAvatar: {

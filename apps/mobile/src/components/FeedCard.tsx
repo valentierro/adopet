@@ -120,7 +120,7 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
             <Text style={styles.galleryBadgeText}>{photos.length}</Text>
           </View>
         )}
-        {wrapInTouchable && pet.partner != null && typeof (pet.partner as { isPaidPartner?: boolean }).isPaidPartner === 'boolean' && (
+        {wrapInTouchable && pet.partner != null && (
           <View
             style={[
               styles.partnerBadgeTop,
@@ -131,11 +131,15 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
               },
             ]}
           >
-            <Ionicons
-              name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'}
-              size={14}
-              color="#fff"
-            />
+            {(pet.partner as { logoUrl?: string }).logoUrl ? (
+              <Image source={{ uri: (pet.partner as { logoUrl: string }).logoUrl }} style={styles.partnerBadgeTopLogo} contentFit="contain" />
+            ) : (
+              <Ionicons
+                name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'}
+                size={14}
+                color="#fff"
+              />
+            )}
             <Text style={styles.partnerBadgeTopText}>
               {(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'Patrocinado' : 'Parceiro'}
             </Text>
@@ -176,7 +180,11 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
           </View>
           {pet.partner ? (
             <View style={[styles.partnerBadge, { backgroundColor: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'rgba(251, 191, 36, 0.5)' : 'rgba(217, 119, 6, 0.92)' }]}>
-              <Ionicons name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={12} color="#fff" />
+              {(pet.partner as { logoUrl?: string }).logoUrl ? (
+                <Image source={{ uri: (pet.partner as { logoUrl: string }).logoUrl }} style={styles.partnerBadgeLogo} contentFit="contain" />
+              ) : (
+                <Ionicons name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={12} color="#fff" />
+              )}
               <Text style={styles.partnerBadgeText}>{(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'Patrocinado' : 'Parceiro'}</Text>
             </View>
           ) : null}
@@ -320,6 +328,16 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 13,
     fontWeight: '700',
+  },
+  partnerBadgeLogo: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  partnerBadgeTopLogo: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
   },
   partnerBadgeTop: {
     flexDirection: 'row',

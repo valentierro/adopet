@@ -134,6 +134,70 @@ function seedPartnerLogoUrl(slug: string): string {
   return `https://picsum.photos/seed/partner-${safe || 'logo'}/200/200`;
 }
 
+const SEED_PETS_PER_PARTNER = 5;
+
+/** Cria 5 pets por parceiro (apenas parceiros com userId). */
+async function seedPetsForPartners() {
+  const partners = await prisma.partner.findMany({
+    where: {
+      userId: { not: null },
+      active: true,
+      approvedAt: { not: null },
+    },
+    select: { id: true, userId: true, name: true, city: true, latitude: true, longitude: true },
+  });
+  if (partners.length === 0) {
+    console.log('Nenhum parceiro com usuário na base. Pulando seed de pets por parceiro.');
+    return;
+  }
+  console.log(`Encontrados ${partners.length} parceiro(s). Criando ${SEED_PETS_PER_PARTNER} pets para cada...`);
+  for (const partner of partners) {
+    if (!partner.userId) continue;
+    const baseCoords = partner.latitude != null && partner.longitude != null
+      ? { lat: partner.latitude, lng: partner.longitude }
+      : pickCidadePE();
+    const usedNames = new Set<string>();
+    for (let i = 0; i < SEED_PETS_PER_PARTNER; i++) {
+      const isDog = i < 3; // 3 cachorros, 2 gatos
+      const names = isDog ? DOG_NAMES : CAT_NAMES;
+      const breeds = isDog ? DOG_BREEDS : CAT_BREEDS;
+      const descriptions = isDog ? DESCRIPTIONS_DOG : DESCRIPTIONS_CAT;
+      let name = pick(names);
+      while (usedNames.has(name)) name = pick(names);
+      usedNames.add(name);
+      const lat = randomCoord(baseCoords.lat, CIDADE_DELTA);
+      const lng = randomCoord(baseCoords.lng, CIDADE_DELTA);
+      await prisma.pet.create({
+        data: {
+          name,
+          species: isDog ? 'DOG' : 'CAT',
+          breed: pick(breeds),
+          age: randomAge(),
+          sex: Math.random() < 0.5 ? 'male' : 'female',
+          size: pick(SIZES),
+          vaccinated: Math.random() < 0.8,
+          neutered: Math.random() < 0.7,
+          description: pick(descriptions),
+          adoptionReason: pick(REASONS) ?? undefined,
+          status: 'AVAILABLE',
+          publicationStatus: 'APPROVED',
+          latitude: lat,
+          longitude: lng,
+          ownerId: partner.userId,
+          partnerId: partner.id,
+          media: {
+            create: [
+              { url: seedPhotoUrl(isDog ? 'dogs' : 'cats', 500 + partners.indexOf(partner) * 10 + i), sortOrder: 0, isPrimary: true },
+            ],
+          },
+        },
+      });
+      console.log(`  [${partner.name}] ${name} (${isDog ? 'cachorro' : 'gato'})`);
+    }
+  }
+  console.log(`Seed de pets por parceiro concluído: ${partners.length * SEED_PETS_PER_PARTNER} pet(s).`);
+}
+
 /** Atribui logo placeholder a todos os parceiros sem logoUrl. */
 async function assignPlaceholderLogosToPartners() {
   const partnersWithoutLogo = await prisma.partner.findMany({
@@ -1455,6 +1519,9 @@ async function main() {
 
   // Logos de parceiros sem logo
   await assignPlaceholderLogosToPartners();
+
+  // 5 pets por parceiro (apenas parceiros com usuário vinculado)
+  await seedPetsForPartners();
 
   // Preferências de pets e perfis de usuários para testar match score
   await seedPetPreferencesForMatch();

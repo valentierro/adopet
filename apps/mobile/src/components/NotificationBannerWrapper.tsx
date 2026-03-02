@@ -61,6 +61,9 @@ function routeForNotification(router: ReturnType<typeof useRouter>, n: InAppNoti
         router.push(`/pet/${meta.petId}`);
       }
       break;
+    case 'ONG_PET_PENDING_APPROVAL':
+      router.push('/partner-my-pets');
+      break;
     default:
       break;
   }

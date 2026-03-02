@@ -8,10 +8,11 @@ import { PartnersModule } from '../partners/partners.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PetPartnershipModule } from '../pet-partnership/pet-partnership.module';
+import { PetsModule } from '../pets/pets.module';
 import { SatisfactionModule } from '../satisfaction/satisfaction.module';
 
 @Module({
-  imports: [PrismaModule, forwardRef(() => VerificationModule), forwardRef(() => PartnersModule), PaymentsModule, NotificationsModule, PetPartnershipModule, SatisfactionModule],
+  imports: [PrismaModule, forwardRef(() => VerificationModule), forwardRef(() => PartnersModule), PaymentsModule, NotificationsModule, PetPartnershipModule, forwardRef(() => PetsModule), SatisfactionModule],
   controllers: [MeController],
   providers: [MeService, TutorStatsService],
   exports: [MeService, TutorStatsService],

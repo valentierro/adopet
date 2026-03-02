@@ -6,9 +6,10 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { ModerationModule } from '../moderation/moderation.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PetPartnershipModule } from '../pet-partnership/pet-partnership.module';
+import { AdoptionFormsModule } from '../adoption-forms/adoption-forms.module';
 
 @Module({
-  imports: [PrismaModule, ModerationModule, NotificationsModule, PetPartnershipModule],
+  imports: [PrismaModule, ModerationModule, NotificationsModule, PetPartnershipModule, AdoptionFormsModule],
   controllers: [ConversationsController],
   providers: [ConversationsService, TypingService],
   exports: [ConversationsService],

@@ -191,11 +191,19 @@ export default function FeedGridScreen() {
                       },
                     ]}
                   >
-                    <Ionicons
-                      name={partner.isPaidPartner ? 'star' : 'heart'}
-                      size={12}
-                      color="#fff"
-                    />
+                    {(partner as { logoUrl?: string }).logoUrl ? (
+                      <ExpoImage
+                        source={{ uri: (partner as { logoUrl: string }).logoUrl }}
+                        style={styles.partnerLogo}
+                        contentFit="contain"
+                      />
+                    ) : (
+                      <Ionicons
+                        name={partner.isPaidPartner ? 'star' : 'heart'}
+                        size={12}
+                        color="#fff"
+                      />
+                    )}
                   </View>
                 )}
               </View>
@@ -351,6 +359,11 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  partnerLogo: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
   cardInfo: { paddingVertical: spacing.sm, paddingHorizontal: spacing.xs },
   cardName: { fontSize: 14, fontWeight: '700' },

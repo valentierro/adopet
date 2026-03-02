@@ -67,6 +67,10 @@ export function useNotificationResponse(router: Router) {
           router.replace('/(tabs)/admin/partners');
           return;
         }
+        if (screen === 'partnerMyPets') {
+          router.replace('/partner-my-pets');
+          return;
+        }
       };
 
       sub = Notifications.addNotificationResponseReceivedListener((response) => {

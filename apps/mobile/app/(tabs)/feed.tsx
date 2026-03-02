@@ -158,17 +158,19 @@ export default function FeedScreen() {
   const [changingFilter, setChangingFilter] = useState(false);
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   type ViewMode = 'swipe' | 'grid';
+  type SortMode = 'relevance' | 'trending';
   const isGuest = !userId;
   const params = useLocalSearchParams<{ trending?: string }>();
-  const sortByTrending = params.trending === '1';
+  const [sortMode, setSortModeState] = useState<SortMode>(() => (params.trending === '1' ? 'trending' : 'relevance'));
   const appliedTrendingRef = useRef(false);
   const [viewMode, setViewModeState] = useState<ViewMode>('swipe');
   useEffect(() => {
-    if (sortByTrending && !appliedTrendingRef.current) {
+    if (params.trending === '1' && !appliedTrendingRef.current) {
       appliedTrendingRef.current = true;
+      setSortModeState('trending');
       setViewModeState('grid');
     }
-  }, [sortByTrending]);
+  }, [params.trending]);
   const effectiveViewMode: ViewMode = isGuest ? 'grid' : viewMode;
   const [matchTooltipMessage, setMatchTooltipMessage] = useState<string | null>(null);
   const matchTooltipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -215,6 +217,13 @@ export default function FeedScreen() {
 
   const setViewMode = useCallback((mode: ViewMode) => {
     setViewModeState(mode);
+  }, []);
+
+  const setSortMode = useCallback((mode: SortMode) => {
+    setSortModeState(mode);
+    setCursor(null);
+    setAccumulatedItems(null);
+    setChangingFilter(true);
   }, []);
 
   useEffect(() => {
@@ -282,8 +291,9 @@ export default function FeedScreen() {
   }, [debouncedNameSearch]);
 
   const effectiveRadiusKm = userId ? (prefs?.radiusKm ?? 300) : guestRadiusKm;
+  const sortByTrending = sortMode === 'trending';
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
-    queryKey: [...FEED_QUERY_KEY, cursor, effectiveRadiusKm, speciesFilter, partnerFilter, userCoords?.lat, userCoords?.lng, triageFilters, sortByTrending, debouncedNameSearch],
+    queryKey: [...FEED_QUERY_KEY, cursor, effectiveRadiusKm, speciesFilter, partnerFilter, userCoords?.lat, userCoords?.lng, triageFilters, sortMode, debouncedNameSearch],
     queryFn: () =>
       fetchFeed({
         ...(userCoords && { lat: userCoords.lat, lng: userCoords.lng }),
@@ -924,6 +934,36 @@ export default function FeedScreen() {
       <Text style={[styles.feedDisclaimer, { color: colors.textSecondary }]} numberOfLines={1}>
         Adoção responsável, voluntária e sem custos
       </Text>
+      {!isGuest && (
+        <View style={[styles.chipsRow, styles.chipsRowFirst, { paddingHorizontal: spacing.md, paddingBottom: spacing.sm, paddingTop: spacing.xs }]}>
+          <TouchableOpacity
+            style={[
+              styles.chip,
+              { borderColor: colors.textSecondary },
+              sortMode === 'relevance' && { backgroundColor: colors.primary, borderColor: colors.primary },
+            ]}
+            onPress={() => setSortMode('relevance')}
+            accessibilityLabel="Ordenar para você"
+          >
+            <Text style={[styles.chipText, { color: sortMode === 'relevance' ? '#fff' : colors.textSecondary }]}>
+              Para você
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.chip,
+              { borderColor: colors.textSecondary },
+              sortMode === 'trending' && { backgroundColor: colors.primary, borderColor: colors.primary },
+            ]}
+            onPress={() => setSortMode('trending')}
+            accessibilityLabel="Ordenar em alta"
+          >
+            <Text style={[styles.chipText, { color: sortMode === 'trending' ? '#fff' : colors.textSecondary }]}>
+              Em alta
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {effectiveViewMode === 'grid' ? (
         <View style={[styles.filtersWrap, { borderBottomColor: colors.surface }]}>
           <TouchableOpacity
@@ -1575,7 +1615,11 @@ export default function FeedScreen() {
                             accessibilityLabel={partner.isPaidPartner ? 'Patrocinado' : 'Parceiro'}
                             accessibilityRole="image"
                           >
-                            <Ionicons name={partner.isPaidPartner ? 'star' : 'heart'} size={12} color="#fff" />
+                            {partner.logoUrl ? (
+                              <ExpoImage source={{ uri: partner.logoUrl }} style={styles.gridPartnerLogo} contentFit="contain" />
+                            ) : (
+                              <Ionicons name={partner.isPaidPartner ? 'star' : 'heart'} size={12} color="#fff" />
+                            )}
                           </Pressable>
                         )}
                         {item.matchScore != null && (
@@ -1985,6 +2029,11 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  gridPartnerLogo: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
   viewedBadgeWrap: {
     position: 'absolute',

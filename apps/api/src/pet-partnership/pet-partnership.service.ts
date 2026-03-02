@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, ForbiddenException, NotFoundException 
 import { PrismaService } from '../prisma/prisma.service';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { IN_APP_NOTIFICATION_TYPES } from '../notifications/in-app-notifications.service';
+import { VerificationService } from '../verification/verification.service';
 
 const MAX_PARTNERS_PER_PET = 5;
 
@@ -29,6 +30,7 @@ export class PetPartnershipService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly inAppNotifications: InAppNotificationsService,
+    private readonly verificationService: VerificationService,
   ) {}
 
   /** Retorna o partnerId do usuário (dono do parceiro ou membro da ONG). Null se não for parceiro nem membro. */
@@ -211,7 +213,7 @@ export class PetPartnershipService {
             media: { orderBy: { sortOrder: 'asc' }, take: 1, select: { url: true } },
           },
         },
-        partner: { select: { id: true, name: true } },
+        partner: { select: { id: true, name: true, type: true } },
       },
     });
     if (!pp || pp.status !== 'PENDING') throw new NotFoundException('Solicitação não encontrada ou já respondida.');
@@ -222,6 +224,9 @@ export class PetPartnershipService {
       where: { id: partnershipId },
       data: { status: 'CONFIRMED', confirmedById: userId, confirmedAt: now },
     });
+    if (pp.partner.type === 'ONG') {
+      await this.verificationService.autoVerifyPetForOng(pp.pet.id, pp.pet.ownerId);
+    }
     this.inAppNotifications
       .create(
         pp.pet.ownerId,

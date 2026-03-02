@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { BlocksService } from '../moderation/blocks.service';
 import { TypingService } from './typing.service';
 import { PetPartnershipService } from '../pet-partnership/pet-partnership.service';
+import { AdoptionFormsService } from '../adoption-forms/adoption-forms.service';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { IN_APP_NOTIFICATION_TYPES } from '../notifications/in-app-notifications.service';
 import type { ConversationListItemDto } from './dto/conversation-response.dto';
@@ -14,6 +15,7 @@ export class ConversationsService {
     private readonly blocksService: BlocksService,
     private readonly typingService: TypingService,
     private readonly petPartnershipService: PetPartnershipService,
+    private readonly adoptionFormsService: AdoptionFormsService,
     private readonly inAppNotifications: InAppNotificationsService,
   ) {}
 
@@ -210,7 +212,11 @@ export class ConversationsService {
       if (isTutor && conv.pet.partnerId && conv.pet.status !== 'ADOPTED') {
         try {
           const userPartnerId = await this.petPartnershipService.getPartnerIdForUser(userId);
-          canSendAdoptionForm = !!userPartnerId && userPartnerId === conv.pet.partnerId;
+          const partnerMatches = !!userPartnerId && userPartnerId === conv.pet.partnerId;
+          if (partnerMatches) {
+            const templates = await this.adoptionFormsService.listTemplates(userId);
+            canSendAdoptionForm = templates.length >= 1;
+          }
         } catch {
           // user is not partner or pet doesn't belong to their partner
         }

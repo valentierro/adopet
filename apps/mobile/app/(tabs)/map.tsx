@@ -31,10 +31,14 @@ const DEFAULT_REGION = {
   longitudeDelta: 0.5,
 };
 
-const MAP_LAYER_OPTIONS = [
-  { value: 'pets' as const, label: 'Pets' },
-  { value: 'ong' as const, label: 'ONGs' },
-  { value: 'commercial' as const, label: 'Comerciais' },
+const MAP_LAYER_OPTIONS: Array<{
+  value: 'pets' | 'ong' | 'commercial';
+  label: string;
+  icon: number;
+}> = [
+  { value: 'pets', label: 'Pets', icon: MapPinSmallIcon },
+  { value: 'ong', label: 'ONGs', icon: PartnerOngPinIcon },
+  { value: 'commercial', label: 'Parceiros comerciais', icon: PartnerCommercialPinIcon },
 ];
 
 const SPECIES_OPTIONS: { value: FeedMapSpeciesFilter; label: string }[] = [
@@ -295,26 +299,38 @@ export default function MapScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.chipsRow, { borderBottomColor: colors.background }]}>
-          {MAP_LAYER_OPTIONS.map((opt) => (
-            <TouchableOpacity
-              key={opt.value}
-              style={[
-                styles.chip,
-                { backgroundColor: mapLayer === opt.value ? colors.primary : colors.surface },
-              ]}
-              onPress={() => handleLayerChange(opt.value)}
-            >
-              <Text
+        <View style={[styles.filtersSection, { borderBottomColor: colors.background }]}>
+          <Text style={[styles.filtersLabel, { color: colors.textSecondary }]}>
+            Filtre no mapa por:
+          </Text>
+          <View style={styles.filtersChipsRow}>
+            {MAP_LAYER_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
                 style={[
-                  styles.chipText,
-                  { color: mapLayer === opt.value ? '#fff' : colors.textPrimary },
+                  styles.chipWithIcon,
+                  {
+                    backgroundColor: mapLayer === opt.value ? colors.primary : colors.surface,
+                    borderColor: mapLayer === opt.value ? colors.primary : colors.textSecondary + '40',
+                  },
                 ]}
+                onPress={() => handleLayerChange(opt.value)}
               >
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <ExpoImage
+                  source={opt.icon}
+                  style={[styles.chipIcon, { opacity: mapLayer === opt.value ? 1 : 0.85 }]}
+                />
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: mapLayer === opt.value ? '#fff' : colors.textPrimary },
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
         {mapLayer === 'pets' && (
         <View style={[styles.chipsRow, { borderBottomColor: colors.background, paddingVertical: spacing.xs }]}>
@@ -638,6 +654,22 @@ export default function MapScreen() {
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: {},
+  filtersSection: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    borderBottomWidth: 1,
+  },
+  filtersLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: spacing.sm,
+  },
+  filtersChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
   chipsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -645,6 +677,16 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
   },
+  chipWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  chipIcon: { width: 20, height: 20 },
   chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: 20 },
   chipText: { fontSize: 14, fontWeight: '600' },
   radiusLabel: { fontSize: 14, marginRight: spacing.sm, alignSelf: 'center' },

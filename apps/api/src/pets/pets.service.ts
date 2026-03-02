@@ -172,9 +172,9 @@ export class PetsService {
         isPaidPartner: first.isPaidPartner,
         type: first.type,
       };
-    } else if (confirmedPartners === undefined && pet.partner != null) {
+    } else if ((confirmedPartners === undefined || confirmedPartners.length === 0) && pet.partner != null) {
       const rawType = (pet.partner as { type?: string }).type;
-      const typeNorm = rawType?.toUpperCase?.() || rawType;
+      const typeNorm = (rawType?.toUpperCase?.() || rawType || 'ONG') as string;
       dto.partner = {
         id: pet.partner.id,
         name: pet.partner.name,
@@ -183,6 +183,7 @@ export class PetsService {
         isPaidPartner: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner,
         type: typeNorm,
       };
+      dto.partners = [dto.partner];
     }
     return dto;
   }
@@ -248,7 +249,7 @@ export class PetsService {
     const pets = await this.prisma.pet.findMany({
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -261,7 +262,7 @@ export class PetsService {
       where: { id },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
         owner: {
           select: {
             id: true,
@@ -343,6 +344,136 @@ export class PetsService {
     }
   }
 
+  /** [Admin ONG] Lista todos os pets da ONG (qualquer status). Inclui ownerName e publicationStatus. */
+  async findOngPetsForAdmin(
+    adminUserId: string,
+    opts?: { cursor?: string; species?: string; publicationStatus?: string },
+  ): Promise<{ items: PetResponseDto[]; nextCursor: string | null }> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId: adminUserId },
+      select: { id: true, type: true },
+    });
+    if (!partner || partner.type !== 'ONG') throw new ForbiddenException('Apenas o admin da ONG pode acessar esta lista.');
+    const PAGE_SIZE = 20;
+    const where: { partnerId: string; species?: string; publicationStatus?: string } = { partnerId: partner.id };
+    if (opts?.species && opts.species !== 'BOTH') where.species = opts.species.toUpperCase();
+    if (opts?.publicationStatus) where.publicationStatus = opts.publicationStatus;
+    const pets = await this.prisma.pet.findMany({
+      where,
+      take: PAGE_SIZE + 1,
+      ...(opts?.cursor ? { skip: 1, cursor: { id: opts.cursor } } : {}),
+      orderBy: [{ createdAt: 'desc' }],
+      include: {
+        media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
+        owner: { select: { id: true, name: true } },
+      },
+    });
+    const hasMore = pets.length > PAGE_SIZE;
+    const items = pets.slice(0, PAGE_SIZE);
+    const petIds = items.map((p) => p.id);
+    const [verifiedIds, favoriteCounts, confirmedPartnersByPet] = await Promise.all([
+      this.verificationService.getVerifiedPetIds(petIds),
+      this.prisma.favorite.groupBy({
+        by: ['petId'],
+        where: { petId: { in: petIds } },
+        _count: { id: true },
+      }).then((rows) => new Map(rows.map((r) => [r.petId, r._count.id]))),
+      this.petPartnershipService.getConfirmedPartnersByPetIds(petIds),
+    ]);
+    const dtos = items.map((p) => {
+      const confirmedPartners = confirmedPartnersByPet.get(p.id) ?? [];
+      const dto = this.mapToDto(p, undefined, undefined, verifiedIds.has(p.id), confirmedPartners);
+      (dto as PetResponseDto & { ownerName?: string }).ownerName = p.owner?.name;
+      const count = favoriteCounts.get(p.id);
+      if (count !== undefined) dto.favoritesCount = count;
+      return dto;
+    });
+    const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].id : null;
+    return { items: dtos, nextCursor };
+  }
+
+  /** [Admin ONG] Quantidade de anúncios aguardando aprovação da ONG. */
+  async getOngPetsPendingCount(adminUserId: string): Promise<number> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId: adminUserId },
+      select: { id: true, type: true },
+    });
+    if (!partner || partner.type !== 'ONG') return 0;
+    return this.prisma.pet.count({
+      where: { partnerId: partner.id, publicationStatus: 'PENDING_ONG_APPROVAL' },
+    });
+  }
+
+  /** [Admin ONG] Aprovar anúncio de membro. Publica imediatamente no feed. */
+  async approveByOngAdmin(petId: string, adminUserId: string): Promise<PetResponseDto> {
+    return this.setPublicationStatusByOngAdmin(petId, adminUserId, 'APPROVED');
+  }
+
+  /** [Admin ONG] Rejeitar anúncio de membro. */
+  async rejectByOngAdmin(petId: string, adminUserId: string, rejectionReason?: string): Promise<PetResponseDto> {
+    return this.setPublicationStatusByOngAdmin(petId, adminUserId, 'REJECTED', rejectionReason);
+  }
+
+  private async setPublicationStatusByOngAdmin(
+    petId: string,
+    adminUserId: string,
+    status: 'APPROVED' | 'REJECTED',
+    rejectionReason?: string,
+  ): Promise<PetResponseDto> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId: adminUserId },
+      select: { id: true, type: true },
+    });
+    if (!partner || partner.type !== 'ONG') throw new ForbiddenException('Apenas o admin da ONG pode aprovar ou rejeitar.');
+    const pet = await this.prisma.pet.findUnique({
+      where: { id: petId },
+      include: { partner: { select: { id: true } }, owner: { select: { name: true } } },
+    });
+    if (!pet) throw new NotFoundException('Pet não encontrado.');
+    if (pet.partnerId !== partner.id) throw new ForbiddenException('Este anúncio não pertence à sua ONG.');
+    if (pet.publicationStatus !== 'PENDING_ONG_APPROVAL') {
+      throw new BadRequestException(
+        status === 'APPROVED'
+          ? 'Este anúncio não está aguardando aprovação.'
+          : 'Este anúncio não está aguardando aprovação para ser rejeitado.',
+      );
+    }
+    const result = await this.setPublicationStatus(petId, status, rejectionReason);
+    if (!result) throw new NotFoundException('Pet não encontrado após atualização.');
+    return result;
+  }
+
+  /** [Admin ONG] Remover anúncio. Resolve todos os relacionamentos (cascade) e remove verificações. */
+  async deleteByOngAdmin(petId: string, adminUserId: string): Promise<{ message: string }> {
+    const partner = await this.prisma.partner.findUnique({
+      where: { userId: adminUserId },
+      select: { id: true, type: true },
+    });
+    if (!partner || partner.type !== 'ONG') throw new ForbiddenException('Apenas o admin da ONG pode remover anúncios.');
+    const pet = await this.prisma.pet.findUnique({
+      where: { id: petId },
+      select: { id: true, partnerId: true, name: true, ownerId: true },
+    });
+    if (!pet) throw new NotFoundException('Pet não encontrado.');
+    if (pet.partnerId !== partner.id) throw new ForbiddenException('Este anúncio não pertence à sua ONG.');
+    await this.prisma.verification.deleteMany({
+      where: { type: 'PET_VERIFIED', metadata: { path: ['petId'], equals: petId } },
+    });
+    await this.prisma.pet.delete({ where: { id: petId } });
+    this.inAppNotifications
+      .create(
+        pet.ownerId,
+        IN_APP_NOTIFICATION_TYPES.PET_PUBLICATION_REJECTED,
+        'Anúncio removido',
+        `O anúncio de ${pet.name} foi removido pela administração da ONG.`,
+        { petId },
+        { screen: 'my-pets' },
+      )
+      .catch((e) => console.warn('[PetsService] notify owner pet removed failed', e));
+    return { message: 'Anúncio removido com sucesso.' };
+  }
+
   /** Lista pública de pets vinculados a um parceiro (apenas aprovados). Usado na página do parceiro. Se userId informado, inclui matchScore. */
   async findPublicByPartnerId(
     partnerId: string,
@@ -364,7 +495,7 @@ export class PetsService {
       orderBy: { createdAt: 'desc' },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
       },
     });
     const hasMore = pets.length > PAGE_SIZE;
@@ -383,10 +514,10 @@ export class PetsService {
     return { items: dtos, nextCursor };
   }
 
-  /** [Admin] Listar pets com publicação pendente (para aprovar/rejeitar no feed). */
+  /** [Admin] Listar pets com publicação pendente (para aprovar/rejeitar no feed). Exclui PENDING_ONG_APPROVAL (responsabilidade da ONG). */
   async findPendingPublication(): Promise<PetResponseDto[]> {
     const pets = await this.prisma.pet.findMany({
-      where: { publicationStatus: 'PENDING' },
+      where: { publicationStatus: 'PENDING' }, // PENDING_ONG_APPROVAL é gerenciado pela ONG
       orderBy: { createdAt: 'desc' },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
@@ -433,7 +564,7 @@ export class PetsService {
       where: { id: petId },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
         owner: { select: { city: true } },
       },
     });
@@ -457,7 +588,7 @@ export class PetsService {
       },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
       },
     });
     const ownerId = updated.ownerId;
@@ -505,13 +636,13 @@ export class PetsService {
     return this.mapToDto(updated, undefined, undefined, verified);
   }
 
-  /** Reenviar anúncio rejeitado para análise (publicationStatus REJECTED → PENDING). Apenas dono. */
+  /** Reenviar anúncio rejeitado para análise (REJECTED → PENDING ou PENDING_ONG_APPROVAL). Apenas dono. */
   async resubmitPublication(petId: string, ownerId: string): Promise<PetResponseDto> {
     const pet = await this.prisma.pet.findUnique({
       where: { id: petId },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true, userId: true } },
       },
     });
     if (!pet) throw new NotFoundException('Pet não encontrado');
@@ -519,12 +650,20 @@ export class PetsService {
     if (pet.publicationStatus !== 'REJECTED') {
       throw new BadRequestException('Só é possível reenviar anúncios que foram rejeitados. Edite o pet e use "Enviar novamente para análise".');
     }
+    let newStatus: 'PENDING' | 'PENDING_ONG_APPROVAL' = 'PENDING';
+    if (pet.partner?.type === 'ONG') {
+      const isOwnerAdmin = pet.partner.userId === ownerId;
+      const isOwnerMember = !isOwnerAdmin && !!(await this.prisma.partnerMember.findUnique({
+        where: { partnerId_userId: { partnerId: pet.partnerId!, userId: ownerId } },
+      }));
+      if (isOwnerMember) newStatus = 'PENDING_ONG_APPROVAL';
+    }
     const updated = await this.prisma.pet.update({
       where: { id: petId },
-      data: { publicationStatus: 'PENDING', publicationRejectionReason: null },
+      data: { publicationStatus: newStatus, publicationRejectionReason: null },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
       },
     });
     const verified = await this.verificationService.isPetVerified(updated.id);
@@ -537,7 +676,7 @@ export class PetsService {
       where: { id: petId },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
       },
     });
     if (!pet) throw new NotFoundException('Pet não encontrado');
@@ -560,7 +699,7 @@ export class PetsService {
       },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
       },
     });
     const verified = await this.verificationService.isPetVerified(updated.id);
@@ -745,7 +884,7 @@ export class PetsService {
       orderBy: [{ favorites: { _count: 'desc' } }, { createdAt: 'desc' }],
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
         adoption: { select: { adoptedAt: true, adopter: { select: { username: true } } } },
       },
     });
@@ -780,11 +919,15 @@ export class PetsService {
   }
 
   async create(ownerId: string, dto: CreatePetDto): Promise<PetResponseDto> {
-    const partnerIds = dto.partnerIds?.length
+    let partnerIds = dto.partnerIds?.length
       ? dto.partnerIds
       : dto.partnerId
         ? [dto.partnerId]
         : [];
+    if (partnerIds.length === 0) {
+      const ownerPartnerId = await this.petPartnershipService.getPartnerIdForUser(ownerId);
+      if (ownerPartnerId) partnerIds = [ownerPartnerId];
+    }
     if (dto.partnerId && !partnerIds.includes(dto.partnerId)) {
       const partner = await this.prisma.partner.findFirst({
         where: { id: dto.partnerId, type: 'ONG', active: true, approvedAt: { not: null } },
@@ -806,6 +949,27 @@ export class PetsService {
         longitude = coords.lng;
       }
     }
+    const partnerIdForPet = partnerIds.length > 0 ? partnerIds[0] : (dto.partnerId ?? null);
+    let publicationStatus: 'PENDING' | 'PENDING_ONG_APPROVAL' | 'APPROVED' = 'PENDING';
+    if (partnerIdForPet) {
+      const partner = await this.prisma.partner.findUnique({
+        where: { id: partnerIdForPet },
+        select: { userId: true, type: true },
+      });
+      if (partner?.type === 'ONG') {
+        const isOwnerAdmin = partner.userId === ownerId;
+        const isOwnerMember = !isOwnerAdmin && !!(await this.prisma.partnerMember.findUnique({
+          where: { partnerId_userId: { partnerId: partnerIdForPet, userId: ownerId } },
+        }));
+        if (isOwnerAdmin) publicationStatus = 'APPROVED';
+        else if (isOwnerMember) publicationStatus = 'PENDING_ONG_APPROVAL';
+      }
+    }
+    const now = new Date();
+    const expiresAt =
+      publicationStatus === 'APPROVED'
+        ? new Date(now.getTime() + PetsService.LISTING_LIFETIME_DAYS * 24 * 60 * 60 * 1000)
+        : null;
     const pet = await this.prisma.pet.create({
       data: {
         ownerId,
@@ -844,9 +1008,10 @@ export class PetsService {
         latitude,
         longitude,
         city,
-        partnerId: partnerIds.length > 0 ? partnerIds[0] : (dto.partnerId ?? null),
+        partnerId: partnerIdForPet,
         status: 'AVAILABLE',
-        publicationStatus: 'PENDING',
+        publicationStatus,
+        expiresAt,
       },
       include: { media: true },
     });
@@ -867,9 +1032,37 @@ export class PetsService {
       where: { id: pet.id },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
       },
     });
+    if (withMedia?.partner?.type === 'ONG') {
+      await this.verificationService.autoVerifyPetForOng(withMedia.id, ownerId);
+    }
+    if (publicationStatus === 'PENDING_ONG_APPROVAL' && withMedia?.partner) {
+      const ongAdminId = (await this.prisma.partner.findUnique({
+        where: { id: withMedia.partnerId! },
+        select: { userId: true },
+      }))?.userId;
+      const ownerName = (await this.prisma.user.findUnique({
+        where: { id: ownerId },
+        select: { name: true },
+      }))?.name ?? 'Membro';
+      const title = 'Novo anúncio aguardando aprovação';
+      const body = `${ownerName} criou o anúncio de ${withMedia.name}. Aprove ou rejeite na página Anúncios da ONG.`;
+      const pushData = { screen: 'partnerMyPets', petId: withMedia.id };
+      if (ongAdminId) {
+        this.inAppNotifications
+          .create(ongAdminId, IN_APP_NOTIFICATION_TYPES.ONG_PET_PENDING_APPROVAL, title, body, { petId: withMedia.id }, pushData)
+          .catch((e) => console.warn('[PetsService] notify ONG admin failed', e));
+      }
+      const adminIds = this.config.get<string>('ADMIN_USER_IDS')?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+      const adminBody = `Novo anúncio de ${withMedia.name} criado por membro da ${withMedia.partner.name}, aguardando aprovação da ONG.`;
+      for (const adminId of adminIds) {
+        this.inAppNotifications
+          .create(adminId, IN_APP_NOTIFICATION_TYPES.ONG_PET_NEW_BY_MEMBER, title, adminBody, { petId: withMedia.id }, pushData)
+          .catch((e) => console.warn('[PetsService] notify app admin failed', e));
+      }
+    }
     const verified = withMedia
       ? await this.verificationService.isPetVerified(withMedia.id)
       : false;
@@ -968,7 +1161,7 @@ export class PetsService {
       },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
       },
     });
     if (partnerIds !== undefined && partnerIds.length > 0) {
@@ -1043,7 +1236,7 @@ export class PetsService {
       },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
         owner: { select: { name: true } },
       },
     });
@@ -1210,7 +1403,7 @@ export class PetsService {
       where: { id: petId },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
         owner: { select: { name: true } },
       },
     });
@@ -1288,7 +1481,7 @@ export class PetsService {
       where: { id: petId },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
         owner: { select: { name: true } },
       },
     });
@@ -1428,7 +1621,7 @@ export class PetsService {
       where: { id: petId },
       include: {
         media: { orderBy: { sortOrder: 'asc' } },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
       },
     });
     const verified = await this.verificationService.isPetVerified(petId);
@@ -1503,7 +1696,7 @@ export class PetsService {
       },
       include: {
         media: { orderBy: [{ isPrimary: 'desc' }, { sortOrder: 'asc' }] },
-        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true } },
+        partner: { select: { id: true, name: true, slug: true, logoUrl: true, isPaidPartner: true, type: true } },
       },
     });
     const [verifiedIds, confirmedPartnersByPet] = await Promise.all([

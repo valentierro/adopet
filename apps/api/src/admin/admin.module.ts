@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { AdminController } from './admin.controller';
 import { AdminBulkController } from './admin-bulk.controller';
 import { AdminService } from './admin.service';
@@ -16,7 +16,7 @@ import { SatisfactionModule } from '../satisfaction/satisfaction.module';
 import { FeatureFlagModule } from '../feature-flag/feature-flag.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, BugReportsModule, PartnerRecommendationsModule, PartnersModule, PartnershipRequestsModule, NotificationsModule, UploadsModule, SatisfactionModule, FeatureFlagModule],
+  imports: [PrismaModule, forwardRef(() => AuthModule), BugReportsModule, PartnerRecommendationsModule, forwardRef(() => PartnersModule), PartnershipRequestsModule, NotificationsModule, UploadsModule, SatisfactionModule, FeatureFlagModule],
   controllers: [AdminController, AdminBulkController],
   providers: [AdminService, AdminBulkService, AdoptionAutoApproveScheduler],
   exports: [AdminService],

@@ -130,6 +130,20 @@ export default function PartnerPortalScreen() {
     );
   }
 
+  if (partner.type === 'ONG' && !partner.isOngAdmin) {
+    return (
+      <ScreenContainer>
+        <View style={styles.empty}>
+          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Acesso restrito</Text>
+          <Text style={[styles.emptySub, { color: colors.textSecondary }]}>
+            Apenas o administrador da ONG pode acessar o portal do parceiro. Entre em contato com o admin da {partner.name} para gerenciar anúncios, formulários e solicitações.
+          </Text>
+        </View>
+        <ProfileMenuFooter />
+      </ScreenContainer>
+    );
+  }
+
   if (!partner.isPaidPartner && partner.type !== 'ONG') {
     return (
       <ScreenContainer>
@@ -308,6 +322,14 @@ export default function PartnerPortalScreen() {
               >
                 <Ionicons name="document-text-outline" size={22} color={colors.primary} />
                 <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Formulários de adoção</Text>
+                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                onPress={() => router.push('/partner-my-pets')}
+              >
+                <Ionicons name="paw-outline" size={22} color={colors.primary} />
+                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Anúncios da ONG</Text>
                 <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
               </TouchableOpacity>
               <TouchableOpacity

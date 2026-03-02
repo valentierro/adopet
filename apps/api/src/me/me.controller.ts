@@ -35,6 +35,8 @@ import { InAppNotificationsService } from '../notifications/in-app-notifications
 import type { InAppNotificationItem } from '../notifications/in-app-notifications.service';
 import { PetPartnershipService } from '../pet-partnership/pet-partnership.service';
 import type { PetPartnershipRequestItem, PetPartnershipItem } from '../pet-partnership/pet-partnership.service';
+import { PetsService } from '../pets/pets.service';
+import type { PetResponseDto } from '../pets/dto/pet-response.dto';
 
 @ApiTags('me')
 @ApiBearerAuth()
@@ -48,6 +50,7 @@ export class MeController {
     private readonly stripeService: StripeService,
     private readonly inAppNotificationsService: InAppNotificationsService,
     private readonly petPartnershipService: PetPartnershipService,
+    private readonly petsService: PetsService,
     private readonly satisfactionService: SatisfactionService,
   ) {}
 
@@ -473,6 +476,52 @@ export class MeController {
     @Param('userId') memberUserId: string,
   ) {
     return this.partnersService.getMemberDetailsByUserId(user.id, memberUserId);
+  }
+
+  @Get('partner/ong-pets')
+  @ApiOperation({ summary: '[Admin ONG] Lista todos os anúncios da ONG com filtros' })
+  async getMyPartnerOngPets(
+    @CurrentUser() user: { id: string },
+    @Query('cursor') cursor?: string,
+    @Query('species') species?: string,
+    @Query('publicationStatus') publicationStatus?: string,
+  ): Promise<{ items: PetResponseDto[]; nextCursor: string | null }> {
+    return this.petsService.findOngPetsForAdmin(user.id, { cursor, species, publicationStatus });
+  }
+
+  @Get('partner/ong-pets/pending-count')
+  @ApiOperation({ summary: '[Admin ONG] Quantidade de anúncios aguardando aprovação' })
+  async getMyPartnerOngPetsPendingCount(@CurrentUser() user: { id: string }): Promise<{ count: number }> {
+    const count = await this.petsService.getOngPetsPendingCount(user.id);
+    return { count };
+  }
+
+  @Post('partner/ong-pets/:petId/approve')
+  @ApiOperation({ summary: '[Admin ONG] Aprovar anúncio de membro' })
+  async approveOngPet(
+    @CurrentUser() user: { id: string },
+    @Param('petId') petId: string,
+  ): Promise<PetResponseDto> {
+    return this.petsService.approveByOngAdmin(petId, user.id);
+  }
+
+  @Post('partner/ong-pets/:petId/reject')
+  @ApiOperation({ summary: '[Admin ONG] Rejeitar anúncio de membro' })
+  async rejectOngPet(
+    @CurrentUser() user: { id: string },
+    @Param('petId') petId: string,
+    @Body('reason') reason?: string,
+  ): Promise<PetResponseDto> {
+    return this.petsService.rejectByOngAdmin(petId, user.id, reason);
+  }
+
+  @Delete('partner/ong-pets/:petId')
+  @ApiOperation({ summary: '[Admin ONG] Remover anúncio (resolve todos os relacionamentos)' })
+  async deleteOngPet(
+    @CurrentUser() user: { id: string },
+    @Param('petId') petId: string,
+  ): Promise<{ message: string }> {
+    return this.petsService.deleteByOngAdmin(petId, user.id);
   }
 
   @Get('adoptions')

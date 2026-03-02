@@ -120,6 +120,8 @@ export class PetResponseDto {
 
   @ApiPropertyOptional({ enum: ['PENDING', 'APPROVED', 'REJECTED'], description: 'Status de moderação do anúncio (ex.: Em análise)' })
   publicationStatus?: string;
+  /** [Admin ONG] Nome do tutor que criou o anúncio */
+  ownerName?: string;
 
   @ApiPropertyOptional({ description: 'Data em que o anúncio expira (vida útil 60 dias); null = sem expiração' })
   expiresAt?: string;

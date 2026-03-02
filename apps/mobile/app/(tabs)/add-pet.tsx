@@ -471,7 +471,15 @@ export default function AddPetWizardScreen() {
   const handleConfirmPartnerAndSubmit = useCallback(() => {
     const state = form.stateId > 0 ? BR_STATES.find((s) => s.id === form.stateId) : null;
     const city = form.cityId > 0 ? cities.find((c) => c.id === form.cityId) : null;
-    if (state && city) performSubmit(state, city);
+    if (state && city) {
+      performSubmit(state, city);
+    } else {
+      Alert.alert(
+        'Localização incompleta',
+        'Selecione novamente o estado e a cidade do pet antes de publicar.',
+        [{ text: 'OK', onPress: () => setShowPartnerConfirmModal(false) }],
+      );
+    }
   }, [form.stateId, form.cityId, cities, performSubmit]);
 
   const handleSubmit = useCallback(async () => {
@@ -790,30 +798,6 @@ export default function AddPetWizardScreen() {
                   </TouchableOpacity>
                 </View>
               </TouchableOpacity>
-            </Modal>
-            <Modal visible={showPartnerConfirmModal} transparent animationType="fade">
-              <View style={[styles.modalOverlay, styles.partnerConfirmOverlay]}>
-                <View style={[styles.partnerConfirmModalContent, { backgroundColor: colors.background }]} onStartShouldSetResponder={() => true}>
-                  <Ionicons name="people-outline" size={40} color={colors.primary} style={{ marginBottom: spacing.sm }} />
-                  <Text style={[styles.partnerConfirmModalTitle, { color: colors.textPrimary }]}>Anúncio em parceria</Text>
-                  <Text style={[styles.partnerConfirmModalText, { color: colors.textSecondary }]}>
-                    Você selecionou uma instituição como parceira neste anúncio. O selo de parceria só aparecerá no anúncio do pet após o parceiro confirmar a parceria.
-                  </Text>
-                  <View style={styles.partnerConfirmModalButtons}>
-                    <SecondaryButton
-                      title="Voltar"
-                      onPress={() => setShowPartnerConfirmModal(false)}
-                      style={styles.partnerConfirmModalBtn}
-                    />
-                    <PrimaryButton
-                      title={submitting ? 'Publicando...' : 'Entendi e publicar'}
-                      onPress={handleConfirmPartnerAndSubmit}
-                      disabled={submitting}
-                      style={styles.partnerConfirmModalBtn}
-                    />
-                  </View>
-                </View>
-              </View>
             </Modal>
             <Text style={[styles.label, { color: colors.textSecondary }]}>Raça (opcional)</Text>
             <View style={styles.rowWrap}>
@@ -1253,6 +1237,31 @@ export default function AddPetWizardScreen() {
             />
           )}
         </View>
+
+        <Modal visible={showPartnerConfirmModal} transparent animationType="fade">
+          <View style={[styles.modalOverlay, styles.partnerConfirmOverlay]}>
+            <View style={[styles.partnerConfirmModalContent, { backgroundColor: colors.background }]}>
+              <Ionicons name="people-outline" size={40} color={colors.primary} style={{ marginBottom: spacing.sm }} />
+              <Text style={[styles.partnerConfirmModalTitle, { color: colors.textPrimary }]}>Anúncio em parceria</Text>
+              <Text style={[styles.partnerConfirmModalText, { color: colors.textSecondary }]}>
+                Você selecionou uma instituição como parceira neste anúncio. O selo de parceria só aparecerá no anúncio do pet após o parceiro confirmar a parceria.
+              </Text>
+              <View style={styles.partnerConfirmModalButtons}>
+                <SecondaryButton
+                  title="Voltar"
+                  onPress={() => setShowPartnerConfirmModal(false)}
+                  style={styles.partnerConfirmModalBtn}
+                />
+                <PrimaryButton
+                  title={submitting ? 'Publicando...' : 'Entendi e publicar'}
+                  onPress={handleConfirmPartnerAndSubmit}
+                  disabled={submitting}
+                  style={styles.partnerConfirmModalBtn}
+                />
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {step === 0 && (
           <View style={[styles.tipsBox, { backgroundColor: (colors.warning || '#d97706') + '18', borderColor: (colors.warning || '#d97706') + '50' }]}>

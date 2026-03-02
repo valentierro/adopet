@@ -11,7 +11,7 @@ import { PetPartnershipService } from '../pet-partnership/pet-partnership.servic
 describe('FeedService', () => {
   let service: FeedService;
   let prisma: {
-    pet: { findMany: jest.Mock };
+    pet: { findMany: jest.Mock; count: jest.Mock };
     partner: { findMany: jest.Mock };
   };
   let reports: { getReportedPetIds: jest.Mock };
@@ -39,7 +39,7 @@ describe('FeedService', () => {
 
   beforeEach(async () => {
     prisma = {
-      pet: { findMany: jest.fn() },
+      pet: { findMany: jest.fn(), count: jest.fn().mockResolvedValue(0) },
       partner: { findMany: jest.fn().mockResolvedValue([]) },
     };
     reports = { getReportedPetIds: jest.fn().mockResolvedValue([]) };

@@ -92,8 +92,8 @@ export interface Pet {
   adoptionRejectionReason?: string;
   /** True quando a Adopet confirmou a adoção (admin ou 48h); apenas para pet adotado (GET /pets/mine) */
   confirmedByAdopet?: boolean;
-  /** Status de moderação do anúncio: PENDING = Em análise, APPROVED = aprovado, REJECTED = rejeitado */
-  publicationStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  /** Status de moderação do anúncio: PENDING = Em análise Adopet, PENDING_ONG_APPROVAL = Aguardando ONG, APPROVED = aprovado, REJECTED = rejeitado */
+  publicationStatus?: 'PENDING' | 'PENDING_ONG_APPROVAL' | 'APPROVED' | 'REJECTED';
   /** Motivo da rejeição do anúncio (quando publicationStatus === REJECTED) */
   publicationRejectionReason?: string;
   /** Data em que o anúncio expira (vida útil 60 dias); null = sem expiração */

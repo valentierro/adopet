@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { FeedController } from './feed.controller';
 import { FeedService } from './feed.service';
 import { AuthModule } from '../auth/auth.module';
@@ -9,7 +9,7 @@ import { PetsModule } from '../pets/pets.module';
 import { PetPartnershipModule } from '../pet-partnership/pet-partnership.module';
 
 @Module({
-  imports: [AuthModule, ModerationModule, VerificationModule, MatchEngineModule, PetsModule, PetPartnershipModule],
+  imports: [AuthModule, ModerationModule, VerificationModule, MatchEngineModule, forwardRef(() => PetsModule), PetPartnershipModule],
   controllers: [FeedController],
   providers: [FeedService],
   exports: [FeedService],

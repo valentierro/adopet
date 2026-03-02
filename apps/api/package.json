@@ -23,6 +23,8 @@
     "db:backfill-match-fields": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-match-fields.ts",
     "db:backfill-partner-coordinates": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-partner-coordinates.ts",
     "db:backfill-partner-approved-marketplace": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-partner-approved-for-marketplace.ts",
+    "db:backfill-pet-partner-id": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-pet-partner-id.ts",
+    "db:backfill-partner-logo": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-partner-logo.ts",
     "db:diagnose-marketplace": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/diagnose-marketplace.ts",
     "db:delete-users-by-prefix": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/delete-users-by-email-prefix.ts",
     "db:delete-own-pet-favorites": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/delete-own-pet-favorites.ts",

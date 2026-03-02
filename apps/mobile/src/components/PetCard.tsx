@@ -54,7 +54,11 @@ export const PetCard = React.memo(function PetCard({
         )}
         {pet.partner && (
           <View style={[styles.partnerBadge, { backgroundColor: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'rgba(251, 191, 36, 0.95)' : 'rgba(217, 119, 6, 0.92)' }]}>
-            <Ionicons name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={12} color="#fff" />
+            {(pet.partner as { logoUrl?: string }).logoUrl ? (
+              <Image source={{ uri: (pet.partner as { logoUrl: string }).logoUrl }} style={styles.partnerBadgeLogo} contentFit="contain" />
+            ) : (
+              <Ionicons name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'} size={12} color="#fff" />
+            )}
             <Text style={styles.partnerBadgeText}>{(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'Patrocinado' : 'Parceiro'}</Text>
           </View>
         )}
@@ -172,6 +176,11 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 10,
     zIndex: 1,
+  },
+  partnerBadgeLogo: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
   partnerBadgeText: {
     fontSize: 12,

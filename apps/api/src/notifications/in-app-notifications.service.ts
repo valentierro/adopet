@@ -41,6 +41,10 @@ export const IN_APP_NOTIFICATION_TYPES = {
   ADOPTION_REQUEST_REJECTED: 'ADOPTION_REQUEST_REJECTED',
   /** Parceiro excluiu o formulário; formulário enviado ou aguardando análise foi cancelado. */
   ADOPTION_FORM_CANCELLED_BY_PARTNER: 'ADOPTION_FORM_CANCELLED_BY_PARTNER',
+  /** Para admin ONG: novo anúncio criado por membro, aguardando aprovação. */
+  ONG_PET_PENDING_APPROVAL: 'ONG_PET_PENDING_APPROVAL',
+  /** Para admin app: novo anúncio de ONG criado por membro (conhecimento). */
+  ONG_PET_NEW_BY_MEMBER: 'ONG_PET_NEW_BY_MEMBER',
 } as const;
 
 export type InAppNotificationType = (typeof IN_APP_NOTIFICATION_TYPES)[keyof typeof IN_APP_NOTIFICATION_TYPES];

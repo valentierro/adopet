@@ -35,6 +35,7 @@ export default function TutorProfileScreen() {
   const [reportReason, setReportReason] = useState<string | null>(null);
   const [reportDescription, setReportDescription] = useState('');
   const [showVerifiedModal, setShowVerifiedModal] = useState(false);
+  const [fullScreenAvatarUrl, setFullScreenAvatarUrl] = useState<string | null>(null);
 
   const navigation = useNavigation();
   useLayoutEffect(() => {
@@ -118,7 +119,13 @@ export default function TutorProfileScreen() {
     <ScreenContainer scroll>
       <View style={styles.header}>
         {profile.avatarUrl ? (
-          <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
+          <TouchableOpacity
+            onPress={() => setFullScreenAvatarUrl(profile.avatarUrl!)}
+            activeOpacity={0.9}
+            accessibilityLabel="Ver foto em tamanho real"
+          >
+            <Image source={{ uri: profile.avatarUrl }} style={styles.avatar} />
+          </TouchableOpacity>
         ) : (
           <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface }]}>
             <Text style={[styles.avatarLetter, { color: colors.textSecondary }]}>
@@ -265,6 +272,25 @@ export default function TutorProfileScreen() {
         </View>
       )}
 
+      <Modal
+        visible={!!fullScreenAvatarUrl}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFullScreenAvatarUrl(null)}
+      >
+        <Pressable
+          style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.92)' }]}
+          onPress={() => setFullScreenAvatarUrl(null)}
+        >
+          {fullScreenAvatarUrl ? (
+            <Image
+              source={{ uri: fullScreenAvatarUrl }}
+              style={{ width: '100%', height: '100%' }}
+              contentFit="contain"
+            />
+          ) : null}
+        </Pressable>
+      </Modal>
       <Modal visible={reportModalVisible} transparent animationType="fade">
         <Pressable style={styles.modalOverlay} onPress={() => setReportModalVisible(false)}>
           <Pressable style={[styles.modalBox, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PetsController } from './pets.controller';
 import { PetsService } from './pets.service';
 import { PetViewService } from './pet-view.service';
@@ -13,7 +13,7 @@ import { SimilarPetsEngineModule } from '../similar-pets-engine/similar-pets-eng
 import { PetPartnershipModule } from '../pet-partnership/pet-partnership.module';
 
 @Module({
-  imports: [AuthModule, VerificationModule, MeModule, NotificationsModule, AdminModule, MatchEngineModule, SimilarPetsEngineModule, PetPartnershipModule],
+  imports: [forwardRef(() => AuthModule), forwardRef(() => VerificationModule), forwardRef(() => MeModule), NotificationsModule, AdminModule, MatchEngineModule, SimilarPetsEngineModule, PetPartnershipModule],
   controllers: [PetsController],
   providers: [PetsService, PetViewService, PetOwnerGuard],
   exports: [PetsService, PetViewService],

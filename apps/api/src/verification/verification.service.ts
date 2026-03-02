@@ -131,6 +131,29 @@ export class VerificationService {
     return !!v;
   }
 
+  /**
+   * Marca o pet como verificado automaticamente quando o anúncio é criado por uma ONG.
+   * Pets de ONGs não precisam solicitar verificação manual.
+   */
+  async autoVerifyPetForOng(petId: string, ownerId: string): Promise<void> {
+    const existing = await this.prisma.verification.findFirst({
+      where: {
+        type: 'PET_VERIFIED',
+        status: 'APPROVED',
+        metadata: { path: ['petId'], equals: petId },
+      },
+    });
+    if (existing) return;
+    await this.prisma.verification.create({
+      data: {
+        userId: ownerId,
+        type: 'PET_VERIFIED',
+        status: 'APPROVED',
+        metadata: { petId },
+      },
+    });
+  }
+
   /** Lista solicitações pendentes (admin) com dados do usuário e do pet para cards. */
   async listPending(): Promise<VerificationItemDto[]> {
     const list = await this.prisma.verification.findMany({
