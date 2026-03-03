@@ -161,6 +161,22 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
           ))}
         </View>
 
+      {pet.verified && (
+        <Animated.View
+          style={[
+            styles.topLeftBadge,
+            { top: wrapInTouchable ? insets.top + 12 : insets.top + 4 },
+            {
+              opacity: badgeAnim,
+              transform: [{ scale: badgeAnim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }],
+            },
+          ]}
+          accessibilityLabel="Pet verificado"
+        >
+          <VerifiedBadge variant="pet" size={53} iconBackgroundColor="rgba(255,255,255,0.95)" />
+        </Animated.View>
+      )}
+
       <Animated.View
         style={[
           styles.topRightBadges,
@@ -229,11 +245,6 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
             <Text style={styles.name} numberOfLines={1}>
               {pet.name}
             </Text>
-            {pet.verified && (
-              <View style={styles.verifiedBadgeWrap}>
-                <VerifiedBadge variant="pet" size={14} iconBackgroundColor="rgba(255,255,255,0.95)" />
-              </View>
-            )}
           </View>
           {pet.partner ? (
             <View style={[styles.partnerBadge, { backgroundColor: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'rgba(251, 191, 36, 0.5)' : 'rgba(217, 119, 6, 0.92)' }]}>
@@ -360,6 +371,11 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
+  topLeftBadge: {
+    position: 'absolute',
+    left: 12,
+    zIndex: 5,
+  },
   topRightBadges: {
     position: 'absolute',
     right: 12,
@@ -434,9 +450,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flexWrap: 'wrap',
-  },
-  verifiedBadgeWrap: {
-    alignSelf: 'flex-start',
   },
   name: {
     fontSize: 28,
