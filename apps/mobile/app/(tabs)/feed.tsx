@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
-import { SwipeableCard, FeedCard, MatchOverlay, Toast, EmptyState, LoadingLogo, VerifiedBadge, PrimaryButton, SecondaryButton, GuestWelcomeSheet, OnboardingSlidesSheet, NotificationBanner } from '../../src/components';
+import { SwipeableCard, FeedCard, MatchOverlay, Toast, EmptyState, LoadingLogo, VerifiedBadge, PrimaryButton, SecondaryButton, GuestWelcomeSheet, OnboardingSlidesSheet, NotificationBanner, DashboardSpotlightTour } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { fetchFeed, type FeedResponse, type FeedSpeciesFilter, type FeedTriageFilters, type FeedPartnerFilter } from '../../src/api/feed';
 import { createSwipe } from '../../src/api/swipes';
@@ -20,6 +20,7 @@ import { useUpdateCityFromLocation } from '../../src/hooks/useUpdateCityFromLoca
 import { useResponsiveGridColumns } from '../../src/hooks/useResponsiveGridColumns';
 import { getMatchScoreColor } from '../../src/utils/matchScoreColor';
 import { getViewedPetIds } from '../../src/utils/viewedPets';
+import { configureExpandAnimation } from '../../src/utils/layoutAnimation';
 import { useAuthStore } from '../../src/stores/authStore';
 import { spacing } from '../../src/theme';
 
@@ -81,6 +82,7 @@ const GUEST_WELCOME_SHEET_SEEN_KEY = '@adopet/guest_saw_welcome_sheet';
 const ONBOARDING_SLIDES_SEEN_KEY = '@adopet/onboarding_slides_seen';
 const FEED_SWIPE_HINT_SEEN_KEY = '@adopet/feed_swipe_hint_seen';
 const FEED_SWIPE_HINT_SEEN_KEY_PREFIX = '@adopet/feed_swipe_hint_seen_';
+const FEED_TOUR_SEEN_KEY_PREFIX = '@adopet/feed_tour_seen_';
 
 /** Formata distância em km sem quebrar se vier undefined/string da API */
 function formatDistanceKm(val: unknown): string | null {
@@ -184,6 +186,12 @@ export default function FeedScreen() {
   const [showSwipeHint, setShowSwipeHint] = useState(false);
   const swipeHintCheckDoneRef = useRef(false);
   const [viewedPetIds, setViewedPetIds] = useState<Set<string>>(new Set());
+  const [showFeedTour, setShowFeedTour] = useState(false);
+  const [feedTourSeen, setFeedTourSeen] = useState<boolean | null>(null);
+  const [matchScoreIntroCheckDone, setMatchScoreIntroCheckDone] = useState(false);
+  const feedFiltersRef = useRef<View>(null);
+  const feedSwipeActionsRef = useRef<View>(null);
+  const feedViewModeToggleRef = useRef<View>(null);
   const hasTriageFilters = Object.keys(triageFilters).some((k) => {
     const v = triageFilters[k as keyof FeedTriageFilters];
     if (v === undefined || v === false) return false;
@@ -371,9 +379,11 @@ export default function FeedScreen() {
       refetch();
       getViewedPetIds(userId).then(setViewedPetIds);
       if (userId) {
+        setMatchScoreIntroCheckDone(false);
         const storageKey = FEED_MATCH_SCORE_INTRO_SEEN_KEY_PREFIX + userId;
         AsyncStorage.getItem(storageKey).then((seen) => {
           if (seen !== '1') setShowMatchScoreIntroModal(true);
+          setMatchScoreIntroCheckDone(true);
         });
           } else {
             AsyncStorage.getItem(ONBOARDING_SLIDES_SEEN_KEY)
@@ -404,6 +414,22 @@ export default function FeedScreen() {
       if (seen !== '1') setShowSwipeHint(true);
     });
   }, [effectiveViewMode, items.length, userId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!userId) return;
+      AsyncStorage.getItem(FEED_TOUR_SEEN_KEY_PREFIX + userId).then((v) => {
+        setFeedTourSeen(v === '1');
+      });
+    }, [userId]),
+  );
+
+  useEffect(() => {
+    if (feedTourSeen !== false || !userId || items.length === 0 || isGuest) return;
+    if (!matchScoreIntroCheckDone || showMatchScoreIntroModal) return;
+    const t = setTimeout(() => setShowFeedTour(true), 600);
+    return () => clearTimeout(t);
+  }, [feedTourSeen, userId, items.length, isGuest, matchScoreIntroCheckDone, showMatchScoreIntroModal]);
 
   const dismissGuestWelcomeSheet = useCallback(() => {
     AsyncStorage.setItem(GUEST_WELCOME_SHEET_SEEN_KEY, '1');
@@ -653,7 +679,7 @@ export default function FeedScreen() {
             </Pressable>
           </View>
           <View style={[styles.deck, styles.deckLoading]}>
-            <LoadingLogo size={160} />
+            <LoadingLogo size={120} />
           </View>
         </View>
         {isGuest && showOnboardingSlidesSheet && (
@@ -912,7 +938,7 @@ export default function FeedScreen() {
             {(effectiveViewMode === 'grid' ? displayGridItems.length : items.length) !== 1 ? 'pets' : 'pet'}
           </Text>
           {!isGuest && (
-            <View style={styles.viewModeToggle}>
+            <View ref={feedViewModeToggleRef} collapsable={false} style={styles.viewModeToggle}>
               <TouchableOpacity
                 style={[styles.viewModeBtn, viewMode === 'swipe' && { backgroundColor: colors.primary }]}
                 onPress={() => setViewMode('swipe')}
@@ -935,7 +961,7 @@ export default function FeedScreen() {
         Adoção responsável, voluntária e sem custos
       </Text>
       {!isGuest && (
-        <View style={[styles.chipsRow, styles.chipsRowFirst, { paddingHorizontal: spacing.md, paddingBottom: spacing.sm, paddingTop: spacing.xs }]}>
+        <View ref={feedFiltersRef} collapsable={false} style={[styles.chipsRow, styles.chipsRowFirst, { paddingHorizontal: spacing.md, paddingBottom: spacing.sm, paddingTop: spacing.xs }]}>
           <TouchableOpacity
             style={[
               styles.chip,
@@ -968,7 +994,7 @@ export default function FeedScreen() {
         <View style={[styles.filtersWrap, { borderBottomColor: colors.surface }]}>
           <TouchableOpacity
             style={[styles.collapsibleHeader, { backgroundColor: colors.surface }]}
-            onPress={() => setFiltersExpanded((e) => !e)}
+            onPress={() => { configureExpandAnimation(); setFiltersExpanded((e) => !e); }}
             activeOpacity={0.7}
           >
             <Text style={[styles.collapsibleHeaderText, { color: colors.textPrimary }]}>Filtros e busca</Text>
@@ -1709,6 +1735,7 @@ export default function FeedScreen() {
               nextCursor && displayGridItems.length > 0 && isRefetching ? (
                 <View style={styles.gridFooter}>
                   <LoadingLogo size={48} />
+                  <Text style={[styles.footerLoadingText, { color: colors.textSecondary }]}>Carregando mais...</Text>
                 </View>
               ) : null
             }
@@ -1806,7 +1833,7 @@ export default function FeedScreen() {
             )}
           </View>
           {!(changingFilter && (isRefetching || isLoading || items.length === 0)) && (
-            <View style={[styles.feedActions, { backgroundColor: colors.background }]}>
+            <View ref={feedSwipeActionsRef} collapsable={false} style={[styles.feedActions, { backgroundColor: colors.background }]}>
               <TouchableOpacity
                 style={[styles.feedActionBtn, styles.feedPassBtn, { backgroundColor: colors.surface }]}
                 onPress={handlePass}
@@ -1847,6 +1874,44 @@ export default function FeedScreen() {
         />
       )}
       <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
+      {userId && (
+        <DashboardSpotlightTour
+          visible={showFeedTour}
+          userId={userId}
+          steps={[
+            {
+              key: 'filters',
+              targetRef: feedFiltersRef,
+              title: 'Filtros e ordenação',
+              message: 'Use "Para você" para ver pets pela compatibilidade com seu perfil, ou "Em alta" para os mais populares. Na visão em grade você também pode filtrar por espécie, porte e buscar por nome.',
+              tooltipPlacement: 'bottom',
+            },
+            ...(viewMode === 'swipe'
+              ? [
+                  {
+                    key: 'swipe-actions',
+                    targetRef: feedSwipeActionsRef,
+                    title: 'Passar ou favoritar',
+                    message: 'Toque no X para passar ou no coração para favoritar. Você também pode deslizar o card para a esquerda ou direita.',
+                    tooltipPlacement: 'top' as const,
+                  },
+                ]
+              : []),
+            {
+              key: 'view-mode',
+              targetRef: feedViewModeToggleRef,
+              title: 'Alternar entre visões',
+              message: 'Aqui você alterna entre a visão em cards (deslize para passar ou curtir) e a visão em grade (lista com filtros por espécie e seção).',
+              tooltipPlacement: 'bottom',
+            },
+          ]}
+          onComplete={async () => {
+            if (userId) await AsyncStorage.setItem(FEED_TOUR_SEEN_KEY_PREFIX + userId, '1');
+            setFeedTourSeen(true);
+            setShowFeedTour(false);
+          }}
+        />
+      )}
       {showUndo && (
         <TouchableOpacity
           style={[styles.undoBtn, { backgroundColor: colors.surface }]}
@@ -1931,6 +1996,13 @@ export default function FeedScreen() {
                   AsyncStorage.setItem(FEED_MATCH_SCORE_INTRO_SEEN_KEY_PREFIX + userId, '1');
                 }
                 setShowMatchScoreIntroModal(false);
+                if (userId) {
+                  setTimeout(() => {
+                    AsyncStorage.getItem(FEED_TOUR_SEEN_KEY_PREFIX + userId).then((v) => {
+                      if (v !== '1' && items.length > 0) setShowFeedTour(true);
+                    });
+                  }, 600);
+                }
               }}
               activeOpacity={0.8}
             >
@@ -2076,7 +2148,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   gridLoading: { flex: 1, minHeight: 280, justifyContent: 'center', alignItems: 'center' },
-  gridFooter: { paddingVertical: spacing.lg, alignItems: 'center' },
+  gridFooter: { paddingVertical: spacing.lg, alignItems: 'center', gap: spacing.sm },
+  footerLoadingText: { fontSize: 14 },
   guestCarouselScroll: { flex: 1 },
   guestCarouselScrollContent: {
     paddingTop: spacing.md,

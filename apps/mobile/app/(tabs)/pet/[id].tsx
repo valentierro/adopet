@@ -1,4 +1,4 @@
-import { useState, useCallback, useLayoutEffect, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useLayoutEffect, useRef, useEffect } from 'react';
 import { useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -17,6 +17,7 @@ import {
   Modal,
   Pressable,
   TextInput,
+  Animated,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { ScreenContainer, PrimaryButton, SecondaryButton, StatusBadge, LoadingLogo, VerifiedBadge, TutorLevelBadge, MatchScoreBadge, Toast } from '../../../src/components';
@@ -26,7 +27,7 @@ import { getPetById } from '../../../src/api/pet';
 import { getSimilarPets, getMatchScore, recordPetView } from '../../../src/api/pets';
 import { addFavorite, removeFavorite, getFavorites } from '../../../src/api/favorites';
 import { undoPass } from '../../../src/api/swipes';
-import { getMe } from '../../../src/api/me';
+import { getMe, getPreferences } from '../../../src/api/me';
 import { createConversation } from '../../../src/api/conversations';
 import { createReport } from '../../../src/api/reports';
 import { setPetPublication } from '../../../src/api/admin';
@@ -37,6 +38,7 @@ import { getMatchScoreColor } from '../../../src/utils/matchScoreColor';
 import { addViewedPetId } from '../../../src/utils/viewedPets';
 import { trackEvent } from '../../../src/analytics';
 import { spacing } from '../../../src/theme';
+import { configureExpandAnimation } from '../../../src/utils/layoutAnimation';
 import { Ionicons } from '@expo/vector-icons';
 
 const REPORT_REASONS: { label: string; value: string }[] = [
@@ -60,6 +62,21 @@ const TIME_AT_HOME_LABEL: Record<string, string> = { MOST_DAY: 'Maior parte do d
 const HOUSING_LABEL: Record<string, string> = { CASA: 'Casa', APARTAMENTO: 'Apartamento', INDIFERENTE: 'Indiferente' };
 const WALK_FREQ_LABEL: Record<string, string> = { DAILY: 'Diariamente', FEW_TIMES_WEEK: 'Algumas vezes por semana', RARELY: 'Raramente', INDIFERENTE: 'Indiferente' };
 const SIM_NAO_INDIFERENTE_LABEL: Record<string, string> = { SIM: 'Sim', NAO: 'Não', INDIFERENTE: 'Indiferente' };
+
+function CtaPulse({ children }: { children: React.ReactNode }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.03, duration: 1200, useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1, duration: 1200, useNativeDriver: true }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [scale]);
+  return <Animated.View style={{ transform: [{ scale }] }}>{children}</Animated.View>;
+}
 
 function PetPhotoGallery({
   photos,
@@ -184,6 +201,15 @@ export default function PetDetailsScreen() {
     queryFn: () => getMatchScore(id!, userId!),
     enabled: !!id && !!userId,
   });
+  const { data: prefs } = useQuery({
+    queryKey: ['me', 'preferences'],
+    queryFn: getPreferences,
+    enabled: !!userId,
+    staleTime: 5 * 60_000,
+  });
+  const completionPercent = prefs && typeof (prefs as { completionPercent?: number }).completionPercent === 'number'
+    ? (prefs as { completionPercent: number }).completionPercent
+    : null;
 
   useFocusEffect(
     useCallback(() => {
@@ -461,7 +487,7 @@ export default function PetDetailsScreen() {
                     <View style={styles.matchScoreModalSection}>
                       <TouchableOpacity
                         style={styles.matchScoreModalSectionHeader}
-                        onPress={() => setMatchSectionExpanded((e) => !e)}
+                        onPress={() => { configureExpandAnimation(); setMatchSectionExpanded((e) => !e); }}
                         activeOpacity={0.7}
                       >
                         <Text style={[styles.matchScoreModalSectionTitle, { color: hex }]}>Pontos em comum</Text>
@@ -482,7 +508,7 @@ export default function PetDetailsScreen() {
                     <View style={styles.matchScoreModalSection}>
                       <TouchableOpacity
                         style={styles.matchScoreModalSectionHeader}
-                        onPress={() => setMismatchSectionExpanded((e) => !e)}
+                        onPress={() => { configureExpandAnimation(); setMismatchSectionExpanded((e) => !e); }}
                         activeOpacity={0.7}
                       >
                         <Text style={[styles.matchScoreModalSectionTitle, { color: colors.textSecondary }]}>Pontos de atenção</Text>
@@ -503,7 +529,7 @@ export default function PetDetailsScreen() {
                     <View style={styles.matchScoreModalSection}>
                       <TouchableOpacity
                         style={styles.matchScoreModalSectionHeader}
-                        onPress={() => setNeutralSectionExpanded((e) => !e)}
+                        onPress={() => { configureExpandAnimation(); setNeutralSectionExpanded((e) => !e); }}
                         activeOpacity={0.7}
                       >
                         <Text style={[styles.matchScoreModalSectionTitle, { color: colors.textSecondary }]}>Não informado no perfil</Text>
@@ -585,6 +611,16 @@ export default function PetDetailsScreen() {
           </TouchableOpacity>
         )}
       </View>
+      {userId && (matchScoreData != null || completionPercent != null) && (
+        <View style={styles.matchProfileCompleteRow}>
+          <Text style={[styles.matchProfileCompleteText, { color: colors.textSecondary }]}>
+            Seu perfil está {completionPercent ?? 0}% completo para o match.
+          </Text>
+          <TouchableOpacity onPress={() => router.push('/profile-edit')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={[styles.matchProfileEditLink, { color: colors.primary }]}>Editar perfil</Text>
+          </TouchableOpacity>
+        </View>
+      )}
       {(pet as { city?: string | null }).city && (
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 6 }}>
           <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
@@ -678,7 +714,7 @@ export default function PetDetailsScreen() {
       <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
         <TouchableOpacity
           style={styles.sectionTitleRow}
-          onPress={() => setSobreExpanded((e) => !e)}
+          onPress={() => { configureExpandAnimation(); setSobreExpanded((e) => !e); }}
           activeOpacity={0.7}
         >
           <Ionicons name="document-text-outline" size={20} color={colors.primary} />
@@ -693,7 +729,7 @@ export default function PetDetailsScreen() {
       <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
         <TouchableOpacity
           style={styles.sectionTitleRow}
-          onPress={() => setAlimentacaoExpanded((e) => !e)}
+          onPress={() => { configureExpandAnimation(); setAlimentacaoExpanded((e) => !e); }}
           activeOpacity={0.7}
         >
           <Ionicons name="nutrition-outline" size={20} color={colors.primary} />
@@ -722,7 +758,7 @@ export default function PetDetailsScreen() {
       <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
         <TouchableOpacity
           style={styles.sectionTitleRow}
-          onPress={() => setPorQueDoandoExpanded((e) => !e)}
+          onPress={() => { configureExpandAnimation(); setPorQueDoandoExpanded((e) => !e); }}
           activeOpacity={0.7}
         >
           <Ionicons name="heart-outline" size={20} color={colors.primary} />
@@ -741,7 +777,7 @@ export default function PetDetailsScreen() {
       <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
         <TouchableOpacity
           style={styles.sectionTitleRow}
-          onPress={() => setComportamentoSaudeExpanded((e) => !e)}
+          onPress={() => { configureExpandAnimation(); setComportamentoSaudeExpanded((e) => !e); }}
           activeOpacity={0.7}
         >
           <Ionicons name="paw-outline" size={20} color={colors.primary} />
@@ -804,7 +840,7 @@ export default function PetDetailsScreen() {
         <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
           <TouchableOpacity
             style={styles.sectionTitleRow}
-            onPress={() => setPreferenciasTutorExpanded((e) => !e)}
+            onPress={() => { configureExpandAnimation(); setPreferenciasTutorExpanded((e) => !e); }}
             activeOpacity={0.7}
           >
             <Ionicons name="people-outline" size={20} color={colors.primary} />
@@ -1181,7 +1217,9 @@ export default function PetDetailsScreen() {
           </>
                 ) : isFavorited ? (
           <>
-            <PrimaryButton title="Quero adotar / Chat" onPress={handleConversar} />
+            <CtaPulse>
+              <PrimaryButton title="Quero adotar / Chat" onPress={handleConversar} />
+            </CtaPulse>
             <SecondaryButton
               title={removeFavMutation.isPending ? 'Removendo...' : 'Remover dos favoritos'}
               onPress={() => removeFavMutation.mutate()}
@@ -1380,6 +1418,20 @@ const styles = StyleSheet.create({
   },
   matchBadgeChevron: {
     marginLeft: 2,
+  },
+  matchProfileCompleteRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 6,
+  },
+  matchProfileCompleteText: {
+    fontSize: 13,
+  },
+  matchProfileEditLink: {
+    fontSize: 13,
+    fontWeight: '600',
   },
   partnerBanner: {
     flexDirection: 'row',

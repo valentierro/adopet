@@ -1,16 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, TouchableOpacity, ActivityIndicator, Modal, Pressable } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, TextInput, StyleSheet, Alert, TouchableOpacity, ActivityIndicator, Modal, Pressable, Platform } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, PrimaryButton, LoadingLogo, ProfileMenuFooter, Toast, CircularProgress } from '../src/components';
+import { ScreenContainer, PrimaryButton, LoadingLogo, ProfileMenuFooter, Toast, CircularProgress, PageIntro } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
 import { getMe, updateMe, getPreferences, updatePreferences } from '../src/api/me';
 import { useAuthStore } from '../src/stores/authStore';
 import { presign, confirmAvatarUpload } from '../src/api/uploads';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
+import { configureExpandAnimation } from '../src/utils/layoutAnimation';
 import { formatPhoneInput, formatPhoneDisplay, getPhoneDigits } from '../src/utils/phoneMask';
 import { spacing } from '../src/theme';
 
@@ -196,6 +198,9 @@ export default function ProfileEditScreen() {
   const [sectionBasicExpanded, setSectionBasicExpanded] = useState(true);
   const [sectionAdoptionExpanded, setSectionAdoptionExpanded] = useState(false);
   const [sectionWhyExpanded, setSectionWhyExpanded] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [displayPercent, setDisplayPercent] = useState(0);
+  const completionPercentRef = useRef(0);
 
   useEffect(() => {
     if (user) {
@@ -236,9 +241,11 @@ export default function ProfileEditScreen() {
   const updateMutation = useMutation({
     mutationFn: (body: Parameters<typeof updateMe>[0]) => updateMe(body),
     onSuccess: () => {
+      if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setToastMessage('Perfil atualizado!');
+      setSaveSuccess(true);
       queryClient.invalidateQueries({ queryKey: ['me'] });
-      setTimeout(() => router.back(), 600);
+      setTimeout(() => router.back(), 1400);
     },
     onError: (e: unknown) => {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível salvar.'));
@@ -391,9 +398,38 @@ export default function ProfileEditScreen() {
           })
         : { completionPercent: 0, missingFields: [] };
 
+  useEffect(() => {
+    const target = completion.completionPercent;
+    const allFilled = completion.missingFields.length === 0;
+    // Quando todas as preferências de match estão preenchidas, exibir 100% sempre (evita mostrar 96% durante a animação).
+    if (allFilled && target >= 100) {
+      completionPercentRef.current = 100;
+      setDisplayPercent(100);
+      return;
+    }
+    const isInitial = completionPercentRef.current === 0 && target > 0;
+    completionPercentRef.current = target;
+    if (!isInitial) {
+      setDisplayPercent(target);
+      return;
+    }
+    const duration = 1200;
+    const steps = 24;
+    const stepMs = duration / steps;
+    const stepVal = target / steps;
+    let step = 0;
+    const t = setInterval(() => {
+      step += 1;
+      setDisplayPercent(Math.min(Math.round(step * stepVal), target));
+      if (step >= steps) clearInterval(t);
+    }, stepMs);
+    return () => clearInterval(t);
+  }, [completion.completionPercent, completion.missingFields.length]);
+
   return (
     <ScreenContainer scroll>
       <View style={styles.form}>
+        <PageIntro title="Editar perfil" subtitle="Atualize seus dados e preferências." />
         <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Foto do perfil</Text>
         <View style={styles.avatarRow}>
           <TouchableOpacity onPress={pickAndUploadAvatar} disabled={uploadAvatarMutation.isPending} style={styles.avatarTouch}>
@@ -418,7 +454,7 @@ export default function ProfileEditScreen() {
         <CollapsibleSection
           title="Dados básicos"
           expanded={sectionBasicExpanded}
-          onToggle={() => setSectionBasicExpanded((e) => !e)}
+          onToggle={() => { configureExpandAnimation(); setSectionBasicExpanded((e) => !e); }}
           colors={colors}
         >
         <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
@@ -478,7 +514,7 @@ export default function ProfileEditScreen() {
         <View style={styles.completionWrap}>
           <View style={styles.completionRow}>
             <CircularProgress
-              percent={completion.completionPercent}
+              percent={displayPercent}
               size={80}
               strokeWidth={6}
               strokeColor={
@@ -550,7 +586,7 @@ export default function ProfileEditScreen() {
         <CollapsibleSection
           title="Preferências em relação ao pet (feed e match)"
           expanded={sectionPetPrefsExpanded}
-          onToggle={() => setSectionPetPrefsExpanded((e) => !e)}
+          onToggle={() => { configureExpandAnimation(); setSectionPetPrefsExpanded((e) => !e); }}
           colors={colors}
         >
           <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
@@ -609,7 +645,7 @@ export default function ProfileEditScreen() {
         <CollapsibleSection
           title="Informações para adoção (obrigatórias para o match)"
           expanded={sectionAdoptionExpanded}
-          onToggle={() => setSectionAdoptionExpanded((e) => !e)}
+          onToggle={() => { configureExpandAnimation(); setSectionAdoptionExpanded((e) => !e); }}
           colors={colors}
         >
         <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
@@ -809,7 +845,7 @@ export default function ProfileEditScreen() {
         <CollapsibleSection
           title="Por que quer adotar? (opcional)"
           expanded={sectionWhyExpanded}
-          onToggle={() => setSectionWhyExpanded((e) => !e)}
+          onToggle={() => { configureExpandAnimation(); setSectionWhyExpanded((e) => !e); }}
           colors={colors}
         >
         <TextInput
@@ -824,11 +860,18 @@ export default function ProfileEditScreen() {
         />
         </CollapsibleSection>
 
-        <PrimaryButton
-          title={updateMutation.isPending || updatePrefsMutation.isPending ? 'Salvando...' : 'Salvar'}
-          onPress={handleSave}
-          disabled={updateMutation.isPending || updatePrefsMutation.isPending}
-        />
+        {saveSuccess ? (
+          <View style={[styles.saveSuccessWrap, { backgroundColor: colors.primary }]}>
+            <Ionicons name="checkmark-circle" size={28} color="#fff" />
+            <Text style={styles.saveSuccessText}>Salvo!</Text>
+          </View>
+        ) : (
+          <PrimaryButton
+            title={updateMutation.isPending || updatePrefsMutation.isPending ? 'Salvando...' : 'Salvar'}
+            onPress={handleSave}
+            disabled={updateMutation.isPending || updatePrefsMutation.isPending}
+          />
+        )}
       </View>
       <ProfileMenuFooter />
       <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
@@ -948,4 +991,13 @@ const styles = StyleSheet.create({
   modalImportance: { fontSize: 14, lineHeight: 20, marginTop: spacing.md, marginBottom: spacing.lg },
   modalBtn: { paddingVertical: spacing.md, borderRadius: 10, alignItems: 'center' },
   modalBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  saveSuccessWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: 10,
+  },
+  saveSuccessText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

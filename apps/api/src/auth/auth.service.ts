@@ -92,15 +92,14 @@ export class AuthService {
     return { available: !existing };
   }
 
-  /** Lê FeatureFlag (GLOBAL) primeiro; se não existir linha, usa env REQUIRE_EMAIL_VERIFICATION. */
+  /** Lê FeatureFlag (GLOBAL) primeiro; se existir linha, usa o campo enabled; senão usa env REQUIRE_EMAIL_VERIFICATION. */
   private async getRequireEmailVerification(): Promise<boolean> {
-    const fromDb = await this.featureFlagService.isEnabled('REQUIRE_EMAIL_VERIFICATION', {});
-    if (fromDb) return true;
-    const anyRow = await this.prisma.featureFlag.findFirst({
-      where: { key: 'REQUIRE_EMAIL_VERIFICATION' },
-      select: { id: true },
+    const row = await this.prisma.featureFlag.findFirst({
+      where: { key: 'REQUIRE_EMAIL_VERIFICATION', scope: 'GLOBAL' },
+      select: { enabled: true },
     });
-    return anyRow ? false : isRequireEmailVerificationFromEnv(this.config);
+    if (row) return row.enabled;
+    return isRequireEmailVerificationFromEnv(this.config);
   }
 
   async signup(

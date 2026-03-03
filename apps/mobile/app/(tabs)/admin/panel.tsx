@@ -616,7 +616,8 @@ export default function AdminScreen() {
   });
 
   const updateFeatureFlagMutation = useMutation({
-    mutationFn: ({ key, enabled }: { key: string; enabled: boolean }) => updateFeatureFlag(key, { enabled }),
+    mutationFn: ({ id, key, enabled }: { id: string; key: string; enabled: boolean }) =>
+      updateFeatureFlag(id, { enabled }),
     onSuccess: (_, { key, enabled }) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'feature-flags'] });
       setToastMessage(`Feature "${key}" ${enabled ? 'habilitada' : 'desabilitada'}.`);
@@ -2451,8 +2452,8 @@ export default function AdminScreen() {
               </View>
               <Switch
                 value={flag.enabled}
-                onValueChange={(enabled) => updateFeatureFlagMutation.mutate({ key: flag.key, enabled })}
-                disabled={updateFeatureFlagMutation.isPending && updateFeatureFlagMutation.variables?.key === flag.key}
+                onValueChange={(enabled) => updateFeatureFlagMutation.mutate({ id: flag.id, key: flag.key, enabled })}
+                disabled={updateFeatureFlagMutation.isPending && updateFeatureFlagMutation.variables?.id === flag.id}
                 trackColor={{ false: colors.background, true: colors.primary + '80' }}
                 thumbColor={flag.enabled ? colors.primary : colors.textSecondary}
               />

@@ -16,6 +16,7 @@
     "prisma:studio": "prisma studio",
     "prisma:seed": "prisma db seed",
     "db:reset-keep-admin": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/reset-db-keep-admin.ts",
+    "db:clean-for-launch": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/clean-db-for-launch.ts",
     "db:assign-placeholder-photos": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/assign-placeholder-pet-photos.ts",
     "db:fix-seed-photo-urls": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/fix-seed-photo-urls.ts",
     "db:backfill-pet-city": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-pet-city.ts",

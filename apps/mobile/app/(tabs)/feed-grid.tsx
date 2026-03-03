@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ScrollView, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
+import React, { useState, useEffect, useCallback, useLayoutEffect, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, RefreshControl, ScrollView, NativeSyntheticEvent, NativeScrollEvent, Animated } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,7 +8,7 @@ import { Image as ExpoImage } from 'expo-image';
 import * as Location from 'expo-location';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, LoadingLogo, EmptyState, VerifiedBadge } from '../../src/components';
+import { ScreenContainer, LoadingLogo, EmptyState, VerifiedBadge, MarketplaceGridSkeleton, PageIntro } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useResponsiveGridColumns } from '../../src/hooks/useResponsiveGridColumns';
 import { fetchFeed, type FeedResponse, type FeedSpeciesFilter } from '../../src/api/feed';
@@ -64,6 +64,19 @@ function formatDistanceKm(val: unknown): string | null {
   if (val == null) return null;
   const n = Number(val);
   return Number.isFinite(n) ? `${n.toFixed(1)} km` : null;
+}
+
+const STAGGER_DELAY = 45;
+function StaggeredCard({ index, children }: { index: number; children: React.ReactNode }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(12)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, { toValue: 1, duration: 280, useNativeDriver: true, delay: index * STAGGER_DELAY }),
+      Animated.timing(translateY, { toValue: 0, duration: 280, useNativeDriver: true, delay: index * STAGGER_DELAY }),
+    ]).start();
+  }, [index, opacity, translateY]);
+  return <Animated.View style={{ opacity, transform: [{ translateY }] }}>{children}</Animated.View>;
 }
 
 const VALID_SPECIES: FeedSpeciesFilter[] = ['BOTH', 'DOG', 'CAT'];
@@ -159,9 +172,10 @@ export default function FeedGridScreen() {
   }, [title, navigation, router, colors.textPrimary]);
 
   const renderItem = useCallback(
-    ({ item }: { item: FeedItem }) => {
+    ({ item, index }: { item: FeedItem; index: number }) => {
       const partner = item.partner as { isPaidPartner?: boolean } | undefined;
       return (
+        <StaggeredCard index={index}>
         <View style={[styles.card, { backgroundColor: colors.surface, width: gridCellWidth }]}>
           <TouchableOpacity
             style={styles.cardTouchable}
@@ -259,6 +273,7 @@ export default function FeedGridScreen() {
             </View>
           </TouchableOpacity>
         </View>
+        </StaggeredCard>
       );
     },
     [colors, router, gridCellWidth]
@@ -266,12 +281,9 @@ export default function FeedGridScreen() {
 
   if (isLoading && items.length === 0) {
     return (
-      <ScreenContainer>
-        <View style={styles.loadingWrap}>
-          <LoadingLogo size={80} />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-            Carregando pets...
-          </Text>
+      <ScreenContainer scroll={false}>
+        <View style={[styles.skeletonWrap, { paddingHorizontal: GRID_PADDING }]}>
+          <MarketplaceGridSkeleton cardWidth={gridCellWidth > 0 ? gridCellWidth : 160} gap={GRID_GAP} />
         </View>
       </ScreenContainer>
     );
@@ -309,11 +321,14 @@ export default function FeedGridScreen() {
         }
         ListHeaderComponent={
           items.length > 0 ? (
-            <Text style={[styles.countHint, { color: colors.textSecondary }]}>
-              {items.length}
-              {totalCount > 0 ? ` de ${totalCount} ` : ' '}
-              pets
-            </Text>
+            <>
+              <PageIntro title={title} subtitle="Toque em um pet para ver detalhes e conversar com o tutor." />
+              <Text style={[styles.countHint, { color: colors.textSecondary }]}>
+                {items.length}
+                {totalCount > 0 ? ` de ${totalCount} ` : ' '}
+                pets
+              </Text>
+            </>
           ) : null
         }
         ListFooterComponent={
@@ -341,6 +356,11 @@ export default function FeedGridScreen() {
 
 
 const styles = StyleSheet.create({
+  skeletonWrap: {
+    flex: 1,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xl,
+  },
   loadingWrap: {
     flex: 1,
     justifyContent: 'center',

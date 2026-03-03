@@ -34,10 +34,11 @@ function HeaderBackButton() {
   );
 }
 
-const profileMenuHeaderOptions = {
+/** Header padronizado: seta voltar + logo Adopet centralizado. Título da página fica no início do conteúdo. */
+const stackHeaderOptions = {
+  headerLeft: () => <HeaderBackButton />,
   headerTitle: () => <HeaderLogo />,
   headerTitleAlign: 'center' as const,
-  headerLeft: () => <HeaderBackButton />,
 };
 
 const isExpoGo = Constants.appOwnership === 'expo';
@@ -86,7 +87,10 @@ function RootLayout() {
   const modalMaxWidth = useModalMaxWidth();
 
   useEffect(() => {
-    SplashScreen.hideAsync();
+    const t = setTimeout(() => {
+      SplashScreen.hideAsync();
+    }, 380);
+    return () => clearTimeout(t);
   }, []);
 
   useEffect(() => {
@@ -186,42 +190,42 @@ function RootLayout() {
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="profile-edit" options={{ title: 'Editar perfil', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="change-password" options={{ title: 'Alterar senha', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="notifications" options={{ title: 'Notificações', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="tutor-profile" options={{ title: 'Perfil do anunciante' }} />
-        <Stack.Screen name="user-unavailable" options={{ title: 'Usuário não disponível', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="owner-pets" options={{ title: 'Anúncios do tutor', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="partner-pets" options={{ title: 'Anúncios vinculados', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="partner-my-pets" options={{ title: 'Anúncios da ONG', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="partner-ong-adoptions" options={{ title: 'Adoções pela ONG', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="feature-disabled" options={{ title: 'Em breve', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="partner-portal" options={{ title: 'Portal do parceiro', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="partner-edit" options={{ title: 'Dados do estabelecimento', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="partner-coupons" options={{ title: 'Cupons de desconto' }} />
-        <Stack.Screen name="partner-coupon-edit" options={{ title: 'Cupom' }} />
-        <Stack.Screen name="partner-services" options={{ title: 'Serviços prestados' }} />
-        <Stack.Screen name="partner-service-edit" options={{ title: 'Serviço' }} />
-        <Stack.Screen name="partner-analytics" options={{ title: 'Analytics' }} />
-        <Stack.Screen name="partner-members" options={{ title: 'Membros da ONG', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="partner-adoption-forms" options={{ title: 'Formulários de adoção', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="partner-adoption-form-intro" options={{ title: 'Novo formulário', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="partner-adoption-form-edit" options={{ title: 'Formulário de adoção', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="partner-adoption-requests" options={{ title: 'Solicitações de adoção', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="partner-members-bulk" options={{ title: 'Importar membros em lote', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="partner-member-profile" options={{ title: 'Perfil do membro' }} />
-        <Stack.Screen name="partner-subscription" options={{ title: 'Assinatura', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="partner-success" options={{ title: 'Pagamento concluído' }} />
-        <Stack.Screen name="partner-cancel" options={{ title: 'Pagamento cancelado' }} />
-        <Stack.Screen name="parceria-apresentacao" options={{ title: 'Seja parceiro' }} />
-        <Stack.Screen name="solicitar-parceria" options={{ title: 'Solicitar parceria' }} />
-        <Stack.Screen name="terms" options={{ title: 'Termos de Uso', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="privacy" options={{ title: 'Política de Privacidade', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="bug-report-suggestion" options={{ title: 'Bug report / Sugestões', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="kyc" options={{ title: 'Solicitar verificação (KYC)', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="my-adoption-requests" options={{ title: 'Minhas solicitações', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="adoption-form-fill/[requestId]" options={{ title: 'Formulário de adoção', ...profileMenuHeaderOptions }} />
-        <Stack.Screen name="survey" options={{ title: 'Pesquisa de satisfação', ...profileMenuHeaderOptions }} />
+        <Stack.Screen name="profile-edit" options={{ title: 'Editar perfil', ...stackHeaderOptions }} />
+        <Stack.Screen name="change-password" options={{ title: 'Alterar senha', ...stackHeaderOptions }} />
+        <Stack.Screen name="notifications" options={{ title: 'Notificações', ...stackHeaderOptions }} />
+        <Stack.Screen name="tutor-profile" options={{ title: 'Perfil do anunciante', ...stackHeaderOptions }} />
+        <Stack.Screen name="user-unavailable" options={{ title: 'Usuário não disponível', ...stackHeaderOptions }} />
+        <Stack.Screen name="owner-pets" options={{ title: 'Anúncios do tutor', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-pets" options={{ title: 'Anúncios vinculados', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-my-pets" options={{ title: 'Anúncios da ONG', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-ong-adoptions" options={{ title: 'Adoções pela ONG', ...stackHeaderOptions }} />
+        <Stack.Screen name="feature-disabled" options={{ title: 'Em breve', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-portal" options={{ title: 'Portal do parceiro', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-edit" options={{ title: 'Dados do estabelecimento', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-coupons" options={{ title: 'Cupons de desconto', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-coupon-edit" options={{ title: 'Cupom', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-services" options={{ title: 'Serviços prestados', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-service-edit" options={{ title: 'Serviço', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-analytics" options={{ title: 'Analytics', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-members" options={{ title: 'Membros da ONG', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-adoption-forms" options={{ title: 'Formulários de adoção', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-adoption-form-intro" options={{ title: 'Novo formulário', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-adoption-form-edit" options={{ title: 'Formulário de adoção', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-adoption-requests" options={{ title: 'Solicitações de adoção', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-members-bulk" options={{ title: 'Importar membros em lote', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-member-profile" options={{ title: 'Perfil do membro', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-subscription" options={{ title: 'Assinatura', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-success" options={{ title: 'Pagamento concluído', ...stackHeaderOptions }} />
+        <Stack.Screen name="partner-cancel" options={{ title: 'Pagamento cancelado', ...stackHeaderOptions }} />
+        <Stack.Screen name="parceria-apresentacao" options={{ title: 'Seja parceiro', ...stackHeaderOptions }} />
+        <Stack.Screen name="solicitar-parceria" options={{ title: 'Solicitar parceria', ...stackHeaderOptions }} />
+        <Stack.Screen name="terms" options={{ title: 'Termos de Uso', ...stackHeaderOptions }} />
+        <Stack.Screen name="privacy" options={{ title: 'Política de Privacidade', ...stackHeaderOptions }} />
+        <Stack.Screen name="bug-report-suggestion" options={{ title: 'Bug report / Sugestões', ...stackHeaderOptions }} />
+        <Stack.Screen name="kyc" options={{ title: 'Solicitar verificação (KYC)', ...stackHeaderOptions }} />
+        <Stack.Screen name="my-adoption-requests" options={{ title: 'Minhas solicitações', ...stackHeaderOptions }} />
+        <Stack.Screen name="adoption-form-fill/[requestId]" options={{ title: 'Formulário de adoção', ...stackHeaderOptions }} />
+        <Stack.Screen name="survey" options={{ title: 'Pesquisa de satisfação', ...stackHeaderOptions }} />
       </Stack>
       <UpdateAvailableModal
         visible={showUpdateModal}

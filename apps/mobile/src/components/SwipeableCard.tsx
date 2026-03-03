@@ -44,19 +44,21 @@ export function SwipeableCard({ children, onSwipeLeft, onSwipeRight, onPress, fu
         }
         if (dx > SWIPE_THRESHOLD && onSwipeRight) {
           onSwipeRight();
-          Animated.timing(position, {
+          Animated.spring(position, {
             toValue: { x: SCREEN_WIDTH + 100, y: dx },
             useNativeDriver: true,
-            duration: 200,
+            friction: 7,
+            tension: 40,
           }).start(() => {
             position.setValue({ x: 0, y: 0 });
           });
         } else if (dx < -SWIPE_THRESHOLD && onSwipeLeft) {
           onSwipeLeft();
-          Animated.timing(position, {
+          Animated.spring(position, {
             toValue: { x: -SCREEN_WIDTH - 100, y: dx },
             useNativeDriver: true,
-            duration: 200,
+            friction: 7,
+            tension: 40,
           }).start(() => {
             position.setValue({ x: 0, y: 0 });
           });
@@ -75,6 +77,12 @@ export function SwipeableCard({ children, onSwipeLeft, onSwipeRight, onPress, fu
   const rotate = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH / 2, SCREEN_WIDTH / 2],
     outputRange: ['-12deg', '12deg'],
+    extrapolate: 'clamp',
+  });
+
+  const scale = position.x.interpolate({
+    inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+    outputRange: [1, 1.02, 1],
     extrapolate: 'clamp',
   });
 
@@ -104,6 +112,7 @@ export function SwipeableCard({ children, onSwipeLeft, onSwipeRight, onPress, fu
               { translateX: position.x },
               { translateY: position.y },
               { rotate },
+              { scale },
             ],
           },
         ]}
@@ -138,6 +147,11 @@ const styles = StyleSheet.create({
   card: {
     overflow: 'hidden',
     position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 16,
+    shadowOpacity: 0.22,
+    elevation: 12,
   },
   overlay: {
     position: 'absolute',

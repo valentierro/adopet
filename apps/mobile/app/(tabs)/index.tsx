@@ -254,6 +254,7 @@ export default function DashboardScreen() {
   const mainScrollOffsetRef = useRef(0);
   const verificationChipRef = useRef<View>(null);
   const statsRowRef = useRef<View>(null);
+  const personalizeOrderRef = useRef<View>(null);
   const feedCardRef = useRef<View>(null);
   const meusAnunciosRef = useRef<View>(null);
   const minhasAdocoesRef = useRef<View>(null);
@@ -404,7 +405,7 @@ export default function DashboardScreen() {
           ? feedTotalCount === 0
             ? 'Nenhum pet no momento na sua região'
             : `${feedTotalCount} disponível${feedTotalCount !== 1 ? 'eis' : ''}`
-          : 'Toque e deslize para curtir',
+          : 'Toque no card para ver os pets da sua região',
       icon: 'paw',
       route: '/feed',
       gradient: ['#d97706', '#b45309'],
@@ -460,24 +461,6 @@ export default function DashboardScreen() {
       gradient: ['#d97706', '#b45309'],
       fullWidth: true,
     },
-    {
-      id: 'partnerOng',
-      title: 'Sou ONG ou instituição',
-      subtitle: 'Parceria gratuita para abrigos e instituições',
-      icon: 'heart',
-      route: '/seja-parceiro-ong',
-      gradient: ['#d97706', '#b45309'],
-      fullWidth: true,
-    },
-    {
-      id: 'partnerComercial',
-      title: 'Clínicas, veterinários, lojas',
-      subtitle: 'Planos com destaque e preços no app',
-      icon: 'storefront',
-      route: '/seja-parceiro-comercial',
-      gradient: ['#d97706', '#b45309'],
-      fullWidth: true,
-    },
   ];
 
   // Card condicional no lugar de Conversas: admin → Administração; demais → Notificações
@@ -505,10 +488,8 @@ export default function DashboardScreen() {
   const cardsWithConditional =
     mapIdx >= 0 ? [...cards.slice(0, mapIdx + 1), conditionalCard, ...cards.slice(mapIdx + 1)] : cards;
 
-  // Parceiro/membro de ONG ou admin: não vê os CTAs "Sou ONG" e "Clínicas, lojas"
-  let cardsToShow = isPartnerOrMember || isAdmin
-    ? cardsWithConditional.filter((c) => c.id !== 'partnerOng' && c.id !== 'partnerComercial')
-    : cardsWithConditional;
+  // CTAs "Sou ONG" e "Clínicas, lojas" ficam apenas na tela de boas-vindas (parceria-apresentação); não duplicamos na home
+  const cardsToShow = cardsWithConditional;
   // ONG: os 3 CTAs (Minha ONG, Anúncios da ONG, Adoções pela ONG) ficam logo abaixo dos atalhos, não no grid
 
   // Parceiro comercial (não ONG): não inserir card no grid; o CTA Portal do parceiro fica logo abaixo dos atalhos (para todos os parceiros)
@@ -526,13 +507,10 @@ export default function DashboardScreen() {
   const orderedCardsToShow = useMemo(() => {
     if (!cardsOrderLoaded || cardsOrder.length === 0) return cardsToShow;
     const fixedBefore = cardsToShow.filter((c) => c.id === 'feed');
-    const fixedAfter = cardsToShow.filter(
-      (c) => c.id === 'partnersArea' || c.id === 'partnerOng' || c.id === 'partnerComercial'
-    );
-    const draggableIds = cardsToShow.filter(
-      (c) =>
-        !['feed', 'partnersArea', 'partnerOng', 'partnerComercial'].includes(c.id)
-    ).map((c) => c.id);
+    const fixedAfter = cardsToShow.filter((c) => c.id === 'partnersArea');
+    const draggableIds = cardsToShow
+      .filter((c) => c.id !== 'feed' && c.id !== 'partnersArea')
+      .map((c) => c.id);
     const ordered: (typeof cardsToShow)[0][] = [...fixedBefore];
     for (const id of cardsOrder) {
       if (draggableIds.includes(id)) {
@@ -901,14 +879,16 @@ export default function DashboardScreen() {
 
         <View style={styles.gridHeaderRow}>
           <Text style={[styles.gridSectionTitle, { color: colors.textPrimary }]}>Atalhos</Text>
-          <TouchableOpacity
-            onPress={() => setShowReorderModal(true)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={styles.personalizeOrderBtn}
-          >
-            <Ionicons name="reorder-three" size={20} color={colors.primary} />
-            <Text style={[styles.personalizeOrderText, { color: colors.primary }]}>Personalizar ordem</Text>
-          </TouchableOpacity>
+          <View ref={personalizeOrderRef} collapsable={false}>
+            <TouchableOpacity
+              onPress={() => setShowReorderModal(true)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={styles.personalizeOrderBtn}
+            >
+              <Ionicons name="reorder-three" size={20} color={colors.primary} />
+              <Text style={[styles.personalizeOrderText, { color: colors.primary }]}>Personalizar ordem</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.grid}>
@@ -919,9 +899,6 @@ export default function DashboardScreen() {
             const feedCarouselSegmentWidth = feedThumbUrls.length > 0 ? FEED_CAROUSEL_ITEM_WIDTH * feedThumbUrls.length : 0;
             const content = isFeedCard && feedThumbUrls.length > 0 ? (
               <View style={styles.feedCardContent}>
-                <View style={styles.feedCardHeroBadge}>
-                  <Text style={styles.feedCardHeroBadgeText}>Comece aqui</Text>
-                </View>
                 <View style={styles.feedCardTop}>
                   <View style={[styles.feedCardIconWrapLarge, styles.iconWrapLight]}>
                     <Ionicons name="paw" size={36} color="#fff" />
@@ -936,14 +913,21 @@ export default function DashboardScreen() {
                       </Text>
                     ) : null}
                     <Text style={[styles.feedCardActionPhrase, { color: 'rgba(255,255,255,0.9)' }]}>
-                      Toque e deslize para curtir
+                      Toque no card para ver os pets disponíveis
                     </Text>
                   </View>
-                  <View style={styles.feedCardCta}>
-                    <Text style={styles.feedCardCtaText}>Ver pets</Text>
-                    <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.95)" />
-                  </View>
                 </View>
+                <TouchableOpacity
+                  style={styles.feedCardVerPetsButton}
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    router.push('/feed');
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.feedCardVerPetsButtonText}>Ver pets</Text>
+                  <Ionicons name="chevron-forward" size={18} color="#b45309" />
+                </TouchableOpacity>
                 <ScrollView
                   ref={feedCarouselRef}
                   horizontal
@@ -983,9 +967,6 @@ export default function DashboardScreen() {
               </View>
             ) : isFeedCard && feedPreviewItems.length === 0 ? (
               <View style={styles.feedCardContent}>
-                <View style={styles.feedCardHeroBadge}>
-                  <Text style={styles.feedCardHeroBadgeText}>Comece aqui</Text>
-                </View>
                 <View style={styles.feedCardTop}>
                   <View style={[styles.feedCardIconWrapLarge, styles.iconWrapLight]}>
                     <Ionicons name="paw" size={36} color="#fff" />
@@ -1014,7 +995,7 @@ export default function DashboardScreen() {
                   <Text style={styles.feedCardMapButtonText}>Explorar no mapa</Text>
                 </TouchableOpacity>
               </View>
-            ) : card.id === 'partnerOng' || card.id === 'partnerComercial' || card.id === 'partnersArea' || card.id === 'partnerPortal' || card.id === 'ongPortal' || card.id === 'ongMyPets' || card.id === 'ongAdoptions' ? (
+            ) : card.id === 'partnersArea' || card.id === 'partnerPortal' || card.id === 'ongPortal' || card.id === 'ongMyPets' || card.id === 'ongAdoptions' ? (
               <View style={styles.partnersCardRow}>
                 <View style={[styles.partnersCardIconWrap, styles.iconWrapLight]}>
                   <Ionicons name={card.icon as any} size={28} color="#fff" />
@@ -1147,39 +1128,18 @@ export default function DashboardScreen() {
               tooltipPlacement: 'bottom',
             },
             {
+              key: 'personalize-order',
+              targetRef: personalizeOrderRef,
+              title: 'Personalizar ordem dos botões',
+              message: 'Toque aqui para alterar a ordem dos atalhos da tela inicial. Arraste os itens para deixar como preferir.',
+              tooltipPlacement: 'bottom',
+            },
+            {
               key: 'feed',
               targetRef: feedCardRef,
               title: 'Descobrir pets',
               message: 'Toque aqui para ver o feed de pets disponíveis para adoção. Deslize para curtir (favoritar) ou passar. Use o filtro por espécie e o mapa.',
               tooltipPlacement: 'bottom',
-            },
-            {
-              key: 'meus-anuncios',
-              targetRef: meusAnunciosRef,
-              title: 'Meus anúncios',
-              message: 'Cadastre pets para adoção. Seus anúncios aparecem aqui e passam por análise antes de ir para o feed.',
-              tooltipPlacement: 'bottom',
-            },
-            {
-              key: 'minhas-adocoes',
-              targetRef: minhasAdocoesRef,
-              title: 'Minhas adoções',
-              message: 'Aqui você vê os pets que adotou ou que foram adotados pelos seus anúncios.',
-              tooltipPlacement: 'bottom',
-            },
-            {
-              key: 'favoritos',
-              targetRef: favoritosRef,
-              title: 'Favoritos',
-              message: 'Pets que você curtiu ficam aqui. Toque para ver detalhes e conversar com o tutor.',
-              tooltipPlacement: 'bottom',
-            },
-            {
-              key: 'menu',
-              targetRef: footerMenuRef,
-              title: 'Menu inferior',
-              message: 'O menu abaixo tem as abas principais: Início, Favoritos, Anunciar, Conversas e Perfil. Use-o para navegar pelo app.',
-              tooltipPlacement: 'top',
             },
           ]}
           onComplete={() => setShowDashboardTour(false)}
@@ -1939,6 +1899,18 @@ const styles = StyleSheet.create({
   feedCardText: { flex: 1, marginLeft: spacing.sm, minWidth: 0, justifyContent: 'center' },
   feedCardCta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   feedCardCtaText: { color: 'rgba(255,255,255,0.95)', fontSize: 14, fontWeight: '700' },
+  feedCardVerPetsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingVertical: 10,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+  },
+  feedCardVerPetsButtonText: { color: '#b45309', fontSize: 15, fontWeight: '700' },
   feedCardTitle: { fontSize: 16, fontWeight: '800' },
   feedCardTitleHero: { fontSize: 18, fontWeight: '800', marginBottom: 2 },
   feedCardNumberHero: { fontSize: 15, fontWeight: '700', marginBottom: 2 },

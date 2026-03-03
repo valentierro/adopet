@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   View,
@@ -11,7 +11,11 @@ import {
   Pressable,
   ScrollView,
   Switch,
+  LayoutAnimation,
+  Platform,
+  Animated,
 } from 'react-native';
+import { configureExpandAnimation } from '../src/utils/layoutAnimation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PageIntro, Toast } from '../src/components';
@@ -68,6 +72,21 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   mesPassado: 'Mês passado',
 };
 
+function UnreadDot({ backgroundColor }: { backgroundColor: string }) {
+  const opacity = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.5, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: 800, useNativeDriver: true }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacity]);
+  return <Animated.View style={[styles.unreadDot, { backgroundColor, opacity }]} />;
+}
+
 function groupBySection(list: InAppNotificationItem[]): { key: SectionKey; items: InAppNotificationItem[] }[] {
   const groups: Record<SectionKey, InAppNotificationItem[]> = {
     hoje: [],
@@ -93,6 +112,7 @@ export default function NotificationsScreen() {
     () => new Set(['hoje', 'semanaPassada', 'mesPassado']),
   );
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [prefsSaveSuccess, setPrefsSaveSuccess] = useState(false);
   const [prefsSectionExpanded, setPrefsSectionExpanded] = useState(false);
   const [notifyNewPets, setNotifyNewPets] = useState(true);
   const [notifyMessages, setNotifyMessages] = useState(true);
@@ -119,6 +139,8 @@ export default function NotificationsScreen() {
       queryClient.invalidateQueries({ queryKey: ['me', 'preferences'] });
       queryClient.invalidateQueries({ queryKey: ['feed'] });
       setToastMessage('Preferências de notificações atualizadas.');
+      setPrefsSaveSuccess(true);
+      setTimeout(() => setPrefsSaveSuccess(false), 1600);
     },
     onError: (e: unknown) => Alert.alert('Não foi possível salvar', getFriendlyErrorMessage(e, 'Tente novamente.')),
   });
@@ -171,9 +193,16 @@ export default function NotificationsScreen() {
   const isRefetching = currentQuery.isRefetching;
   const refetch = currentQuery.refetch;
 
+  const runListExitAnimation = useCallback(() => {
+    if (Platform.OS !== 'web') {
+      LayoutAnimation.configureNext(LayoutAnimation.create(220, LayoutAnimation.Types.easeInEaseOut, LayoutAnimation.Properties.opacity));
+    }
+  }, []);
+
   const markReadMutation = useMutation({
     mutationFn: markNotificationAsRead,
     onSuccess: () => {
+      runListExitAnimation();
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications-unread-count'] });
     },
@@ -182,6 +211,7 @@ export default function NotificationsScreen() {
   const markAllReadMutation = useMutation({
     mutationFn: markAllNotificationsAsRead,
     onSuccess: () => {
+      runListExitAnimation();
       setToastMessage('Todas marcadas como lidas.');
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications-unread-count'] });
@@ -192,6 +222,7 @@ export default function NotificationsScreen() {
   const archiveOneMutation = useMutation({
     mutationFn: archiveNotification,
     onSuccess: () => {
+      runListExitAnimation();
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications-unread-count'] });
       setSelectedIds((prev) => {
@@ -208,6 +239,7 @@ export default function NotificationsScreen() {
   const archiveManyMutation = useMutation({
     mutationFn: archiveNotifications,
     onSuccess: (data) => {
+      runListExitAnimation();
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications-unread-count'] });
       setSelectedIds(new Set());
@@ -221,6 +253,7 @@ export default function NotificationsScreen() {
   const deleteOneMutation = useMutation({
     mutationFn: deleteNotification,
     onSuccess: () => {
+      runListExitAnimation();
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications-unread-count'] });
       setSelectedIds((prev) => {
@@ -237,6 +270,7 @@ export default function NotificationsScreen() {
   const deleteManyMutation = useMutation({
     mutationFn: deleteNotifications,
     onSuccess: (data) => {
+      runListExitAnimation();
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications-unread-count'] });
       setSelectedIds(new Set());
@@ -251,6 +285,7 @@ export default function NotificationsScreen() {
   const sections = useMemo(() => groupBySection(list), [list]);
 
   const toggleSection = useCallback((key: SectionKey) => {
+    configureExpandAnimation();
     setExpandedSections((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -446,7 +481,10 @@ export default function NotificationsScreen() {
         <View style={[styles.prefsSection, { borderColor: colors.surface }]}>
           <TouchableOpacity
             style={[styles.prefsSectionHeader, { backgroundColor: colors.surface }]}
-            onPress={() => setPrefsSectionExpanded((e) => !e)}
+            onPress={() => {
+              configureExpandAnimation();
+              setPrefsSectionExpanded((e) => !e);
+            }}
             activeOpacity={0.7}
           >
             <Ionicons name="settings-outline" size={20} color={colors.primary} />
@@ -526,15 +564,22 @@ export default function NotificationsScreen() {
                   thumbColor="#fff"
                 />
               </View>
-              <TouchableOpacity
-                style={[styles.prefsSaveBtn, { backgroundColor: colors.primary }]}
-                onPress={handleSavePrefs}
-                disabled={updatePrefsMutation.isPending}
-              >
-                <Text style={styles.prefsSaveBtnText}>
-                  {updatePrefsMutation.isPending ? 'Salvando...' : 'Salvar preferências'}
-                </Text>
-              </TouchableOpacity>
+              {prefsSaveSuccess ? (
+                <View style={[styles.prefsSaveBtn, styles.prefsSaveSuccess, { backgroundColor: colors.primary }]}>
+                  <Ionicons name="checkmark-circle" size={22} color="#fff" />
+                  <Text style={styles.prefsSaveBtnText}>Salvo!</Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.prefsSaveBtn, { backgroundColor: colors.primary }]}
+                  onPress={handleSavePrefs}
+                  disabled={updatePrefsMutation.isPending}
+                >
+                  <Text style={styles.prefsSaveBtnText}>
+                    {updatePrefsMutation.isPending ? 'Salvando...' : 'Salvar preferências'}
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </View>
@@ -718,9 +763,7 @@ export default function NotificationsScreen() {
                         <Text style={[styles.cardBody, { color: colors.textSecondary }]} numberOfLines={4}>
                           {n.body}
                         </Text>
-                        {!n.readAt && !archived && (
-                          <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
-                        )}
+                        {!n.readAt && !archived && <UnreadDot backgroundColor={colors.primary} />}
                       </View>
                     </Pressable>
                   );
@@ -805,6 +848,11 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderRadius: 10,
     alignItems: 'center',
+  },
+  prefsSaveSuccess: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.sm,
   },
   prefsSaveBtnText: {
     color: '#fff',

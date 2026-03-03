@@ -1,8 +1,9 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import Constants from 'expo-constants';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Share, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Share, Linking, Animated } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -16,6 +17,7 @@ import { getAdminStats } from '../../src/api/admin';
 import { getVerificationStatus } from '../../src/api/verification';
 import { presign, confirmAvatarUpload } from '../../src/api/uploads';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
+import { configureExpandAnimation } from '../../src/utils/layoutAnimation';
 import { spacing } from '../../src/theme';
 
 /** URL para doação/apoio ao app (pode usar deep link de volta ao app no futuro). */
@@ -54,6 +56,24 @@ export default function ProfileScreen() {
       }
     }, [userId, router]),
   );
+
+  const hapticThen = useCallback((fn: () => void) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    fn();
+  }, []);
+
+  const avatarRingOpacity = useRef(new Animated.Value(0.6)).current;
+  useEffect(() => {
+    if (!showCompleteProfileBanner) return;
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(avatarRingOpacity, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        Animated.timing(avatarRingOpacity, { toValue: 0.5, duration: 1000, useNativeDriver: true }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [showCompleteProfileBanner, avatarRingOpacity]);
 
   const [menuContaExpanded, setMenuContaExpanded] = useState(false);
   const [menuAdocaoExpanded, setMenuAdocaoExpanded] = useState(false);
@@ -234,7 +254,7 @@ export default function ProfileScreen() {
       {showCompleteProfileBanner && (
         <TouchableOpacity
           style={[styles.completeBanner, { backgroundColor: colors.primary + '20', borderColor: colors.primary }]}
-          onPress={() => router.push('/profile-edit')}
+          onPress={() => hapticThen(() => router.push('/profile-edit'))}
           activeOpacity={0.8}
         >
           <Ionicons name="person-add-outline" size={22} color={colors.primary} />
@@ -247,11 +267,24 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
         </TouchableOpacity>
       )}
-      <TouchableOpacity
-        style={[styles.avatarWrap]}
-        onPress={pickAndUploadAvatar}
-        disabled={uploadAvatarMutation.isPending}
-      >
+      <View style={styles.avatarOuterWrap}>
+        {showCompleteProfileBanner && (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.avatarRing,
+              {
+                borderColor: colors.primary,
+                opacity: avatarRingOpacity,
+              },
+            ]}
+          />
+        )}
+        <TouchableOpacity
+          style={[styles.avatarWrap]}
+          onPress={() => hapticThen(pickAndUploadAvatar)}
+          disabled={uploadAvatarMutation.isPending}
+        >
         {user?.avatarUrl ? (
           <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} contentFit="cover" />
         ) : (
@@ -268,6 +301,7 @@ export default function ProfileScreen() {
           <Ionicons name="camera" size={14} color="#fff" />
         </View>
       </TouchableOpacity>
+      </View>
       <View style={styles.nameRow}>
         <Text style={[styles.name, { color: colors.textPrimary }]}>{user?.name ?? 'Carregando...'}</Text>
         {(user?.verified || user?.kycStatus === 'VERIFIED') && (
@@ -309,7 +343,7 @@ export default function ProfileScreen() {
             <Text style={[styles.kycPendingText, { color: colors.primary }]}>Verificação de identidade (KYC)</Text>
             <Text style={[styles.kycPendingSubtext, { color: colors.textSecondary }]}>Submeta a selfie para liberar adoções</Text>
           </View>
-          <SecondaryButton title="Solicitar verificação" onPress={() => router.push('/kyc')} />
+          <SecondaryButton title="Solicitar verificação" onPress={() => hapticThen(() => router.push('/kyc'))} />
         </View>
       ) : null}
       {user?.partnerMemberships && user.partnerMemberships.length > 0 ? (
@@ -347,7 +381,7 @@ export default function ProfileScreen() {
       <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
         <TouchableOpacity
           style={styles.sectionTitleRow}
-          onPress={() => setInfoAdocaoExpanded((e) => !e)}
+          onPress={() => hapticThen(() => { configureExpandAnimation(); setInfoAdocaoExpanded((e) => !e); })}
           activeOpacity={0.7}
         >
           <Ionicons name="paw-outline" size={20} color={colors.primary} />
@@ -429,7 +463,7 @@ export default function ProfileScreen() {
         <View style={[styles.sectionCard, { backgroundColor: colors.surface }]}>
           <TouchableOpacity
             style={styles.sectionTitleRow}
-            onPress={() => setPreferenciasBuscaExpanded((e) => !e)}
+            onPress={() => hapticThen(() => { configureExpandAnimation(); setPreferenciasBuscaExpanded((e) => !e); })}
             activeOpacity={0.7}
           >
             <Ionicons name="search-outline" size={20} color={colors.primary} />
@@ -497,7 +531,7 @@ export default function ProfileScreen() {
       <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
         <TouchableOpacity
           style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
-          onPress={() => setMenuContaExpanded((e) => !e)}
+          onPress={() => hapticThen(() => { configureExpandAnimation(); setMenuContaExpanded((e) => !e); })}
           activeOpacity={0.7}
         >
           <Ionicons name="person-circle-outline" size={22} color={colors.primary} />
@@ -508,7 +542,7 @@ export default function ProfileScreen() {
           <>
             <TouchableOpacity
               style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={() => router.push('/profile-edit')}
+              onPress={() => hapticThen(() => router.push('/profile-edit'))}
             >
               <View style={styles.menuItemLeft}>
                 <Ionicons name="person-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -518,7 +552,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={() => router.push('/change-password')}
+              onPress={() => hapticThen(() => router.push('/change-password'))}
             >
               <View style={styles.menuItemLeft}>
                 <Ionicons name="lock-closed-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -530,7 +564,7 @@ export default function ProfileScreen() {
               (user?.kycStatus === 'PENDING' ? null : user?.kycStatus === 'VERIFIED' ? (
                 <TouchableOpacity
                   style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-                  onPress={() => router.push('/kyc')}
+                  onPress={() => hapticThen(() => router.push('/kyc'))}
                 >
                   <View style={styles.menuItemLeft}>
                     <Ionicons name="shield-checkmark" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -544,7 +578,7 @@ export default function ProfileScreen() {
               ) : (
                 <TouchableOpacity
                   style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-                  onPress={() => router.push('/kyc')}
+                  onPress={() => hapticThen(() => router.push('/kyc'))}
                 >
                   <View style={styles.menuItemLeft}>
                     <Ionicons name="shield-checkmark-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -558,7 +592,7 @@ export default function ProfileScreen() {
               ))}
             <TouchableOpacity
               style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={() => router.push('/notifications')}
+              onPress={() => hapticThen(() => router.push('/notifications'))}
             >
               <View style={styles.menuItemLeft}>
                 <Ionicons name="notifications-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -573,7 +607,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={() => router.push('/saved-searches')}
+              onPress={() => hapticThen(() => router.push('/saved-searches'))}
             >
               <View style={styles.menuItemLeft}>
                 <Ionicons name="search-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -589,7 +623,7 @@ export default function ProfileScreen() {
       <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
         <TouchableOpacity
           style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
-          onPress={() => setMenuAdocaoExpanded((e) => !e)}
+          onPress={() => hapticThen(() => { configureExpandAnimation(); setMenuAdocaoExpanded((e) => !e); })}
           activeOpacity={0.7}
         >
           <Ionicons name="heart-outline" size={22} color={colors.primary} />
@@ -601,7 +635,7 @@ export default function ProfileScreen() {
             {pendingConfirmCount > 0 && (
               <TouchableOpacity
                 style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-                onPress={() => router.push('/adoption-confirm')}
+                onPress={() => hapticThen(() => router.push('/adoption-confirm'))}
               >
                 <View style={styles.menuItemLeft}>
                   <Ionicons name="checkmark-done-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -615,7 +649,7 @@ export default function ProfileScreen() {
             )}
             <TouchableOpacity
               style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={() => router.push('/my-adoption-requests')}
+              onPress={() => hapticThen(() => router.push('/my-adoption-requests'))}
             >
               <View style={styles.menuItemLeft}>
                 <Ionicons name="document-text-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -632,7 +666,7 @@ export default function ProfileScreen() {
         <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
           <TouchableOpacity
             style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
-            onPress={() => setMenuParceiroExpanded((e) => !e)}
+            onPress={() => hapticThen(() => { configureExpandAnimation(); setMenuParceiroExpanded((e) => !e); })}
             activeOpacity={0.7}
           >
             <Ionicons name="people-outline" size={22} color={colors.primary} />
@@ -648,7 +682,7 @@ export default function ProfileScreen() {
                     styles.menuItemPartner,
                     { borderBottomColor: colors.surface, borderLeftColor: colors.primary },
                   ]}
-                  onPress={() => router.push('/partner-portal')}
+                  onPress={() => hapticThen(() => router.push('/partner-portal'))}
                 >
                   <View style={styles.menuItemLeft}>
                     <Ionicons name="business-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -660,7 +694,7 @@ export default function ProfileScreen() {
               {user?.partner && !user.partner.isPaidPartner && user.partner.type !== 'ONG' && (
                 <TouchableOpacity
                   style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-                  onPress={() => router.push('/partner-subscription')}
+                  onPress={() => hapticThen(() => router.push('/partner-subscription'))}
                 >
                   <View style={styles.menuItemLeft}>
                     <Ionicons name="card-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -671,7 +705,7 @@ export default function ProfileScreen() {
               )}
               <TouchableOpacity
                 style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-                onPress={() => router.push('/partners')}
+                onPress={() => hapticThen(() => router.push('/partners'))}
               >
                 <View style={styles.menuItemLeft}>
                   <Ionicons name="people-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -688,7 +722,7 @@ export default function ProfileScreen() {
       <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
         <TouchableOpacity
           style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
-          onPress={() => setMenuSuporteExpanded((e) => !e)}
+          onPress={() => hapticThen(() => { configureExpandAnimation(); setMenuSuporteExpanded((e) => !e); })}
           activeOpacity={0.7}
         >
           <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.primary} />
@@ -699,7 +733,7 @@ export default function ProfileScreen() {
           <>
             <TouchableOpacity
               style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={() => router.push('/bug-report-suggestion')}
+              onPress={() => hapticThen(() => router.push('/bug-report-suggestion'))}
             >
               <View style={styles.menuItemLeft}>
                 <Ionicons name="bug-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -709,7 +743,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={() => router.push('/survey')}
+              onPress={() => hapticThen(() => router.push('/survey'))}
             >
               <View style={styles.menuItemLeft}>
                 <Ionicons name="stats-chart-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -728,7 +762,7 @@ export default function ProfileScreen() {
       <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
         <TouchableOpacity
           style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
-          onPress={() => setMenuLegalExpanded((e) => !e)}
+          onPress={() => hapticThen(() => { configureExpandAnimation(); setMenuLegalExpanded((e) => !e); })}
           activeOpacity={0.7}
         >
           <Ionicons name="document-text-outline" size={22} color={colors.primary} />
@@ -739,7 +773,7 @@ export default function ProfileScreen() {
           <>
             <TouchableOpacity
               style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={() => router.push('/terms')}
+              onPress={() => hapticThen(() => router.push('/terms'))}
             >
               <View style={styles.menuItemLeft}>
                 <Ionicons name="document-text-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -749,7 +783,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={() => router.push('/privacy')}
+              onPress={() => hapticThen(() => router.push('/privacy'))}
             >
               <View style={styles.menuItemLeft}>
                 <Ionicons name="shield-checkmark-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -759,7 +793,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={handleExportData}
+              onPress={() => hapticThen(handleExportData)}
             >
               <View style={styles.menuItemLeft}>
                 <Ionicons name="download-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -776,7 +810,7 @@ export default function ProfileScreen() {
         <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
           <TouchableOpacity
             style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
-            onPress={() => setMenuApoioExpanded((e) => !e)}
+            onPress={() => hapticThen(() => { configureExpandAnimation(); setMenuApoioExpanded((e) => !e); })}
             activeOpacity={0.7}
           >
             <Ionicons name="heart" size={22} color={colors.primary} />
@@ -786,12 +820,12 @@ export default function ProfileScreen() {
           {menuApoioExpanded && (
             <TouchableOpacity
               style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={() => {
+              onPress={() => hapticThen(() => {
                 Linking.canOpenURL(DONATION_URL).then((supported) => {
                   if (supported) Linking.openURL(DONATION_URL);
                   else Alert.alert('Abrir link', 'Não foi possível abrir a página. Tente acessar pelo navegador: ' + DONATION_URL);
                 });
-              }}
+              })}
             >
               <View style={styles.menuItemLeft}>
                 <Ionicons name="heart" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -808,7 +842,7 @@ export default function ProfileScreen() {
         <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
           <TouchableOpacity
             style={[styles.menuSectionHeader, styles.menuItemPartner, { borderBottomColor: colors.surface, borderLeftColor: colors.primary }]}
-            onPress={() => setMenuAdminExpanded((e) => !e)}
+            onPress={() => hapticThen(() => { configureExpandAnimation(); setMenuAdminExpanded((e) => !e); })}
             activeOpacity={0.7}
           >
             <Ionicons name="shield-outline" size={22} color={colors.primary} />
@@ -829,7 +863,7 @@ export default function ProfileScreen() {
                 styles.menuItemAdmin,
                 { borderBottomColor: colors.surface, borderLeftColor: colors.primary },
               ]}
-              onPress={() => router.push('/admin')}
+              onPress={() => hapticThen(() => router.push('/admin'))}
             >
               <View style={styles.menuItemLeft}>
                 <Ionicons name="shield-outline" size={22} color={colors.primary} style={styles.menuIcon} />
@@ -846,7 +880,7 @@ export default function ProfileScreen() {
       <View style={styles.footer}>
         <PrimaryButton
           title="Sair"
-          onPress={handleLogout}
+          onPress={() => hapticThen(handleLogout)}
           accessibilityLabel="Sair da conta"
           accessibilityHint="Toque duas vezes para encerrar sua sessão"
         />
@@ -862,7 +896,7 @@ export default function ProfileScreen() {
         ) : (
           <TouchableOpacity
             style={[styles.deactivateBtn, { marginTop: spacing.lg }]}
-            onPress={() => {
+            onPress={() => hapticThen(() => {
               Alert.alert(
                 'Desativar conta e excluir dados',
                 'Sua conta será desativada e seus dados pessoais serão excluídos ou anonimizados (nome, e-mail, telefone, favoritos, preferências etc.). Você não poderá fazer login novamente. Esta ação não pode ser desfeita. Deseja continuar?',
@@ -884,7 +918,7 @@ export default function ProfileScreen() {
                   },
                 ],
               );
-            }}
+            })}
             accessibilityRole="button"
             accessibilityLabel="Desativar conta e excluir meus dados"
             accessibilityHint="Toque duas vezes para desativar sua conta permanentemente. Esta ação não pode ser desfeita."
@@ -909,9 +943,23 @@ const styles = StyleSheet.create({
   completeBannerText: { flex: 1, marginLeft: spacing.sm },
   completeBannerTitle: { fontSize: 16, fontWeight: '700' },
   completeBannerSub: { fontSize: 13, marginTop: 2 },
-  avatarWrap: {
+  avatarOuterWrap: {
     alignSelf: 'center',
     marginBottom: spacing.md,
+    position: 'relative',
+  },
+  avatarRing: {
+    position: 'absolute',
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 3,
+    top: -4,
+    left: -4,
+    zIndex: 1,
+  },
+  avatarWrap: {
+    alignSelf: 'center',
     position: 'relative',
   },
   avatarPlaceholder: {

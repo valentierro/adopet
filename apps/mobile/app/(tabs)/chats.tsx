@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, RefreshControl, SectionList } from 'react-native';
+import { configureExpandAnimation } from '../../src/utils/layoutAnimation';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -139,6 +140,7 @@ export default function ChatsScreen() {
   );
 
   const toggleSection = useCallback((key: SectionKey) => {
+    configureExpandAnimation();
     setSectionExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 

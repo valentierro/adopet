@@ -25,22 +25,7 @@ function HeaderBackButton() {
   );
 }
 
-/** Volta sempre para a tela inicial (primeira tab). */
-function HeaderBackToHomeButton() {
-  const router = useRouter();
-  const { colors } = useTheme();
-  return (
-    <TouchableOpacity
-      onPress={() => router.replace('/(tabs)')}
-      style={{ padding: 8, marginLeft: 4 }}
-      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-    >
-      <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-    </TouchableOpacity>
-  );
-}
-
-/** Header com logo + botão Voltar (volta para a tela anterior, seja home ou perfil). */
+/** Header padronizado: seta voltar + logo Adopet. Título da página fica no início do conteúdo. */
 const backWithLogoOptions = {
   headerLeft: () => <HeaderBackButton />,
   headerTitle: () => <HeaderLogo />,
@@ -80,6 +65,7 @@ export default function TabsLayout() {
 
   const backScreenOptions = {
     headerLeft: () => <HeaderBackButton />,
+    headerTitleAlign: 'center' as const,
   };
 
   return (
@@ -114,7 +100,7 @@ export default function TabsLayout() {
           href: isGuest ? '/(tabs)/feed' : null,
           title: isGuest ? 'Explorar' : 'Feed',
           headerShown: true,
-          headerTitle: isGuest ? 'Pets para adoção' : 'Descobrir pets',
+          headerTitle: () => <HeaderLogo />,
           headerTitleAlign: 'center',
           headerLeft: isGuest ? undefined : () => <HeaderBackButton />,
           tabBarIcon: ({ color, size }) => <Ionicons name="paw" size={size} color={color} />,
@@ -178,7 +164,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="pet/[id]"
-        options={{ href: null, title: 'Detalhes do pet', ...backScreenOptions }}
+        options={{ href: null, title: 'Detalhes do pet', ...backWithLogoOptions }}
       />
       <Tabs.Screen
         name="pet-priority/[id]"
@@ -186,7 +172,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="chat/[id]"
-        options={{ href: null, title: 'Conversa', ...backScreenOptions }}
+        options={{ href: null, title: 'Conversa', ...backWithLogoOptions }}
       />
       <Tabs.Screen
         name="preferences"
@@ -202,7 +188,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="pet-edit/[id]"
-        options={{ href: null, title: 'Editar pet', ...backScreenOptions }}
+        options={{ href: null, title: 'Editar pet', ...backWithLogoOptions }}
       />
       <Tabs.Screen
         name="passed-pets"
@@ -226,13 +212,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="recent-adoptions"
-        options={{
-          href: null,
-          title: 'Últimas adoções',
-          headerTitle: () => <HeaderLogo />,
-          headerTitleAlign: 'center',
-          headerLeft: () => <HeaderBackToHomeButton />,
-        }}
+        options={{ href: null, title: 'Últimas adoções', ...backWithLogoOptions }}
       />
       <Tabs.Screen
         name="admin"
@@ -240,7 +220,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="seja-parceiro"
-        options={{ href: null, title: 'Seja um parceiro', ...backScreenOptions }}
+        options={{ href: null, title: 'Seja um parceiro', ...backWithLogoOptions }}
       />
       <Tabs.Screen
         name="partners"
@@ -248,45 +228,27 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="indique-parceiro"
-        options={{ href: null, title: 'Indique um parceiro', ...backScreenOptions }}
+        options={{ href: null, title: 'Indique um parceiro', ...backWithLogoOptions }}
       />
       <Tabs.Screen
         name="partners-area"
-        options={{
-          href: null,
-          title: 'Ofertas dos parceiros',
-          headerTitle: () => <HeaderLogo />,
-          headerTitleAlign: 'center',
-          ...backScreenOptions,
-        }}
+        options={{ href: null, title: 'Ofertas dos parceiros', ...backWithLogoOptions }}
       />
       <Tabs.Screen
         name="marketplace"
-        options={{
-          href: null,
-          title: 'Para seu pet',
-          headerTitle: () => <HeaderLogo />,
-          headerTitleAlign: 'center',
-          ...backScreenOptions,
-        }}
+        options={{ href: null, title: 'Para seu pet', ...backWithLogoOptions }}
       />
       <Tabs.Screen
         name="partners/[id]"
-        options={{
-          href: null,
-          title: 'Parceiro',
-          headerTitle: () => <HeaderLogo />,
-          headerTitleAlign: 'center',
-          ...backScreenOptions,
-        }}
+        options={{ href: null, title: 'Parceiro', ...backWithLogoOptions }}
       />
       <Tabs.Screen
         name="seja-parceiro-ong"
-        options={{ href: null, title: 'Parceria para ONGs', ...backScreenOptions }}
+        options={{ href: null, title: 'Parceria para ONGs', ...backWithLogoOptions }}
       />
       <Tabs.Screen
         name="seja-parceiro-comercial"
-        options={{ href: null, title: 'Parceria comercial', ...backScreenOptions }}
+        options={{ href: null, title: 'Parceria comercial', ...backWithLogoOptions }}
       />
     </Tabs>
   );

@@ -24,6 +24,7 @@ import {
   type AdoptionFormQuestionDto,
 } from '../src/api/adoption-forms';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
+import { configureExpandAnimation } from '../src/utils/layoutAnimation';
 import { QUESTION_LIBRARY, QUESTION_LIBRARY_CATEGORIES, FORM_TEMPLATES } from '../src/constants/adoption-form-library';
 import { spacing } from '../src/theme';
 
@@ -145,6 +146,7 @@ export default function PartnerAdoptionFormEditScreen() {
   };
 
   const toggleLibrarySection = (cat: string) => {
+    configureExpandAnimation();
     setExpandedLibrarySections((prev) => {
       const next = new Set(prev);
       if (next.has(cat)) next.delete(cat);

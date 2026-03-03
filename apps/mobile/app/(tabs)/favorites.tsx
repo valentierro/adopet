@@ -1,5 +1,5 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, useWindowDimensions, FlatList, RefreshControl, Modal, Pressable } from 'react-native';
+import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, useWindowDimensions, FlatList, RefreshControl, Modal, Pressable, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
@@ -37,6 +37,22 @@ const SPECIES_OPTIONS: { value: 'BOTH' | 'DOG' | 'CAT'; label: string }[] = [
 ];
 
 const EMPTY_ITEMS: FavoriteItem[] = [];
+
+/** Wrapper que aplica animação de pulse sutil no CTA do empty state */
+function EmptyStateCtaPulse({ children }: { children: React.ReactNode }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.04, duration: 1000, useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1, duration: 1000, useNativeDriver: true }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [scale]);
+  return <Animated.View style={{ transform: [{ scale }] }}>{children}</Animated.View>;
+}
 
 function safeFavoritesPage(result: unknown): { items: FavoriteItem[]; nextCursor: string | null } {
   if (result == null || typeof result !== 'object') return { items: EMPTY_ITEMS, nextCursor: null };
@@ -384,14 +400,16 @@ export default function FavoritesScreen() {
           message={emptyMessage}
           icon={<Ionicons name="heart-outline" size={48} color={colors.textSecondary} />}
         />
-        <TouchableOpacity
-          style={[styles.emptyCta, { backgroundColor: colors.primary }]}
-          onPress={() => router.push('/feed')}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="paw" size={20} color="#fff" />
-          <Text style={styles.emptyCtaText}>Descobrir pets</Text>
-        </TouchableOpacity>
+        <EmptyStateCtaPulse>
+          <TouchableOpacity
+            style={[styles.emptyCta, { backgroundColor: colors.primary }]}
+            onPress={() => router.push('/feed')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="paw" size={20} color="#fff" />
+            <Text style={styles.emptyCtaText}>Descobrir pets</Text>
+          </TouchableOpacity>
+        </EmptyStateCtaPulse>
       </ScreenContainer>
     );
   }

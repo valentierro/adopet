@@ -475,6 +475,7 @@ export async function rejectPartnershipRequest(id: string, rejectionReason?: str
 // --- Feature flags ---
 
 export type FeatureFlagItem = {
+  id: string;
   key: string;
   enabled: boolean;
   description: string | null;
@@ -527,10 +528,10 @@ export async function getSatisfactionResponses(
   });
 }
 
-/** [Admin] Habilitar ou desabilitar uma feature flag */
+/** [Admin] Habilitar ou desabilitar uma feature flag (id = UUID da flag, não a key). */
 export async function updateFeatureFlag(
-  key: string,
+  id: string,
   body: { enabled: boolean },
 ): Promise<{ key: string; enabled: boolean }> {
-  return api.patch<{ key: string; enabled: boolean }>(`/admin/feature-flags/${encodeURIComponent(key)}`, body);
+  return api.patch<{ key: string; enabled: boolean }>(`/admin/feature-flags/${encodeURIComponent(id)}`, body);
 }

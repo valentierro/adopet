@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Pressable,
   ActivityIndicator,
   ScrollView,
+  Animated,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -74,6 +75,18 @@ export function OnboardingSlidesSheet({
   const slide = SLIDES[index];
   const sheetWidth = Math.max(280, Math.min((width || 400) - spacing.lg * 2, 400));
   const paddingBottom = 24 + insets.bottom;
+  const dotScales = useRef(SLIDES.map(() => new Animated.Value(0))).current;
+
+  useEffect(() => {
+    SLIDES.forEach((_, i) => {
+      Animated.spring(dotScales[i], {
+        toValue: i === index ? 1 : 0,
+        useNativeDriver: false,
+        friction: 6,
+        tension: 120,
+      }).start();
+    });
+  }, [index, dotScales]);
 
   const isCtaSlide = slide?.type === 'cta';
   const isLocationSlide = slide?.type === 'location';
@@ -216,9 +229,19 @@ export function OnboardingSlidesSheet({
                   <TouchableOpacity
                     key={i}
                     onPress={() => setIndex(i)}
-                    style={[i === index ? styles.dotActive : styles.dot, { backgroundColor: i === index ? ONBOARDING_TEAL : 'rgba(255,255,255,0.4)' }]}
                     activeOpacity={0.8}
-                  />
+                    style={styles.dotTouch}
+                  >
+                    <Animated.View
+                      style={[
+                        styles.dotBase,
+                        {
+                          backgroundColor: i === index ? ONBOARDING_TEAL : 'rgba(255,255,255,0.4)',
+                          width: dotScales[i].interpolate({ inputRange: [0, 1], outputRange: [8, 24] }),
+                        },
+                      ]}
+                    />
+                  </TouchableOpacity>
                 ))}
               </View>
 
@@ -290,8 +313,8 @@ const styles = StyleSheet.create({
     gap: 8,
     marginVertical: spacing.md,
   },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  dotActive: { width: 24, height: 8, borderRadius: 4 },
+  dotTouch: { padding: 4 },
+  dotBase: { height: 8, borderRadius: 4 },
   actions: { gap: 12 },
   btn: {},
   orangeBtn: {

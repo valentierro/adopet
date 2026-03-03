@@ -27,3 +27,4 @@ export { DashboardSpotlightTour, type TourStep } from './DashboardSpotlightTour'
 export { UpdateAvailableModal } from './UpdateAvailableModal';
 export { NotificationBanner } from './NotificationBanner';
 export { NotificationBannerWrapper } from './NotificationBannerWrapper';
+export { AnimatedTabBar } from './AnimatedTabBar';

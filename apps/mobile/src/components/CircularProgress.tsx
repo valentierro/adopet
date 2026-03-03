@@ -27,6 +27,9 @@ export function CircularProgress({
   const circumference = 2 * Math.PI * r;
   const offset = circumference - (clamped / 100) * circumference;
 
+  const baseHex = strokeColor.length === 9 ? strokeColor.slice(0, 7) : strokeColor;
+  const glowColor = baseHex + '40';
+
   return (
     <View style={[styles.wrapper, { width: size, height: size }]}>
       <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
@@ -37,6 +40,19 @@ export function CircularProgress({
           fill="none"
           stroke={backgroundColor}
           strokeWidth={strokeWidth}
+        />
+        <Circle
+          cx={cx}
+          cy={cx}
+          r={r}
+          fill="none"
+          stroke={glowColor}
+          strokeWidth={strokeWidth + 4}
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${cx} ${cx})`}
+          opacity={0.6}
         />
         <Circle
           cx={cx}

@@ -35,6 +35,7 @@ import { blockUser } from '../../../src/api/blocks';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFriendlyErrorMessage, isKycRequiredError, isKycNotCompleteError, getApiErrorBodyMessage } from '../../../src/utils/errorMessage';
 import { getMatchScoreColor } from '../../../src/utils/matchScoreColor';
+import { configureExpandAnimation } from '../../../src/utils/layoutAnimation';
 import { trackEvent } from '../../../src/analytics';
 import { LoadingLogo, PrimaryButton, SecondaryButton, Toast, MatchScoreBadge, VerifiedBadge } from '../../../src/components';
 import { getMe } from '../../../src/api/me';
@@ -360,8 +361,6 @@ export default function ChatRoomScreen() {
 
   useEffect(() => {
     navigation.setOptions({
-      headerTitle: conversation?.pet ? `${otherUserName} · ${conversation.pet.name}` : 'Conversa',
-      headerTitleAlign: 'left' as const,
       headerRight: otherUserId
         ? () => (
             <TouchableOpacity onPress={showChatMenu} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={{ padding: 8 }}>
@@ -1588,7 +1587,7 @@ export default function ChatRoomScreen() {
                     <View style={styles.matchScoreModalSection}>
                       <TouchableOpacity
                         style={styles.matchScoreModalSectionHeader}
-                        onPress={() => setMatchSectionExpanded((e) => !e)}
+                        onPress={() => { configureExpandAnimation(); setMatchSectionExpanded((e) => !e); }}
                         activeOpacity={0.7}
                       >
                         <Text style={[styles.matchScoreModalSectionTitle, { color: hex }]}>Pontos em comum</Text>
@@ -1609,7 +1608,7 @@ export default function ChatRoomScreen() {
                     <View style={styles.matchScoreModalSection}>
                       <TouchableOpacity
                         style={styles.matchScoreModalSectionHeader}
-                        onPress={() => setMismatchSectionExpanded((e) => !e)}
+                        onPress={() => { configureExpandAnimation(); setMismatchSectionExpanded((e) => !e); }}
                         activeOpacity={0.7}
                       >
                         <Text style={[styles.matchScoreModalSectionTitle, { color: colors.textSecondary }]}>Pontos de atenção</Text>
@@ -1630,7 +1629,7 @@ export default function ChatRoomScreen() {
                     <View style={styles.matchScoreModalSection}>
                       <TouchableOpacity
                         style={styles.matchScoreModalSectionHeader}
-                        onPress={() => setNeutralSectionExpanded((e) => !e)}
+                        onPress={() => { configureExpandAnimation(); setNeutralSectionExpanded((e) => !e); }}
                         activeOpacity={0.7}
                       >
                         <Text style={[styles.matchScoreModalSectionTitle, { color: colors.textSecondary }]}>Não informado no perfil</Text>

@@ -4,7 +4,7 @@ const KEY_PREFIX = 'adopet_home_cards_order_';
 
 export type ProfileKey = 'user' | 'partner' | 'admin';
 
-/** IDs dos 6 cards que podem ser reordenados (exceto feed, partnersArea, partnerOng, partnerComercial) */
+/** IDs dos cards que podem ser reordenados (exceto feed e partnersArea) */
 export const DRAGGABLE_CARD_IDS = [
   'my-pets',
   'adopted',

@@ -16,6 +16,7 @@ import { addFavorite } from '../../src/api/favorites';
 import { getMatchScore } from '../../src/api/pets';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { getMatchScoreColor } from '../../src/utils/matchScoreColor';
+import { configureExpandAnimation } from '../../src/utils/layoutAnimation';
 import { getSpeciesLabel, getSizeLabel } from '../../src/utils/petLabels';
 import { spacing } from '../../src/theme';
 import { gridLayout } from '../../src/theme/grid';
@@ -165,7 +166,7 @@ export default function PassedPetsScreen() {
       <PageIntro title="Pets que passou" subtitle="Reveja os pets que você passou no feed." />
       <TouchableOpacity
         style={[styles.collapsibleHeader, { backgroundColor: colors.surface }]}
-        onPress={() => setFiltersExpanded((e) => !e)}
+        onPress={() => { configureExpandAnimation(); setFiltersExpanded((e) => !e); }}
         activeOpacity={0.7}
       >
         <Text style={[styles.collapsibleHeaderText, { color: colors.textPrimary }]}>Busca e filtros</Text>

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput } from 'reac
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
-import { ScreenContainer, LoadingLogo, Toast } from '../../src/components';
+import { ScreenContainer, LoadingLogo, Toast, PageIntro } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { getSavedSearches, createSavedSearch, updateSavedSearch, deleteSavedSearch, type SavedSearchItem } from '../../src/api/saved-search';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
@@ -184,6 +184,7 @@ export default function SavedSearchesScreen() {
 
   return (
     <ScreenContainer scroll>
+      <PageIntro title="Buscas salvas" subtitle="Me avise quando tiver pets que combinem com seus critérios." />
       <Text style={[styles.section, { color: colors.textSecondary }]}>
         Me avise quando tiver
       </Text>

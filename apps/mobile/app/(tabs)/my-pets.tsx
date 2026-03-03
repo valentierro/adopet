@@ -1,7 +1,7 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, ScrollView, Alert, useWindowDimensions, FlatList } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, RefreshControl, ActivityIndicator, ScrollView, Alert, useWindowDimensions, FlatList, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
@@ -15,6 +15,7 @@ import { getMe } from '../../src/api/me';
 import { getMinePets, resubmitPublication, extendListing, type PetStatus } from '../../src/api/pets';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { getSpeciesLabel } from '../../src/utils/petLabels';
+import { configureExpandAnimation } from '../../src/utils/layoutAnimation';
 import { spacing } from '../../src/theme';
 import { gridLayout } from '../../src/theme/grid';
 
@@ -63,6 +64,22 @@ const STATUS_OPTIONS: { value: '' | PetStatus; label: string }[] = [
 
 const formatPublicationDate = (dateStr: string | undefined) =>
   dateStr ? new Date(dateStr).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : null;
+
+/** Wrapper que aplica animação de pulse sutil no CTA do empty state */
+function EmptyStateCtaPulse({ children }: { children: React.ReactNode }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scale, { toValue: 1.04, duration: 1000, useNativeDriver: true }),
+        Animated.timing(scale, { toValue: 1, duration: 1000, useNativeDriver: true }),
+      ]),
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [scale]);
+  return <Animated.View style={{ transform: [{ scale }] }}>{children}</Animated.View>;
+}
 
 export default function MyPetsScreen() {
   const router = useRouter();
@@ -207,7 +224,7 @@ export default function MyPetsScreen() {
           <PageIntro title="Meus anúncios" subtitle="Seus anúncios para adoção." />
           <TouchableOpacity
             style={[styles.collapsibleHeader, { backgroundColor: colors.surface }]}
-            onPress={() => setFiltersExpanded((e) => !e)}
+            onPress={() => { configureExpandAnimation(); setFiltersExpanded((e) => !e); }}
             activeOpacity={0.7}
           >
             <Text style={[styles.collapsibleHeaderText, { color: colors.textPrimary }]}>Busca e filtros</Text>
@@ -271,7 +288,7 @@ export default function MyPetsScreen() {
           <PageIntro title="Meus anúncios" subtitle="Seus anúncios para adoção." />
           <TouchableOpacity
             style={[styles.collapsibleHeader, { backgroundColor: colors.surface }]}
-            onPress={() => setFiltersExpanded((e) => !e)}
+            onPress={() => { configureExpandAnimation(); setFiltersExpanded((e) => !e); }}
             activeOpacity={0.7}
           >
             <Text style={[styles.collapsibleHeaderText, { color: colors.textPrimary }]}>Busca e filtros</Text>
@@ -337,12 +354,14 @@ export default function MyPetsScreen() {
           icon={<Ionicons name="paw-outline" size={56} color={colors.textSecondary} />}
         />
         {!hasFilters && (
-          <TouchableOpacity
-            style={[styles.addBtn, { backgroundColor: colors.primary }]}
-            onPress={() => router.replace('/(tabs)/add-pet')}
-          >
-            <Text style={styles.addBtnText}>Anunciar pet</Text>
-          </TouchableOpacity>
+          <EmptyStateCtaPulse>
+            <TouchableOpacity
+              style={[styles.addBtn, { backgroundColor: colors.primary }]}
+              onPress={() => router.replace('/(tabs)/add-pet')}
+            >
+              <Text style={styles.addBtnText}>Anunciar pet</Text>
+            </TouchableOpacity>
+          </EmptyStateCtaPulse>
         )}
       </ScreenContainer>
     );
@@ -362,7 +381,7 @@ export default function MyPetsScreen() {
         <PageIntro title="Meus anúncios" subtitle="Seus anúncios para adoção." />
         <TouchableOpacity
           style={[styles.collapsibleHeader, { backgroundColor: colors.surface }]}
-          onPress={() => setFiltersExpanded((e) => !e)}
+          onPress={() => { configureExpandAnimation(); setFiltersExpanded((e) => !e); }}
           activeOpacity={0.7}
         >
           <Text style={[styles.collapsibleHeaderText, { color: colors.textPrimary }]}>Busca e filtros</Text>

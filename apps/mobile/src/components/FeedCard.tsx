@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   FlatList,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Animated,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,10 +45,51 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
   const [photoIndex, setPhotoIndex] = useState(0);
   const galleryRef = useRef<FlatList<string> | null>(null);
   const h = cardHeight ?? SCREEN_HEIGHT;
+  const badgeAnim = useRef(new Animated.Value(0)).current;
+  const likeScale = useRef(new Animated.Value(1)).current;
+  const likeFilled = useRef(new Animated.Value(0)).current;
+  const passShake = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(badgeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+  }, [badgeAnim]);
+
+  const handleLike = () => {
+    Animated.sequence([
+      Animated.parallel([
+        Animated.spring(likeScale, { toValue: 1.25, useNativeDriver: true, friction: 4, tension: 200 }),
+        Animated.timing(likeFilled, { toValue: 1, duration: 80, useNativeDriver: true }),
+      ]),
+      Animated.spring(likeScale, { toValue: 1, useNativeDriver: true, friction: 5 }),
+    ]).start(() => {
+      likeFilled.setValue(0);
+      onLike();
+    });
+  };
+
+  const handlePass = () => {
+    Animated.sequence([
+      Animated.timing(passShake, { toValue: 1, duration: 60, useNativeDriver: true }),
+      Animated.timing(passShake, { toValue: 0, duration: 60, useNativeDriver: true }),
+    ]).start(() => onPass());
+  };
+  const passTranslateX = passShake.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [0, -8, 8],
+  });
+
+  const photoFade = useRef(new Animated.Value(1)).current;
+  const prevPhotoIndexRef = useRef(0);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const i = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-    setPhotoIndex(Math.min(i, photos.length - 1));
+    const next = Math.min(i, photos.length - 1);
+    if (next !== prevPhotoIndexRef.current) {
+      prevPhotoIndexRef.current = next;
+      photoFade.setValue(0);
+      Animated.timing(photoFade, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+    }
+    setPhotoIndex(next);
   };
 
   const goToPrevPhoto = () => {
@@ -86,9 +128,18 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
             showsHorizontalScrollIndicator={false}
             onMomentumScrollEnd={onScroll}
             keyExtractor={(uri, i) => `${i}-${uri.slice(-20)}`}
-            renderItem={({ item }) => (
+            renderItem={({ item, index }) => (
               <View style={[styles.slide, { width: SCREEN_WIDTH, height: h }]}>
-                <Image source={{ uri: item }} style={[styles.image, { width: SCREEN_WIDTH, height: h }]} contentFit="cover" />
+                <Animated.View
+                  style={[
+                    StyleSheet.absoluteFill,
+                    {
+                      opacity: photoIndex === index ? photoFade : 1,
+                    },
+                  ]}
+                >
+                  <Image source={{ uri: item }} style={[styles.image, { width: SCREEN_WIDTH, height: h }]} contentFit="cover" />
+                </Animated.View>
               </View>
             )}
           />
@@ -105,15 +156,21 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
           {photos.map((_, i) => (
             <View
               key={i}
-              style={[
-                styles.dot,
-                i === photoIndex && styles.dotActive,
-              ]}
+              style={[styles.dot, i === photoIndex && styles.dotActive]}
             />
           ))}
         </View>
 
-      <View style={[styles.topRightBadges, { top: wrapInTouchable ? insets.top + 12 : insets.top + 4 }]}>
+      <Animated.View
+        style={[
+          styles.topRightBadges,
+          { top: wrapInTouchable ? insets.top + 12 : insets.top + 4 },
+          {
+            opacity: badgeAnim,
+            transform: [{ scale: badgeAnim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }],
+          },
+        ]}
+      >
         {photos.length > 1 && (
           <View style={styles.galleryBadge}>
             <Ionicons name="images" size={18} color="#fff" />
@@ -151,7 +208,7 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
             <Text style={styles.matchBadgeText}>{pet.matchScore}%</Text>
           </View>
         )}
-      </View>
+      </Animated.View>
 
       <View
         style={[
@@ -232,17 +289,26 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
         >
           <TouchableOpacity
             style={[styles.actionBtn, styles.passBtn]}
-            onPress={onPass}
+            onPress={handlePass}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Ionicons name="close" size={36} color={colors.accent} />
+            <Animated.View style={{ transform: [{ translateX: passTranslateX }] }}>
+              <Ionicons name="close" size={36} color={colors.accent} />
+            </Animated.View>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionBtn, styles.likeBtn]}
-            onPress={onLike}
+            onPress={handleLike}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Ionicons name="heart" size={32} color={colors.primary} />
+            <Animated.View style={{ transform: [{ scale: likeScale }] }}>
+              <Animated.View style={[styles.likeIconWrap, { opacity: likeFilled }]}>
+                <Ionicons name="heart" size={32} color={colors.primary} />
+              </Animated.View>
+              <Animated.View style={[styles.likeIconWrap, { opacity: likeFilled.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}>
+                <Ionicons name="heart-outline" size={32} color={colors.primary} />
+              </Animated.View>
+            </Animated.View>
           </TouchableOpacity>
         </View>
       )}
@@ -446,5 +512,12 @@ const styles = StyleSheet.create({
   },
   likeBtn: {
     backgroundColor: '#fff',
+  },
+  likeIconWrap: {
+    position: 'absolute',
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
