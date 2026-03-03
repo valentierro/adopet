@@ -271,7 +271,7 @@ export default function ProfileScreen() {
       <View style={styles.nameRow}>
         <Text style={[styles.name, { color: colors.textPrimary }]}>{user?.name ?? 'Carregando...'}</Text>
         {(user?.verified || user?.kycStatus === 'VERIFIED') && (
-          <VerifiedBadge size={18} showLabel backgroundColor={colors.primary} />
+          <VerifiedBadge variant="user" size={18} showLabel backgroundColor={colors.primary} />
         )}
       </View>
       <Text style={[styles.email, { color: colors.textSecondary }]}>{user?.email ?? ''}</Text>

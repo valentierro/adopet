@@ -21,6 +21,9 @@ export class AdminUserListItemDto {
 
   @ApiPropertyOptional({ description: 'Quando o admin aplicou ban direto' })
   bannedAt?: string;
+
+  @ApiPropertyOptional({ description: 'Motivo do ban (quando aplicado)' })
+  bannedReason?: string;
 }
 
 export class AdminUserListResponseDto {

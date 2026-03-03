@@ -8,6 +8,38 @@
   }
   body {
     @apply font-sans text-adopet-text-primary antialiased;
-    background-color: #E5EDEA;
+    background:
+      radial-gradient(circle at top left, rgba(13, 148, 136, 0.14), transparent 55%),
+      radial-gradient(circle at top right, rgba(209, 119, 6, 0.12), transparent 55%),
+      linear-gradient(to bottom, #E5EDEA 0%, #D4E2DD 45%, #E5EDEA 100%);
+  }
+
+  html.dark body {
+    @apply font-sans antialiased;
+    color: #E5E7EB;
+    background:
+      radial-gradient(circle at top left, rgba(15, 23, 42, 0.85), transparent 55%),
+      radial-gradient(circle at bottom right, rgba(148, 163, 184, 0.35), transparent 55%),
+      linear-gradient(to bottom, #020617 0%, #020617 40%, #020617 100%);
+  }
+
+  html.dark .bg-adopet-card {
+    background-color: #020617;
+  }
+
+  html.dark .bg-adopet-header {
+    background-color: #020617;
+  }
+
+  html.dark .bg-adopet-surface {
+    background-color: #020617;
+  }
+
+  html.dark .text-adopet-text-primary {
+    color: #F9FAFB;
+  }
+
+  html.dark .text-adopet-text-secondary {
+    color: #9CA3AF;
   }
 }

@@ -9,6 +9,10 @@ export function Partners() {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ type: 'ONG', name: '', slug: '', city: '', active: true, isPaidPartner: false });
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkRejectReason, setBulkRejectReason] = useState('');
+  const [showBulkReject, setShowBulkReject] = useState(false);
+  const [endId, setEndId] = useState<string | null>(null);
 
   const { data: partners = [], isLoading } = useQuery({
     queryKey: ['admin', 'partners'],
@@ -36,6 +40,59 @@ export function Partners() {
     onError: () => toast.addToast('error', 'Não foi possível atualizar.'),
   });
 
+  const bulkApproveMutation = useMutation({
+    mutationFn: (ids: string[]) => adminApi.bulkApprovePartners(ids),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
+      setSelectedIds(new Set());
+      toast.addToast('success', `${data.updated} parceiro(s) aprovado(s).`);
+    },
+    onError: (e) => toast.addToast('error', e instanceof Error ? e.message : 'Erro ao aprovar em massa.'),
+  });
+
+  const bulkRejectMutation = useMutation({
+    mutationFn: ({ ids, reason }: { ids: string[]; reason?: string }) =>
+      adminApi.bulkRejectPartners(ids, reason),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
+      setSelectedIds(new Set());
+      setShowBulkReject(false);
+      setBulkRejectReason('');
+      toast.addToast('success', `${data.updated} parceiro(s) rejeitado(s).`);
+    },
+    onError: (e) => toast.addToast('error', e instanceof Error ? e.message : 'Erro ao rejeitar em massa.'),
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: (id: string) => adminApi.resendPartnerConfirmation(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
+      toast.addToast('success', 'E-mail de confirmação reenviado.');
+    },
+    onError: (e) => toast.addToast('error', e instanceof Error ? e.message : 'Erro ao reenviar.'),
+  });
+
+  const endMutation = useMutation({
+    mutationFn: (id: string) => adminApi.endPartnership(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
+      setEndId(null);
+      toast.addToast('success', 'Parceria encerrada.');
+    },
+    onError: (e) => toast.addToast('error', e instanceof Error ? e.message : 'Erro ao encerrar.'),
+  });
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const pendingPartners = partners.filter((p: PartnerItem) => !p.approvedAt);
+
   const openEdit = (p: PartnerItem) => {
     setEditId(p.id);
     setForm({
@@ -51,7 +108,7 @@ export function Partners() {
   return (
     <div>
       <h1 className="text-2xl font-display font-bold text-adopet-text-primary mb-4">Parceiros</h1>
-      <div className="mb-4">
+      <div className="mb-4 flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => { setShowForm(true); setEditId(null); setForm({ type: 'ONG', name: '', slug: '', city: '', active: true, isPaidPartner: false }); }}
@@ -59,7 +116,87 @@ export function Partners() {
         >
           Cadastrar parceiro
         </button>
+        {pendingPartners.length > 0 && (
+          <>
+            <button
+              type="button"
+              onClick={() => selectedIds.size > 0 && bulkApproveMutation.mutate(Array.from(selectedIds))}
+              disabled={selectedIds.size === 0 || bulkApproveMutation.isPending}
+              className="px-4 py-2 rounded-lg bg-green-600 text-white font-medium disabled:opacity-50"
+            >
+              Aprovar selecionados ({selectedIds.size})
+            </button>
+            <button
+              type="button"
+              onClick={() => selectedIds.size > 0 && setShowBulkReject(true)}
+              disabled={selectedIds.size === 0}
+              className="px-4 py-2 rounded-lg bg-red-600 text-white font-medium disabled:opacity-50"
+            >
+              Rejeitar selecionados ({selectedIds.size})
+            </button>
+          </>
+        )}
       </div>
+
+      {showBulkReject && (
+        <div className="bg-adopet-card rounded-xl border border-adopet-primary/10 p-4 mb-4">
+          <label className="block text-sm font-medium mb-2">Motivo da rejeição (opcional)</label>
+          <input
+            type="text"
+            value={bulkRejectReason}
+            onChange={(e) => setBulkRejectReason(e.target.value)}
+            placeholder="Ex: Documentação incompleta"
+            className="w-full px-3 py-2 rounded-lg border border-adopet-primary/30 mb-2"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                bulkRejectMutation.mutate({
+                  ids: Array.from(selectedIds),
+                  reason: bulkRejectReason.trim() || undefined,
+                })
+              }
+              disabled={bulkRejectMutation.isPending}
+              className="px-4 py-2 rounded-lg bg-red-600 text-white font-medium disabled:opacity-50"
+            >
+              Rejeitar {selectedIds.size} parceiro(s)
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowBulkReject(false); setBulkRejectReason(''); }}
+              className="px-4 py-2 rounded-lg border border-adopet-primary/30"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {endId && (
+        <div className="bg-adopet-card rounded-xl border border-adopet-primary/10 p-4 mb-4">
+          <p className="text-sm text-adopet-text-secondary mb-2">
+            Encerrar parceria desativa o parceiro e cancela assinatura (se pago). Continuar?
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => endMutation.mutate(endId)}
+              disabled={endMutation.isPending}
+              className="px-4 py-2 rounded-lg bg-red-600 text-white font-medium disabled:opacity-50"
+            >
+              Sim, encerrar
+            </button>
+            <button
+              type="button"
+              onClick={() => setEndId(null)}
+              className="px-4 py-2 rounded-lg border border-adopet-primary/30"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
       {(showForm || editId) && (
         <div className="bg-adopet-card rounded-xl border border-adopet-primary/10 p-6 mb-6">
           <h2 className="font-semibold text-adopet-text-primary mb-4">
@@ -170,10 +307,24 @@ export function Partners() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-adopet-header border-b border-adopet-primary/20">
+                  {pendingPartners.length > 0 && (
+                    <th className="text-left p-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.size === pendingPartners.length && pendingPartners.length > 0}
+                        onChange={() => {
+                          if (selectedIds.size === pendingPartners.length) setSelectedIds(new Set());
+                          else setSelectedIds(new Set(pendingPartners.map((x: PartnerItem) => x.id)));
+                        }}
+                        aria-label="Selecionar pendentes"
+                      />
+                    </th>
+                  )}
                   <th className="text-left p-3">Nome</th>
                   <th className="text-left p-3">Tipo</th>
                   <th className="text-left p-3">Slug</th>
                   <th className="text-left p-3">Cidade</th>
+                  <th className="text-left p-3">Status</th>
                   <th className="text-left p-3">Ativo</th>
                   <th className="text-left p-3">Ações</th>
                 </tr>
@@ -181,12 +332,30 @@ export function Partners() {
               <tbody>
                 {partners.map((p: PartnerItem) => (
                   <tr key={p.id} className="border-b border-adopet-primary/10 hover:bg-adopet-background/50">
+                    {pendingPartners.length > 0 && (
+                      <td className="p-3">
+                        {!p.approvedAt && (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(p.id)}
+                            onChange={() => toggleSelect(p.id)}
+                          />
+                        )}
+                      </td>
+                    )}
                     <td className="p-3 font-medium">{p.name}</td>
                     <td className="p-3">{p.type}</td>
                     <td className="p-3">{p.slug}</td>
                     <td className="p-3">{p.city ?? '—'}</td>
-                    <td className="p-3">{p.active ? 'Sim' : 'Não'}</td>
                     <td className="p-3">
+                      {p.approvedAt ? (
+                        <span className="text-green-600">Aprovado</span>
+                      ) : (
+                        <span className="text-adopet-orange">Pendente</span>
+                      )}
+                    </td>
+                    <td className="p-3">{p.active ? 'Sim' : 'Não'}</td>
+                    <td className="p-3 flex flex-wrap gap-1">
                       <button
                         type="button"
                         onClick={() => openEdit(p)}
@@ -194,6 +363,25 @@ export function Partners() {
                       >
                         Editar
                       </button>
+                      {p.canResendConfirmation && (
+                        <button
+                          type="button"
+                          onClick={() => resendMutation.mutate(p.id)}
+                          disabled={resendMutation.isPending}
+                          className="text-adopet-primary font-medium hover:underline disabled:opacity-50"
+                        >
+                          Reenviar e-mail
+                        </button>
+                      )}
+                      {p.active && (
+                        <button
+                          type="button"
+                          onClick={() => setEndId(p.id)}
+                          className="text-red-600 font-medium hover:underline"
+                        >
+                          Encerrar
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}

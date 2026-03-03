@@ -100,6 +100,10 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string): strin
       // não é JSON
     }
   }
+  // Conta desativada/banida (login ou qualquer 401) — antes do genérico de credenciais
+  if (/conta desativada|desativada\.|conta foi desativada/i.test(msg)) {
+    return 'Sua conta foi desativada. Entre em contato com o suporte para reativar.';
+  }
   // E-mail inválido ou não encontrado (login)
   if (/invalid.*email|email.*invalid|user not found|usuário não encontrado/i.test(msg) && /login|auth|credencial/i.test(msg)) {
     return 'E-mail inválido ou não cadastrado. Tente novamente.';

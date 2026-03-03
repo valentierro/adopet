@@ -71,9 +71,16 @@ export class ReportsService {
         if (adminIds.includes(userIdToBan)) {
           throw new BadRequestException('Não é permitido banir um administrador.');
         }
+        const now = new Date();
+        const bannedReason = `Ban via denúncia #${report.id}`;
         await this.prisma.user.update({
           where: { id: userIdToBan },
-          data: { deactivatedAt: new Date() },
+          data: {
+            deactivatedAt: now,
+            bannedAt: now,
+            bannedById: adminId,
+            bannedReason,
+          },
         });
         resolutionAction = RESOLUTION_ACTION_BAN_USER;
         this.logger.log({

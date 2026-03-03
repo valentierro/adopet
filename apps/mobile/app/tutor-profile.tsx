@@ -141,7 +141,7 @@ export default function TutorProfileScreen() {
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               activeOpacity={0.8}
             >
-              <VerifiedBadge size={20} iconBackgroundColor={colors.primary} accessibilityLabel="Tutor verificado pela equipe Adopet" />
+              <VerifiedBadge variant="user" size={20} showLabel backgroundColor={colors.primary} iconBackgroundColor={colors.primary} accessibilityLabel="Tutor verificado pela equipe Adopet" />
             </TouchableOpacity>
           )}
         </View>

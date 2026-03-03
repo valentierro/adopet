@@ -34,9 +34,11 @@ Se a Hostinger mostrar algo como **"From pushes to: adminadopet"**, então ela e
 
 Assim o painel passa a ser atualizado sempre que você der push no `main` do adopet.
 
-### Opção B – Manter o repo separado e só atualizar o código
+### Opção B – Manter o repo separado (adminadopet) e sincronizar
 
-1. No seu computador, dentro do monorepo:
+Use o script `scripts/admin-push-to-adminadopet.sh`:
+
+1. **Uma vez:** clone o repo adminadopet fora do monorepo:
    ```bash
    cd /caminho/adopet
    pnpm run build --filter adopet-admin-web

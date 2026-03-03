@@ -402,6 +402,10 @@ function exportUsersAggregatesCsv(data: UsersReportAggregates) {
     ['Resumo', 'Sem anúncios', String(data.withoutListings)],
     ['Resumo', 'Desativados/banidos', String(data.deactivated)],
   ];
+  if (data.byUserType && Object.keys(data.byUserType).length > 0) {
+    const userTypeLabel: Record<string, string> = { TUTOR: 'Tutor', ONG: 'ONG', PARTNER_COMMERCIAL: 'Parceiro comercial' };
+    Object.entries(data.byUserType).forEach(([k, v]) => rows.push(['Por tipo', userTypeLabel[k] ?? k, String(v)]));
+  }
   Object.entries(data.byCity).sort(([, a], [, b]) => b - a).forEach(([k, v]) => rows.push(['Por cidade', k, String(v)]));
   Object.entries(data.byMonth)
     .sort(([a], [b]) => b.localeCompare(a))
@@ -437,6 +441,17 @@ function exportUsersAggregatesPdf(data: UsersReportAggregates) {
       title: 'Status KYC',
       rows: Object.entries(data.byKycStatus).map(([k, v]): [string, string | number] => [k, v]),
     },
+    ...(data.byUserType && Object.keys(data.byUserType).length > 0
+      ? [
+          {
+            title: 'Por tipo (Tutor, ONG, Parceiro comercial)',
+            rows: Object.entries(data.byUserType).map(([k, v]): [string, string | number] => [
+              { TUTOR: 'Tutor', ONG: 'ONG', PARTNER_COMMERCIAL: 'Parceiro comercial' }[k] ?? k,
+              v,
+            ]),
+          },
+        ]
+      : []),
   ].filter((s) => s.rows.length > 0);
   downloadPdfSummary(`usuarios-agregados-${dateStr()}.pdf`, 'Usuários cadastrados', sections);
 }

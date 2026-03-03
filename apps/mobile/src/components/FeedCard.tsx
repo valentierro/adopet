@@ -174,7 +174,7 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
             </Text>
             {pet.verified && (
               <View style={styles.verifiedBadgeWrap}>
-                <VerifiedBadge size={14} showLabel backgroundColor="rgba(255,255,255,0.95)" textColor="#1a1a1a" />
+                <VerifiedBadge variant="pet" size={14} iconBackgroundColor="rgba(255,255,255,0.95)" />
               </View>
             )}
           </View>

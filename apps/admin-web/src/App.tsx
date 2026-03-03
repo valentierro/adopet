@@ -8,16 +8,20 @@ import { Login } from '@/routes/Login';
 import { Dashboard } from '@/routes/Dashboard';
 import { PendingPets } from '@/routes/PendingPets';
 import { Verifications } from '@/routes/Verifications';
+import { PendingKyc } from '@/routes/PendingKyc';
 import { Reports } from '@/routes/Reports';
 import { Adoptions } from '@/routes/Adoptions';
 import { PendingAdoptionsByTutor } from '@/routes/PendingAdoptionsByTutor';
 import { Partners } from '@/routes/Partners';
+import { PartnershipRequests } from '@/routes/PartnershipRequests';
 import { PartnerRecommendations } from '@/routes/PartnerRecommendations';
 import { BugReports } from '@/routes/BugReports';
 import { FeatureFlags } from '@/routes/FeatureFlags';
 import { Users } from '@/routes/Users';
 import { BulkImport } from '@/routes/BulkImport';
 import { Relatorios } from '@/routes/Relatorios';
+import { Satisfaction } from '@/routes/Satisfaction';
+import { TopTutorsPf } from '@/routes/TopTutorsPf';
 import { About } from '@/routes/About';
 
 const queryClient = new QueryClient({
@@ -56,16 +60,20 @@ function AppRoutes() {
         <Route index element={<Dashboard />} />
         <Route path="pending-pets" element={<PendingPets />} />
         <Route path="verifications" element={<Verifications />} />
+        <Route path="pending-kyc" element={<PendingKyc />} />
         <Route path="reports" element={<Reports />} />
         <Route path="adoptions" element={<Adoptions />} />
         <Route path="pending-adoptions-by-tutor" element={<PendingAdoptionsByTutor />} />
         <Route path="partners" element={<Partners />} />
+        <Route path="partnership-requests" element={<PartnershipRequests />} />
         <Route path="partner-recommendations" element={<PartnerRecommendations />} />
         <Route path="bug-reports" element={<BugReports />} />
         <Route path="feature-flags" element={<FeatureFlags />} />
         <Route path="users" element={<Users />} />
         <Route path="bulk-import" element={<BulkImport />} />
         <Route path="relatorios" element={<Relatorios />} />
+        <Route path="satisfaction" element={<Satisfaction />} />
+        <Route path="top-tutors-pf" element={<TopTutorsPf />} />
         <Route path="about" element={<About />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

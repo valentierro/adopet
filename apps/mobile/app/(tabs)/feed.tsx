@@ -1437,7 +1437,7 @@ export default function FeedScreen() {
           <View style={styles.guestCarouselCardBadges}>
             {item.verified && (
               <View style={[styles.guestCarouselBadge, { backgroundColor: 'rgba(255,255,255,0.95)' }]}>
-                <VerifiedBadge size={10} />
+                <VerifiedBadge variant="pet" size={10} iconBackgroundColor="rgba(255,255,255,0.95)" />
               </View>
             )}
             {partner && (
@@ -1600,10 +1600,10 @@ export default function FeedScreen() {
                         {item.verified && (
                           <Pressable
                             style={[styles.gridBadgeIcon, { backgroundColor: 'rgba(255,255,255,0.95)' }]}
-                            accessibilityLabel="Verificado"
+                            accessibilityLabel="Pet verificado"
                             accessibilityRole="image"
                           >
-                            <VerifiedBadge size={12} />
+                            <VerifiedBadge variant="pet" size={12} iconBackgroundColor="rgba(255,255,255,0.95)" />
                           </Pressable>
                         )}
                         {partner && (

@@ -167,7 +167,12 @@ describe('ReportsService', () => {
       expect(result.resolutionAction).toBe('BAN_USER');
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: targetUserId },
-        data: { deactivatedAt: expect.any(Date) },
+        data: {
+          deactivatedAt: expect.any(Date),
+          bannedAt: expect.any(Date),
+          bannedById: adminId,
+          bannedReason: expect.stringContaining('Ban via denúncia #'),
+        },
       });
     });
 
@@ -198,7 +203,12 @@ describe('ReportsService', () => {
       await service.resolve(reportId, adminId, undefined, true);
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: ownerId },
-        data: { deactivatedAt: expect.any(Date) },
+        data: {
+          deactivatedAt: expect.any(Date),
+          bannedAt: expect.any(Date),
+          bannedById: adminId,
+          bannedReason: expect.stringContaining('Ban via denúncia #'),
+        },
       });
     });
 
@@ -229,7 +239,12 @@ describe('ReportsService', () => {
       await service.resolve(reportId, adminId, undefined, true);
       expect(prisma.user.update).toHaveBeenCalledWith({
         where: { id: senderId },
-        data: { deactivatedAt: expect.any(Date) },
+        data: {
+          deactivatedAt: expect.any(Date),
+          bannedAt: expect.any(Date),
+          bannedById: adminId,
+          bannedReason: expect.stringContaining('Ban via denúncia #'),
+        },
       });
     });
 

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { adminApi, type BulkResult } from '@/api/admin';
 import { useToast } from '@/context/ToastContext';
+import { Button, Card, PageHeading } from '@/components/ui';
 
 const TEMPLATE_PARTNERS = `type,name,slug,city,description,website,logoUrl,phone,email,active,approve,isPaidPartner
 ONG,Instituto Exemplo,instituto-exemplo,São Paulo,,,,,,true,true,false`;
@@ -42,17 +43,13 @@ function Section({
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <div className="bg-adopet-card rounded-xl border border-adopet-primary/10 p-6 mb-6">
+    <Card className="mb-6">
       <h2 className="text-lg font-semibold text-adopet-text-primary mb-2">{title}</h2>
       <p className="text-sm text-adopet-text-secondary mb-4">{description}</p>
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <button
-          type="button"
-          onClick={() => downloadCsv(templateContent, templateFilename)}
-          className="px-4 py-2 rounded-lg border border-adopet-primary text-adopet-primary font-medium hover:bg-adopet-primary/10"
-        >
+        <Button variant="secondary" size="sm" onClick={() => downloadCsv(templateContent, templateFilename)}>
           Baixar template CSV
-        </button>
+        </Button>
         <input
           ref={inputRef}
           type="file"
@@ -60,21 +57,12 @@ function Section({
           className="hidden"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          className="px-4 py-2 rounded-lg border border-adopet-primary/50 text-adopet-text-primary font-medium hover:bg-adopet-primary/10"
-        >
+        <Button variant="secondary" size="sm" onClick={() => inputRef.current?.click()}>
           {file ? file.name : 'Escolher arquivo'}
-        </button>
-        <button
-          type="button"
-          onClick={() => file && onUpload(file)}
-          disabled={!file || isUploading}
-          className="px-4 py-2 rounded-lg bg-adopet-primary text-white font-medium hover:bg-adopet-primary-dark disabled:opacity-50"
-        >
+        </Button>
+        <Button variant="primary" size="sm" disabled={!file || isUploading} loading={isUploading} onClick={() => file && onUpload(file)}>
           {isUploading ? 'Enviando…' : 'Enviar CSV'}
-        </button>
+        </Button>
       </div>
       {result && (
         <div className="text-sm">
@@ -98,7 +86,7 @@ function Section({
           )}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -143,17 +131,14 @@ export function BulkImport() {
 
   return (
     <div>
-      <h1 className="text-2xl font-display font-bold text-adopet-text-primary mb-4">
-        Importação em massa
-      </h1>
-      <p className="text-adopet-text-secondary mb-6">
-        Use os templates CSV para cadastrar vários registros de uma vez. Baixe o template, preencha
-        com os dados e envie o arquivo.
-      </p>
+      <PageHeading
+        title="Upload massivo"
+        description="Cadastre vários registros de uma vez via CSV. Baixe o template, preencha com os dados e envie o arquivo. O upload de pets é prioridade no início do projeto."
+      />
 
       <Section
-        title="Anúncios (pets)"
-        description="Cadastro em massa de anúncios. owner_email = usuário já cadastrado. O template inclui campos para a engine de match score: energia (energy_level), preferências de tutor (preferred_tutor_*), has_special_needs, has_ongoing_costs, good_with_*, temperament, etc. Opcional: partner_slug, photo_url_1 a photo_url_3."
+        title="Anúncios (pets) — prioridade"
+        description="Cadastro em massa de anúncios de pets. owner_email = usuário já cadastrado. Inclui campos para match score (energy_level, preferred_tutor_*, etc). Opcional: partner_slug (ONG aprovada), photo_url_1 a photo_url_3 (URLs públicas)."
         templateContent={TEMPLATE_PETS}
         templateFilename="template-anuncios.csv"
         onUpload={(file) => petsMutation.mutate(file)}

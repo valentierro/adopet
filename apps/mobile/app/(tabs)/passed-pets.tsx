@@ -263,7 +263,7 @@ export default function PassedPetsScreen() {
               <View style={styles.gridCardInfo}>
                   <View style={styles.gridCardTitleRow}>
                     <Text style={[styles.gridCardName, { color: colors.textPrimary }]} numberOfLines={1}>{pet.name}</Text>
-                    {pet.verified && <VerifiedBadge size={14} iconBackgroundColor={colors.primary} />}
+                    {pet.verified && <VerifiedBadge variant="pet" size={14} iconBackgroundColor={colors.primary} />}
                   </View>
                   <View style={styles.gridBadgesRow}>
                     {typeof pet.matchScore === 'number' && (
@@ -342,7 +342,7 @@ export default function PassedPetsScreen() {
                 <View style={styles.body}>
                   <View style={styles.titleRow}>
                     <Text style={[styles.rowTitle, { color: colors.textPrimary }]} numberOfLines={1}>{pet.name}</Text>
-                    {pet.verified && <VerifiedBadge size={16} iconBackgroundColor={colors.primary} />}
+                    {pet.verified && <VerifiedBadge variant="pet" size={16} iconBackgroundColor={colors.primary} />}
                   </View>
                   <Text style={[styles.rowSub, { color: colors.textSecondary }]} numberOfLines={2}>
                     {[getSpeciesLabel(pet.species), `${pet.age} ano(s)`, getSizeLabel(pet.size)].filter(Boolean).join(' • ')}

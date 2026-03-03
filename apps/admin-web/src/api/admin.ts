@@ -52,6 +52,7 @@ export type UsersReportAggregates = {
   byCity: Record<string, number>;
   byMonth: Record<string, number>;
   byKycStatus: Record<string, number>;
+  byUserType: Record<string, number>;
   withListings: number;
   withoutListings: number;
   deactivated: number;
@@ -146,6 +147,66 @@ export type PendingAdoptionByTutorItem = {
 };
 
 export type UserSearchItem = { id: string; name: string; email: string };
+
+export type AdminUserListItem = {
+  id: string;
+  name: string;
+  email: string;
+  username?: string;
+  phone?: string;
+  deactivatedAt?: string;
+  bannedAt?: string;
+  bannedReason?: string;
+};
+
+export type PendingKycItem = {
+  userId: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  document?: string | null;
+  kycSubmittedAt: string;
+  documentUrl?: string | null;
+  selfieUrl?: string | null;
+};
+
+export type ApprovedKycItem = {
+  userId: string;
+  name: string;
+  email: string;
+  username?: string | null;
+  kycVerifiedAt: string;
+};
+
+export type PartnershipRequestItem = {
+  id: string;
+  tipo: string;
+  nome: string;
+  email: string;
+  instituicao: string;
+  telefone: string;
+  mensagem?: string | null;
+  cnpj?: string | null;
+  anoFundacao?: string | null;
+  cep?: string | null;
+  endereco?: string | null;
+  personType?: string | null;
+  documentoComercial?: string | null;
+  planoDesejado?: string | null;
+  status: string;
+  rejectionReason?: string | null;
+  processedAt?: string | null;
+  partnerId?: string | null;
+  createdAt: string;
+};
+
+export type TopTutorPfItem = {
+  userId: string;
+  name: string;
+  email: string;
+  username: string | null;
+  adoptionCount: number;
+};
 export type PetAvailableItem = { id: string; name: string; ownerId: string; ownerName: string };
 
 export type PartnerItem = {
@@ -159,6 +220,8 @@ export type PartnerItem = {
   isPaidPartner?: boolean;
   logoUrl?: string | null;
   createdAt: string;
+  canResendConfirmation?: boolean;
+  rejectionReason?: string | null;
 };
 
 export type PartnerRecommendationItem = {
@@ -209,7 +272,7 @@ export const adminApi = {
   revokeVerification: (id: string) =>
     api.put<VerificationItem>(`/verification/admin/${id}/revoke`, {}),
   getReports: () => api.get<ReportItem[]>('/reports'),
-  resolveReport: (reportId: string, body?: { resolutionFeedback?: string }) =>
+  resolveReport: (reportId: string, body?: { resolutionFeedback?: string; banReportedUser?: boolean }) =>
     api.put<ReportItem>(`/reports/${reportId}/resolve`, body ?? {}),
   getAdoptions: () => api.get<AdoptionItem[]>('/admin/adoptions'),
   createAdoption: (petId: string, adopterUserId?: string) =>
@@ -225,6 +288,16 @@ export const adminApi = {
     api.post(`/admin/pending-adoptions-by-tutor/${petId}/reject`, rejectionReason ? { rejectionReason } : {}),
   searchUsers: (search: string) =>
     api.get<UserSearchItem[]>('/admin/users', search ? { search: search.trim() } : undefined),
+  getUsersList: (search?: string, page = 1, limit = 30) =>
+    api.get<{ items: AdminUserListItem[]; total: number }>('/admin/users/list', {
+      ...(search ? { search: search.trim() } : {}),
+      page: String(page),
+      limit: String(limit),
+    }),
+  banUser: (userId: string, reason?: string) =>
+    api.post<{ message: string }>(`/admin/users/${userId}/ban`, reason ? { reason } : {}),
+  unbanUser: (userId: string) =>
+    api.post<{ message: string }>(`/admin/users/${userId}/unban`),
   getPartners: () => api.get<PartnerItem[]>('/admin/partners'),
   getSatisfactionStats: () => api.get<SatisfactionStats>('/admin/satisfaction/stats'),
   getSatisfactionResponses: (page = 1, limit = 500) =>
@@ -252,6 +325,36 @@ export const adminApi = {
     partnerId?: string | null;
     rolloutPercent?: number | null;
   }) => api.post<FeatureFlagDto>('/admin/feature-flags', dto),
+  getPendingKyc: () => api.get<PendingKycItem[]>('/admin/pending-kyc'),
+  getApprovedKyc: (q?: string) =>
+    api.get<ApprovedKycItem[]>('/admin/approved-kyc', q ? { q } : undefined),
+  updateUserKyc: (userId: string, status: 'VERIFIED' | 'REJECTED', rejectionReason?: string) =>
+    api.patch<{ message: string }>(`/admin/users/${userId}/kyc`, { status, rejectionReason }),
+  revokeUserKyc: (userId: string, reason: string) =>
+    api.post<{ message: string }>(`/admin/users/${userId}/kyc/revoke`, { reason }),
+  bulkUpdateKyc: (userIds: string[], status: 'VERIFIED' | 'REJECTED', rejectionReason?: string) =>
+    api.post<{ processed: number; errors: string[] }>('/admin/kyc/bulk', {
+      userIds,
+      status,
+      rejectionReason,
+    }),
+  getPartnershipRequests: () => api.get<PartnershipRequestItem[]>('/admin/partnership-requests'),
+  approvePartnershipRequest: (id: string) =>
+    api.post<{ partnerId: string }>(`/admin/partnership-requests/${id}/approve`, {}),
+  rejectPartnershipRequest: (id: string, rejectionReason?: string) =>
+    api.post<{ message: string }>(`/admin/partnership-requests/${id}/reject`, { rejectionReason }),
+  getTopTutorsPf: (limit?: number) =>
+    api.get<TopTutorPfItem[]>(
+      '/admin/top-tutors-pf',
+      limit ? { limit: String(limit) } : undefined
+    ),
+  bulkApprovePartners: (ids: string[]) =>
+    api.post<{ updated: number }>('/admin/partners/bulk-approve', { ids }),
+  bulkRejectPartners: (ids: string[], rejectionReason?: string) =>
+    api.post<{ updated: number }>('/admin/partners/bulk-reject', { ids, rejectionReason }),
+  resendPartnerConfirmation: (id: string) =>
+    api.post<{ message: string }>(`/admin/partners/${id}/resend-confirmation`, {}),
+  endPartnership: (id: string) => api.post<PartnerItem>(`/admin/partners/${id}/end`, {}),
   updateFeatureFlag: (
     id: string,
     dto: {

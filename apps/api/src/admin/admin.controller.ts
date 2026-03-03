@@ -102,6 +102,14 @@ export class AdminController {
     return this.adminService.banUser(userId, user.id, body?.reason);
   }
 
+  @Post('users/:userId/unban')
+  @ApiOperation({ summary: '[Admin] Desbanir/reativar usuário. Permite login novamente.' })
+  async unbanUser(
+    @Param('userId') userId: string,
+  ): Promise<{ message: string }> {
+    return this.adminService.unbanUser(userId);
+  }
+
   @Get('top-tutors-pf')
   @ApiOperation({ summary: '[Admin] Tutores PF com mais adoções nos últimos 12 meses (possível red flag)' })
   async getTopTutorsPf(@Query('limit') limit?: string): Promise<TopTutorPfItemDto[]> {

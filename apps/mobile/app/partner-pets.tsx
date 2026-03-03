@@ -209,7 +209,7 @@ export default function PartnerPetsScreen() {
           <View style={styles.gridCardInfo}>
             <View style={styles.gridCardTitleRow}>
               <Text style={[styles.gridCardName, { color: colors.textPrimary }]} numberOfLines={1}>{item.name}</Text>
-              {item.verified && <VerifiedBadge size={14} iconBackgroundColor={colors.primary} />}
+              {item.verified && <VerifiedBadge variant="pet" size={14} iconBackgroundColor={colors.primary} />}
             </View>
             <View style={styles.gridBadgesRow}>
               {typeof item.matchScore === 'number' && (
@@ -250,7 +250,7 @@ export default function PartnerPetsScreen() {
         <View style={styles.cardBody}>
           <View style={styles.cardTitleRow}>
             <Text style={[styles.cardName, { color: colors.textPrimary }]} numberOfLines={1}>{item.name}</Text>
-            {item.verified && <VerifiedBadge size={16} iconBackgroundColor={colors.primary} />}
+            {item.verified && <VerifiedBadge variant="pet" size={16} iconBackgroundColor={colors.primary} />}
           </View>
           <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>
             {getSpeciesLabel(item.species)} • {item.age} anos

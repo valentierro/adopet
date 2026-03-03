@@ -435,7 +435,7 @@ export default function PartnerMyPetsScreen() {
             <Text style={[viewMode === 'grid' ? styles.gridCardName : styles.cardName, { color: colors.textPrimary }]} numberOfLines={1}>
               {item.name}
             </Text>
-            {item.verified && <VerifiedBadge size={viewMode === 'grid' ? 14 : 16} iconBackgroundColor={colors.primary} />}
+            {item.verified && <VerifiedBadge variant="pet" size={viewMode === 'grid' ? 14 : 16} iconBackgroundColor={colors.primary} />}
           </View>
           {item.ownerName && (
             <Text style={[styles.ownerLabel, { color: colors.textSecondary }]}>Por {item.ownerName}</Text>

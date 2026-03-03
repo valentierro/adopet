@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi, type ReportItem } from '@/api/admin';
 import { useToast } from '@/context/ToastContext';
 import { EmptyState } from '@/components/EmptyState';
+import { Badge, Button, Card, PageHeading } from '@/components/ui';
 
 type FilterTab = 'all' | 'pending' | 'resolved';
 
@@ -11,6 +12,7 @@ export function Reports() {
   const toast = useToast();
   const [resolveId, setResolveId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
+  const [banReportedUser, setBanReportedUser] = useState(false);
   const [filter, setFilter] = useState<FilterTab>('all');
 
   const { data: reports = [], isLoading, error } = useQuery({
@@ -26,35 +28,41 @@ export function Reports() {
 
   const resolveMutation = useMutation({
     mutationFn: (reportId: string) =>
-      adminApi.resolveReport(reportId, feedback.trim() ? { resolutionFeedback: feedback } : undefined),
+      adminApi.resolveReport(reportId, {
+        ...(feedback.trim() ? { resolutionFeedback: feedback } : {}),
+        banReportedUser: banReportedUser || undefined,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'reports'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
       setResolveId(null);
       setFeedback('');
+      setBanReportedUser(false);
       toast.addToast('success', 'Denúncia marcada como resolvida.');
     },
     onError: () => toast.addToast('error', 'Não foi possível resolver a denúncia.'),
   });
 
   if (isLoading) return <div className="text-adopet-text-secondary">Carregando…</div>;
-  if (error) return <div className="rounded-lg bg-adopet-accent/10 text-adopet-accent p-4">Erro ao carregar.</div>;
+  if (error) return <div className="rounded-xl bg-adopet-accent/10 text-adopet-accent p-4">Erro ao carregar.</div>;
 
   return (
     <div>
-      <h1 className="text-2xl font-display font-bold text-adopet-text-primary mb-4">Denúncias</h1>
+      <PageHeading
+        title="Denúncias"
+        description="Gerir denúncias de anúncios, usuários e mensagens."
+      />
       <div className="flex gap-2 mb-4">
         {(['all', 'pending', 'resolved'] as const).map((tab) => (
-          <button
+          <Button
             key={tab}
             type="button"
+            variant={filter === tab ? 'primary' : 'secondary'}
+            size="sm"
             onClick={() => setFilter(tab)}
-            className={`px-4 py-2 rounded-lg font-medium text-sm ${
-              filter === tab ? 'bg-adopet-primary text-white' : 'bg-adopet-card border border-adopet-primary/20'
-            }`}
           >
             {tab === 'all' ? 'Todas' : tab === 'pending' ? 'Pendentes' : 'Resolvidas'}
-          </button>
+          </Button>
         ))}
       </div>
       {reports.length === 0 ? (
@@ -62,70 +70,75 @@ export function Reports() {
       ) : (
         <div className="space-y-4">
           {resolveId && (
-            <div className="bg-adopet-card rounded-xl border border-adopet-primary/10 p-4">
-              <label className="block text-sm font-medium mb-2">Feedback para o denunciador (opcional)</label>
+            <Card padding="sm">
+              <label className="block text-sm font-medium text-adopet-text-primary mb-2">Feedback para o denunciador (opcional)</label>
               <textarea
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-adopet-primary/30"
+                className="w-full px-3 py-2 rounded-xl border border-adopet-primary/20 bg-adopet-card text-adopet-text-primary placeholder-adopet-text-secondary focus:outline-none focus:ring-2 focus:ring-adopet-primary/30 focus:border-adopet-primary/40"
                 rows={2}
                 placeholder="Mensagem opcional ao resolver"
               />
-              <div className="flex gap-2 mt-2">
-                <button
-                  type="button"
+              <label className="flex items-center gap-2 mt-3 text-sm text-adopet-text-primary">
+                <input
+                  type="checkbox"
+                  checked={banReportedUser}
+                  onChange={(e) => setBanReportedUser(e.target.checked)}
+                  className="rounded border-adopet-primary/30 text-adopet-primary focus:ring-adopet-primary"
+                />
+                Banir usuário denunciado (desativa a conta do alvo)
+              </label>
+              <div className="flex gap-2 mt-3">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  loading={resolveMutation.isPending}
                   onClick={() => resolveMutation.mutate(resolveId)}
-                  disabled={resolveMutation.isPending}
-                  className="px-4 py-2 rounded-lg bg-adopet-primary text-white font-medium disabled:opacity-50"
                 >
                   {resolveMutation.isPending ? 'Resolvendo…' : 'Marcar como resolvida'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setResolveId(null); setFeedback(''); }}
-                  className="px-4 py-2 rounded-lg border border-adopet-primary/30"
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => { setResolveId(null); setFeedback(''); setBanReportedUser(false); }}
                 >
                   Cancelar
-                </button>
+                </Button>
               </div>
-            </div>
+            </Card>
           )}
-          <div className="bg-adopet-card rounded-xl border border-adopet-primary/10 overflow-hidden">
+          <Card padding="none" className="overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-adopet-header border-b border-adopet-primary/20">
-                    <th className="text-left p-3">Alvo</th>
-                    <th className="text-left p-3">Motivo</th>
-                    <th className="text-left p-3">Descrição</th>
-                    <th className="text-left p-3">Data</th>
-                    <th className="text-left p-3">Status</th>
-                    <th className="text-left p-3">Ações</th>
+                  <tr className="bg-adopet-header/80 border-b border-adopet-primary/20">
+                    <th className="text-left p-3 font-medium text-adopet-text-primary">Alvo</th>
+                    <th className="text-left p-3 font-medium text-adopet-text-primary">Motivo</th>
+                    <th className="text-left p-3 font-medium text-adopet-text-primary">Descrição</th>
+                    <th className="text-left p-3 font-medium text-adopet-text-primary">Data</th>
+                    <th className="text-left p-3 font-medium text-adopet-text-primary">Status</th>
+                    <th className="text-left p-3 font-medium text-adopet-text-primary">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map((r: ReportItem) => (
-                    <tr key={r.id} className="border-b border-adopet-primary/10 hover:bg-adopet-background/50">
-                      <td className="p-3">{r.targetType} #{r.targetId.slice(0, 8)}</td>
+                    <tr key={r.id} className="border-b border-adopet-primary/10 hover:bg-adopet-background/50 transition-colors">
+                      <td className="p-3 font-mono text-xs text-adopet-text-secondary">{r.targetType} #{r.targetId.slice(0, 8)}</td>
                       <td className="p-3">{r.reason}</td>
-                      <td className="p-3 max-w-[200px] truncate">{r.description ?? '—'}</td>
-                      <td className="p-3">{new Date(r.createdAt).toLocaleDateString('pt-BR')}</td>
+                      <td className="p-3 max-w-[200px] truncate text-adopet-text-secondary">{r.description ?? '—'}</td>
+                      <td className="p-3 text-adopet-text-secondary">{new Date(r.createdAt).toLocaleDateString('pt-BR')}</td>
                       <td className="p-3">
                         {r.resolvedAt ? (
-                          <span className="text-adopet-primary">Resolvida</span>
+                          <Badge variant="success">Resolvida</Badge>
                         ) : (
-                          <span className="text-adopet-orange">Pendente</span>
+                          <Badge variant="warning">Pendente</Badge>
                         )}
                       </td>
                       <td className="p-3">
                         {!r.resolvedAt && (
-                          <button
-                            type="button"
-                            onClick={() => setResolveId(r.id)}
-                            className="text-adopet-primary font-medium hover:underline"
-                          >
+                          <Button variant="ghost" size="sm" onClick={() => setResolveId(r.id)}>
                             Resolver
-                          </button>
+                          </Button>
                         )}
                       </td>
                     </tr>
@@ -133,7 +146,7 @@ export function Reports() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </Card>
         </div>
       )}
     </div>

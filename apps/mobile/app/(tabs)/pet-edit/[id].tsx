@@ -1159,7 +1159,7 @@ export default function PetEditScreen() {
                     >
                       <View style={styles.modalItemNameRow}>
                         <Text style={[styles.modalItemText, { color: colors.textPrimary }]}>{p.name}</Text>
-                        {p.kycVerified && <VerifiedBadge size={14} iconBackgroundColor={colors.primary} />}
+                        {p.kycVerified && <VerifiedBadge variant="user" size={14} iconBackgroundColor={colors.primary} />}
                         {p.isPartner && !p.kycVerified && (
                           <View style={[styles.partnerBadge, { backgroundColor: colors.primary + '25' }]}>
                             <Text style={[styles.partnerBadgeText, { color: colors.primary }]}>Parceiro</Text>

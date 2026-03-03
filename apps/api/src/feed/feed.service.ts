@@ -37,6 +37,9 @@ const RECENCY_BOOST = 0.06;
 /** Boost de score para pets de parceiro pago (destaque no feed). */
 const BOOST_PAID_PARTNER = 0.22;
 
+/** Boost de score para pets com verificação PET_VERIFIED aprovada (incentivo ao tutor verificar o anúncio). */
+const BOOST_PET_VERIFIED = 0.10;
+
 /** Peso das conversas no trending: cada conversa ativa vale mais que um favorito (engajamento mais forte). */
 const TRENDING_CONVERSATION_WEIGHT = 2;
 
@@ -341,7 +344,7 @@ export class FeedService {
     }
 
     const petIds = candidates.map((p) => p.id);
-    const [favCounts, convCounts, confirmedPartnersByPetId] = await Promise.all([
+    const [favCounts, convCounts, confirmedPartnersByPetId, verifiedPetIds] = await Promise.all([
       petIds.length > 0
         ? this.prisma.favorite.groupBy({
             by: ['petId'],
@@ -361,6 +364,7 @@ export class FeedService {
           })
         : [],
       this.petPartnershipService.getConfirmedPartnersByPetIds(petIds),
+      petIds.length > 0 ? this.verificationService.getVerifiedPetIds(petIds) : Promise.resolve(new Set<string>()),
     ]);
     const favByPetId = Object.fromEntries(favCounts.map((f) => [f.petId, f._count.id]));
     const convByPetId =
@@ -423,6 +427,9 @@ export class FeedService {
       }
       if (daysSinceCreated <= RECENCY_BOOST_DAYS) {
         score = Math.min(1, score + RECENCY_BOOST);
+      }
+      if (verifiedPetIds.has(pet.id)) {
+        score = Math.min(1, score + BOOST_PET_VERIFIED);
       }
       return { pet, score, distanceKm, matchScoreNorm: matchScoreNorm ?? 0, isPaidPartner, hasPartner };
     });

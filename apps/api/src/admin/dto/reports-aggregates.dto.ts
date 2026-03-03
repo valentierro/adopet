@@ -55,6 +55,12 @@ export class UsersReportAggregatesDto {
 
   @ApiProperty({ description: 'Contas desativadas/banidas' })
   deactivated: number;
+
+  @ApiProperty({
+    description: 'Por tipo: TUTOR (só tutor), ONG (dono ou membro de ONG), PARTNER_COMMERCIAL (dono de clínica/loja)',
+    example: { TUTOR: 1000, ONG: 50, PARTNER_COMMERCIAL: 10 },
+  })
+  byUserType: Record<string, number>;
 }
 
 /** Contagens agregadas para relatório de adoções */

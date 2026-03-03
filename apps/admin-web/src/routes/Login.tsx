@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/context/AuthContext';
+import { Button, Card } from '@/components/ui';
 
 const schema = z.object({
   email: z.string().min(1, 'Informe o e-mail').email('E-mail inválido'),
@@ -42,16 +43,16 @@ export function Login() {
         <div className="flex justify-center mb-8">
           <img src="/logo.png" alt="Adopet" className="h-12 w-auto" />
         </div>
-        <div className="bg-adopet-card rounded-2xl border border-adopet-primary/10 shadow-lg p-8">
+        <Card className="shadow-lg rounded-2xl" padding="lg">
           <h1 className="text-xl font-display font-bold text-adopet-text-primary text-center mb-6">
-            Painel Administrativo
-          </h1>
-          {error && (
-            <div className="mb-4 p-3 rounded-lg bg-adopet-accent/10 text-adopet-accent text-sm">
-              {error}
-            </div>
-          )}
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              Painel Administrativo
+            </h1>
+            {error && (
+              <div className="mb-4 p-3 rounded-xl bg-adopet-accent/10 text-adopet-accent text-sm border border-adopet-accent/20">
+                {error}
+              </div>
+            )}
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-adopet-text-primary mb-1">
                 E-mail
@@ -60,7 +61,7 @@ export function Login() {
                 id="email"
                 type="email"
                 autoComplete="email"
-                className="w-full px-4 py-2.5 rounded-lg border border-adopet-primary/30 bg-white text-adopet-text-primary placeholder-adopet-text-secondary focus:outline-none focus:ring-2 focus:ring-adopet-primary focus:border-transparent"
+                className="w-full px-4 py-2.5 rounded-xl border border-adopet-primary/20 bg-adopet-card text-adopet-text-primary placeholder-adopet-text-secondary focus:outline-none focus:ring-2 focus:ring-adopet-primary/30 focus:border-adopet-primary/40"
                 placeholder="admin@exemplo.com"
                 {...register('email')}
               />
@@ -76,7 +77,7 @@ export function Login() {
                 id="password"
                 type="password"
                 autoComplete="current-password"
-                className="w-full px-4 py-2.5 rounded-lg border border-adopet-primary/30 bg-white text-adopet-text-primary placeholder-adopet-text-secondary focus:outline-none focus:ring-2 focus:ring-adopet-primary focus:border-transparent"
+                className="w-full px-4 py-2.5 rounded-xl border border-adopet-primary/20 bg-adopet-card text-adopet-text-primary placeholder-adopet-text-secondary focus:outline-none focus:ring-2 focus:ring-adopet-primary/30 focus:border-adopet-primary/40"
                 placeholder="••••••••"
                 {...register('password')}
               />
@@ -84,15 +85,17 @@ export function Login() {
                 <p className="mt-1 text-sm text-adopet-accent">{errors.password.message}</p>
               )}
             </div>
-            <button
+            <Button
               type="submit"
-              disabled={submitting}
-              className="w-full py-3 rounded-lg bg-adopet-primary text-white font-semibold hover:bg-adopet-primary-dark focus:outline-none focus:ring-2 focus:ring-adopet-primary focus:ring-offset-2 disabled:opacity-50"
+              variant="primary"
+              size="lg"
+              loading={submitting}
+              className="w-full"
             >
               {submitting ? 'Entrando…' : 'Entrar'}
-            </button>
+            </Button>
           </form>
-        </div>
+        </Card>
       </div>
     </div>
   );

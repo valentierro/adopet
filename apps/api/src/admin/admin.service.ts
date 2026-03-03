@@ -433,6 +433,7 @@ export class AdminService {
           phone: true,
           deactivatedAt: true,
           bannedAt: true,
+          bannedReason: true,
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -449,6 +450,7 @@ export class AdminService {
         phone: u.phone ?? undefined,
         deactivatedAt: u.deactivatedAt?.toISOString(),
         bannedAt: u.bannedAt?.toISOString(),
+        bannedReason: u.bannedReason ?? undefined,
       })),
       total,
     };
@@ -476,6 +478,32 @@ export class AdminService {
       },
     });
     return { message: 'Usuário banido. A conta foi desativada e não poderá fazer login; e-mail, nome de usuário e telefone continuam bloqueados para novo cadastro.' };
+  }
+
+  /** [Admin] Desbanir/reativar usuário. Zera deactivatedAt, bannedAt, bannedById e bannedReason. Não permite desbanir admin. */
+  async unbanUser(userId: string): Promise<{ message: string }> {
+    const adminIds = this.config.get<string>('ADMIN_USER_IDS')?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+    if (adminIds.includes(userId)) {
+      throw new BadRequestException('Não é permitido alterar status de administrador.');
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, deactivatedAt: true },
+    });
+    if (!user) throw new NotFoundException('Usuário não encontrado.');
+    if (!user.deactivatedAt) {
+      throw new BadRequestException('Usuário já está ativo.');
+    }
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        deactivatedAt: null,
+        bannedAt: null,
+        bannedById: null,
+        bannedReason: null,
+      },
+    });
+    return { message: 'Usuário reativado. Ele poderá fazer login novamente.' };
   }
 
   /** Aprovar ou rejeitar KYC de um usuário. Decisão humana (admin). Ao aprovar, envia mensagem no chat. Após decisão, apaga as imagens do storage e zera as keys (não retenção; redução de risco jurídico). Registra quem decidiu para auditoria. */
@@ -1072,11 +1100,14 @@ export class AdminService {
         kycStatus: true,
         deactivatedAt: true,
         id: true,
+        partner: { select: { type: true } },
+        partnerMemberships: { select: { partner: { select: { type: true } } } },
       },
     });
     const byCity: Record<string, number> = {};
     const byMonth: Record<string, number> = {};
     const byKycStatus: Record<string, number> = {};
+    const byUserType: Record<string, number> = { TUTOR: 0, ONG: 0, PARTNER_COMMERCIAL: 0 };
     let withListings = 0;
     let deactivated = 0;
 
@@ -1093,6 +1124,20 @@ export class AdminService {
       byKycStatus[kyc] = (byKycStatus[kyc] ?? 0) + 1;
       if (ownerIdsWithPets.has(u.id)) withListings++;
       if (u.deactivatedAt != null) deactivated++;
+
+      const partnerType = (u.partner as { type: string } | null)?.type;
+      const isMemberOfOng = (u.partnerMemberships as { partner: { type: string } }[]).some(
+        (m) => m.partner?.type === 'ONG',
+      );
+      if (partnerType === 'ONG') {
+        byUserType['ONG']++;
+      } else if (partnerType === 'CLINIC' || partnerType === 'STORE') {
+        byUserType['PARTNER_COMMERCIAL']++;
+      } else if (isMemberOfOng) {
+        byUserType['ONG']++;
+      } else {
+        byUserType['TUTOR']++;
+      }
     }
 
     return {
@@ -1100,6 +1145,7 @@ export class AdminService {
       byCity,
       byMonth,
       byKycStatus,
+      byUserType,
       withListings,
       withoutListings: users.length - withListings,
       deactivated,

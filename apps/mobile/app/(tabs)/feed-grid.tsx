@@ -177,7 +177,7 @@ export default function FeedGridScreen() {
               <View style={styles.badges}>
                 {item.verified && (
                   <View style={[styles.badgeIcon, { backgroundColor: 'rgba(255,255,255,0.95)' }]}>
-                    <VerifiedBadge size={12} />
+                    <VerifiedBadge variant="pet" size={12} iconBackgroundColor="rgba(255,255,255,0.95)" />
                   </View>
                 )}
                 {partner && (
@@ -209,9 +209,37 @@ export default function FeedGridScreen() {
               </View>
             </View>
             <View style={[styles.cardInfo, { backgroundColor: colors.surface }]}>
-              <Text style={[styles.cardName, { color: colors.textPrimary }]} numberOfLines={1}>
-                {item.name}
-              </Text>
+              <View style={styles.cardInfoHeader}>
+                <Text style={[styles.cardName, { color: colors.textPrimary }]} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                {partner && (
+                  <View
+                    style={[
+                      styles.partnerChip,
+                      {
+                        backgroundColor: partner.isPaidPartner ? (colors.warning ?? '#f59e0b') + '22' : colors.primary + '22',
+                        borderColor: partner.isPaidPartner ? (colors.warning ?? '#f59e0b') + '66' : colors.primary + '66',
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={partner.isPaidPartner ? 'star' : 'heart'}
+                      size={10}
+                      color={partner.isPaidPartner ? (colors.warning ?? '#f59e0b') : colors.primary}
+                    />
+                    <Text
+                      style={[
+                        styles.partnerChipText,
+                        { color: partner.isPaidPartner ? (colors.warning ?? '#f59e0b') : colors.primary },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      Parceria
+                    </Text>
+                  </View>
+                )}
+              </View>
               <Text style={[styles.cardMeta, { color: colors.textSecondary }]} numberOfLines={1}>
                 {String(item.species).toUpperCase() === 'DOG'
                   ? 'Cachorro'
@@ -366,7 +394,24 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   cardInfo: { paddingVertical: spacing.sm, paddingHorizontal: spacing.xs },
-  cardName: { fontSize: 14, fontWeight: '700' },
+  cardInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
+    minHeight: 20,
+  },
+  cardName: { fontSize: 14, fontWeight: '700', flex: 1 },
+  partnerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  partnerChipText: { fontSize: 10, fontWeight: '600' },
   cardMeta: { fontSize: 12, marginTop: 2 },
   cardLocation: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   cardLocationText: { fontSize: 11 },

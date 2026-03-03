@@ -61,7 +61,15 @@ const HOUSING_LABEL: Record<string, string> = { CASA: 'Casa', APARTAMENTO: 'Apar
 const WALK_FREQ_LABEL: Record<string, string> = { DAILY: 'Diariamente', FEW_TIMES_WEEK: 'Algumas vezes por semana', RARELY: 'Raramente', INDIFERENTE: 'Indiferente' };
 const SIM_NAO_INDIFERENTE_LABEL: Record<string, string> = { SIM: 'Sim', NAO: 'Não', INDIFERENTE: 'Indiferente' };
 
-function PetPhotoGallery({ photos, onPhotoPress }: { photos: string[]; onPhotoPress?: (uri: string) => void }) {
+function PetPhotoGallery({
+  photos,
+  onPhotoPress,
+  verified,
+}: {
+  photos: string[];
+  onPhotoPress?: (uri: string) => void;
+  verified?: boolean;
+}) {
   const { width } = useWindowDimensions();
   const [index, setIndex] = useState(0);
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -77,6 +85,11 @@ function PetPhotoGallery({ photos, onPhotoPress }: { photos: string[]; onPhotoPr
       <Image source={{ uri }} style={styles.image} contentFit="cover" />
     </TouchableOpacity>
   );
+  const badgeOverlay = verified ? (
+    <View style={styles.galleryVerifiedBadge} pointerEvents="none">
+      <VerifiedBadge variant="pet" size={51} />
+    </View>
+  ) : null;
   if (photos.length === 0) return null;
   if (photos.length === 1) {
     return (
@@ -84,6 +97,7 @@ function PetPhotoGallery({ photos, onPhotoPress }: { photos: string[]; onPhotoPr
         <TouchableOpacity onPress={() => onPhotoPress?.(photos[0])} activeOpacity={1}>
           <Image source={{ uri: photos[0] }} style={styles.image} contentFit="cover" />
         </TouchableOpacity>
+        {badgeOverlay}
       </View>
     );
   }
@@ -104,6 +118,7 @@ function PetPhotoGallery({ photos, onPhotoPress }: { photos: string[]; onPhotoPr
           <View key={i} style={[styles.dot, i === index && styles.dotActive]} />
         ))}
       </View>
+      {badgeOverlay}
     </View>
   );
 }
@@ -522,7 +537,7 @@ export default function PetDetailsScreen() {
   return (
     <>
     <ScreenContainer scroll>
-      <PetPhotoGallery photos={photos} onPhotoPress={setFullScreenPhoto} />
+      <PetPhotoGallery photos={photos} onPhotoPress={setFullScreenPhoto} verified={pet.verified} />
       <Modal
         visible={!!fullScreenPhoto}
         transparent
@@ -544,7 +559,7 @@ export default function PetDetailsScreen() {
       </Text>
       <View style={styles.badges}>
         {pet.verified && (
-          <VerifiedBadge size={14} showLabel backgroundColor={colors.primary} />
+          <VerifiedBadge variant="pet" size={14} iconBackgroundColor={colors.primary} />
         )}
         <StatusBadge
           label={pet.vaccinated ? 'Vacinado' : 'Não vacinado'}
@@ -940,7 +955,7 @@ export default function PetDetailsScreen() {
                     <Text style={[styles.ownerName, { color: colors.textPrimary }]}>Você</Text>
                     {(pet.owner.verified || pet.owner.tutorStats) && (
                       <View style={styles.ownerBadgesRow}>
-                        {pet.owner.verified && <VerifiedBadge size={20} showLabel backgroundColor={colors.primary} />}
+                        {pet.owner.verified && <VerifiedBadge variant="user" size={20} showLabel backgroundColor={colors.primary} />}
                         {pet.owner.tutorStats && <TutorLevelBadge tutorStats={pet.owner.tutorStats} compact />}
                       </View>
                     )}
@@ -990,7 +1005,7 @@ export default function PetDetailsScreen() {
                   <Text style={[styles.ownerName, { color: colors.textPrimary }]}>{pet.owner?.name ?? 'Tutor'}</Text>
                   {(pet.owner.verified || pet.owner.tutorStats) && (
                     <View style={styles.ownerBadgesRow}>
-                      {pet.owner.verified && <VerifiedBadge size={20} showLabel backgroundColor={colors.primary} />}
+                      {pet.owner.verified && <VerifiedBadge variant="user" size={20} showLabel backgroundColor={colors.primary} />}
                       {pet.owner.tutorStats && <TutorLevelBadge tutorStats={pet.owner.tutorStats} compact />}
                     </View>
                   )}
@@ -1025,7 +1040,7 @@ export default function PetDetailsScreen() {
                 <Text style={[styles.modalName, { color: colors.textPrimary }]}>{pet.owner?.name ?? 'Tutor'}</Text>
                 {(pet.owner.verified || pet.owner.tutorStats) && (
                   <View style={styles.modalBadgesRow}>
-                    {pet.owner.verified && <VerifiedBadge size={20} showLabel backgroundColor={colors.primary} />}
+                    {pet.owner.verified && <VerifiedBadge variant="user" size={20} showLabel backgroundColor={colors.primary} />}
                     {pet.owner.tutorStats && <TutorLevelBadge tutorStats={pet.owner.tutorStats} compact />}
                   </View>
                 )}
@@ -1310,6 +1325,12 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: '100%',
+  },
+  galleryVerifiedBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    zIndex: 2,
   },
   dots: {
     position: 'absolute',

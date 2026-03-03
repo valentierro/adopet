@@ -654,7 +654,7 @@ export default function DashboardScreen() {
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     activeOpacity={0.7}
                   >
-                    <VerifiedBadge size={18} showLabel backgroundColor={colors.primary} textColor="#fff" />
+                    <VerifiedBadge variant="user" size={18} showLabel backgroundColor={colors.primary} textColor="#fff" />
                   </TouchableOpacity>
                 ) : isNonPartner && isKycPending ? (
                   <TouchableOpacity

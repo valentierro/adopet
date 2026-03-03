@@ -193,6 +193,7 @@ export type AdminUserListItem = {
   phone?: string;
   deactivatedAt?: string;
   bannedAt?: string;
+  bannedReason?: string;
 };
 
 export type AdminUserListResponse = {
@@ -247,6 +248,11 @@ export async function banUser(
   body?: { reason?: string },
 ): Promise<{ message: string }> {
   return api.post<{ message: string }>(`/admin/users/${encodeURIComponent(userId)}/ban`, body ?? {});
+}
+
+/** [Admin] Desbanir/reativar usuário. Permite login novamente. */
+export async function unbanUser(userId: string): Promise<{ message: string }> {
+  return api.post<{ message: string }>(`/admin/users/${encodeURIComponent(userId)}/unban`);
 }
 
 export async function getAdminPetsAvailable(): Promise<PetAvailableItem[]> {

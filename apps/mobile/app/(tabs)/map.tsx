@@ -489,7 +489,7 @@ export default function MapScreen() {
                       </TouchableOpacity>
                     )}
                     {selectedPin.verified && (
-                      <VerifiedBadge size={16} iconBackgroundColor={colors.primary} />
+                      <VerifiedBadge variant="pet" size={16} iconBackgroundColor={colors.primary} />
                     )}
                   </View>
                   <Text style={[styles.selectedCardMeta, { color: colors.textSecondary }]}>

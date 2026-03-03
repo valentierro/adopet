@@ -704,7 +704,7 @@ export default function ChatRoomScreen() {
                       {otherUserName}
                     </Text>
                   </TouchableOpacity>
-                  {otherUserKycVerified && <VerifiedBadge size={14} iconBackgroundColor={colors.primary} />}
+                  {otherUserKycVerified && <VerifiedBadge variant="user" size={14} iconBackgroundColor={colors.primary} />}
                 </View>
               ) : (
                 <View style={styles.chatInfoBarNameRow}>
@@ -727,7 +727,7 @@ export default function ChatRoomScreen() {
                       {otherUserName}
                     </Text>
                   )}
-                  {otherUserKycVerified && <VerifiedBadge size={14} iconBackgroundColor={colors.primary} />}
+                  {otherUserKycVerified && <VerifiedBadge variant="user" size={14} iconBackgroundColor={colors.primary} />}
                 </View>
               )}
               <Text style={[styles.chatInfoBarPetName, { color: colors.textSecondary }]} numberOfLines={1}>

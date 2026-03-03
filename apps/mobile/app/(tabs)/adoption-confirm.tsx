@@ -172,7 +172,7 @@ export default function AdoptionConfirmScreen() {
             <View style={styles.cardInfo}>
               <View style={styles.petNameRow}>
                 <Text style={[styles.petName, { color: colors.textPrimary }]}>{item.petName}</Text>
-                {item.verified === true && <VerifiedBadge size={14} iconBackgroundColor={colors.primary} />}
+                {item.verified === true && <VerifiedBadge variant="pet" size={14} iconBackgroundColor={colors.primary} />}
               </View>
               <Text style={[styles.meta, { color: colors.textSecondary }]}>
                 {speciesLabel[item.species] ?? item.species}

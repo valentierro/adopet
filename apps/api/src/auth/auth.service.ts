@@ -20,6 +20,7 @@ import { FeatureFlagService } from '../feature-flag/feature-flag.service';
 import { getTempPasswordEmailHtml, getTempPasswordEmailText } from '../email/templates/temp-password.email';
 import { getConfirmResetEmailHtml, getConfirmResetEmailText } from '../email/templates/confirm-reset.email';
 import { getConfirmEmailHtml, getConfirmEmailText } from '../email/templates/confirm-email.email';
+import { getTutorWelcomeEmailHtml, getTutorWelcomeEmailText } from '../email/templates/tutor-welcome.email';
 import { getSetPasswordEmailHtml, getSetPasswordEmailText } from '../email/templates/set-password.email';
 import { isValidCpfOrCnpj } from '../common/cpf-cnpj';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -102,7 +103,11 @@ export class AuthService {
     return anyRow ? false : isRequireEmailVerificationFromEnv(this.config);
   }
 
-  async signup(dto: SignupDto): Promise<AuthResponseDto | { message: string; requiresEmailVerification: true; userId: string }> {
+  async signup(
+    dto: SignupDto,
+    options?: { sendTutorWelcome?: boolean },
+  ): Promise<AuthResponseDto | { message: string; requiresEmailVerification: true; userId: string }> {
+    const sendTutorWelcome = options?.sendTutorWelcome !== false;
     const requireVerification = await this.getRequireEmailVerification();
     const emailLower = dto.email.trim().toLowerCase();
     const phoneNormalized = String(dto.phone).replace(/\D/g, '').slice(-11);
@@ -200,6 +205,18 @@ export class AuthService {
         userId: user.id,
       };
     }
+    if (sendTutorWelcome && this.emailService.isConfigured()) {
+      const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? '';
+      const logoUrl = (this.config.get<string>('LOGO_URL') || (appUrl ? appUrl + '/logo.png' : '')).trim();
+      await this.emailService
+        .sendMail({
+          to: user.email,
+          subject: 'Bem-vindo(a) ao Adopet',
+          text: getTutorWelcomeEmailText({ userName: dto.name.trim() }),
+          html: getTutorWelcomeEmailHtml({ userName: dto.name.trim() }, logoUrl),
+        })
+        .catch(() => { /* não falhar signup se e-mail falhar */ });
+    }
     try {
       return await this.issueTokens(user.id, user.email);
     } catch (e) {
@@ -208,14 +225,14 @@ export class AuthService {
     }
   }
 
-  /** Confirma o e-mail do usuário via token enviado no cadastro. */
+  /** Confirma o e-mail do usuário via token enviado no cadastro. Envia e-mail de boas-vindas ao tutor. */
   async confirmEmail(token: string): Promise<{ success: boolean; message: string }> {
     if (!token?.trim()) {
       return { success: false, message: 'Link inválido ou expirado.' };
     }
     const user = await this.prisma.user.findFirst({
       where: { emailVerificationToken: token.trim() },
-      select: { id: true },
+      select: { id: true, email: true, name: true },
     });
     if (!user) {
       return { success: false, message: 'Link inválido ou já utilizado.' };
@@ -224,6 +241,18 @@ export class AuthService {
       where: { id: user.id },
       data: { emailVerifiedAt: new Date(), emailVerificationToken: null },
     });
+    if (this.emailService.isConfigured()) {
+      const appUrl = this.config.get<string>('APP_URL')?.replace(/\/$/, '') ?? '';
+      const logoUrl = (this.config.get<string>('LOGO_URL') || (appUrl ? appUrl + '/logo.png' : '')).trim();
+      await this.emailService
+        .sendMail({
+          to: user.email,
+          subject: 'Bem-vindo(a) ao Adopet',
+          text: getTutorWelcomeEmailText({ userName: user.name.trim() }),
+          html: getTutorWelcomeEmailHtml({ userName: user.name.trim() }, logoUrl),
+        })
+        .catch(() => { /* não falhar confirmação se e-mail falhar */ });
+    }
     return { success: true, message: 'E-mail confirmado com sucesso. Sua conta está ativa.' };
   }
 
@@ -251,7 +280,7 @@ export class AuthService {
       document,
       username: dto.username,
     };
-    const signupResult = await this.signup(signupData);
+    const signupResult = await this.signup(signupData, { sendTutorWelcome: false });
     let userId: string;
     if ('userId' in signupResult) {
       userId = signupResult.userId;

@@ -14,7 +14,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, Toast, LoadingLogo } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
-import { getAdminUsersList, banUser, type AdminUserListItem } from '../../../src/api/admin';
+import { getAdminUsersList, banUser, unbanUser, type AdminUserListItem } from '../../../src/api/admin';
 import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
 import { spacing } from '../../../src/theme';
 
@@ -24,6 +24,7 @@ export default function AdminUsersScreen() {
   const [usersSearch, setUsersSearch] = useState('');
   const [banUserModal, setBanUserModal] = useState<{ userId: string; userName?: string } | null>(null);
   const [banUserReason, setBanUserReason] = useState('');
+  const [unbanUserModal, setUnbanUserModal] = useState<{ userId: string; userName?: string } | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const usersSearchTerm = (usersSearch ?? '').trim();
@@ -48,6 +49,18 @@ export default function AdminUsersScreen() {
     },
     onError: (e: unknown) =>
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível banir o usuário.')),
+  });
+
+  const unbanUserMutation = useMutation({
+    mutationFn: (userId: string) => unbanUser(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users-list'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
+      setToastMessage('Usuário reativado.');
+      setUnbanUserModal(null);
+    },
+    onError: (e: unknown) =>
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível reativar o usuário.')),
   });
 
   return (
@@ -132,7 +145,9 @@ export default function AdminUsersScreen() {
                     >
                       <Ionicons name="ban" size={14} color={colors.error || '#dc2626'} />
                       <Text style={[styles.resolvedText, { color: colors.error || '#dc2626' }]}>
-                        Banido
+                        {u.bannedAt
+                          ? `Banido em ${u.bannedAt ? new Date(u.bannedAt).toLocaleDateString('pt-BR') : ''}${u.bannedReason ? ` — ${u.bannedReason}` : ''}`
+                          : `Desativado em ${u.deactivatedAt ? new Date(u.deactivatedAt).toLocaleDateString('pt-BR') : ''}`}
                       </Text>
                     </View>
                   )}
@@ -142,7 +157,7 @@ export default function AdminUsersScreen() {
                     {u.username ? ` • @${u.username}` : ''}
                     {u.phone ? ` • ${u.phone}` : ''}
                   </Text>
-                  {!isBanned && (
+                  {!isBanned ? (
                     <TouchableOpacity
                       style={[
                         styles.actionBtn,
@@ -158,6 +173,24 @@ export default function AdminUsersScreen() {
                       )}
                       <Text style={styles.actionBtnText}>
                         {banUserMutation.isPending ? 'Banindo...' : 'Banir'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={[
+                        styles.actionBtn,
+                        { backgroundColor: colors.primary || '#0d9488', marginTop: spacing.sm },
+                      ]}
+                      onPress={() => setUnbanUserModal({ userId: u.id, userName: u.name })}
+                      disabled={unbanUserMutation.isPending}
+                    >
+                      {unbanUserMutation.isPending ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                      )}
+                      <Text style={styles.actionBtnText}>
+                        {unbanUserMutation.isPending ? 'Reativando...' : 'Desbanir'}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -221,6 +254,40 @@ export default function AdminUsersScreen() {
               >
                 <Text style={[styles.modalBtnTextPrimary, { color: '#fff' }]}>
                   {banUserMutation.isPending ? 'Banindo...' : 'Banir'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={!!unbanUserModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+              {unbanUserModal?.userName ? `Desbanir ${unbanUserModal.userName}?` : 'Desbanir usuário?'}
+            </Text>
+            <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>
+              O usuário poderá fazer login novamente no app.
+            </Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.background }]}
+                onPress={() => setUnbanUserModal(null)}
+              >
+                <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalBtn,
+                  { backgroundColor: colors.primary || '#0d9488' },
+                  unbanUserMutation.isPending && styles.modalBtnDisabled,
+                ]}
+                onPress={() => unbanUserModal && unbanUserMutation.mutate(unbanUserModal.userId)}
+                disabled={unbanUserMutation.isPending}
+              >
+                <Text style={[styles.modalBtnTextPrimary, { color: '#fff' }]}>
+                  {unbanUserMutation.isPending ? 'Reativando...' : 'Desbanir'}
                 </Text>
               </TouchableOpacity>
             </View>

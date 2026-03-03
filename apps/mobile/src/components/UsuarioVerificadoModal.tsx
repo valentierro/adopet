@@ -29,8 +29,8 @@ export function UsuarioVerificadoModal({ visible, onClose }: Props) {
           style={[styles.card, { backgroundColor: colors.surface }]}
           onPress={(e) => e.stopPropagation()}
         >
-          <View style={[styles.iconWrap, { backgroundColor: colors.primary + '22' }]}>
-            <VerifiedBadge size={40} iconBackgroundColor={colors.primary} />
+          <View style={styles.iconWrap}>
+            <VerifiedBadge variant="user" size={80} />
           </View>
           <Text style={[styles.title, { color: colors.textPrimary }]}>Usuário Verificado</Text>
           <Text style={[styles.body, { color: colors.textSecondary }]}>{MODAL_TEXT}</Text>
@@ -61,7 +61,7 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     alignItems: 'center',
   },
-  iconWrap: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
+  iconWrap: { alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
   title: { fontSize: 20, fontWeight: '700', marginBottom: spacing.md, textAlign: 'center' },
   body: { fontSize: 15, lineHeight: 22, textAlign: 'center', marginBottom: spacing.xl },
   btn: { paddingVertical: spacing.md, paddingHorizontal: spacing.xl, borderRadius: 12, alignSelf: 'stretch', alignItems: 'center' },

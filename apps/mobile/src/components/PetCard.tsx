@@ -49,7 +49,7 @@ export const PetCard = React.memo(function PetCard({
         <Image source={{ uri: photo }} style={styles.image} contentFit="cover" />
         {pet.verified && (
           <View style={styles.verifiedWrap}>
-            <VerifiedBadge size={32} iconBackgroundColor={colors.primary} />
+            <VerifiedBadge variant="pet" size={28} iconBackgroundColor={colors.primary} />
           </View>
         )}
         {pet.partner && (
