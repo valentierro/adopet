@@ -589,11 +589,12 @@ export default function SolicitarParceriaScreen() {
               <Text style={[styles.hint, { color: colors.textSecondary }]}>Outros usuários poderão te encontrar por @nome. Use letras minúsculas, números, ponto ou underscore (2 a 30 caracteres).</Text>
               <Text style={labelStyle}>Senha *</Text>
               <View style={styles.passwordWrap}>
-                <TextInput style={[inputStyle, styles.passwordInput]} placeholder="Mín. 6 caracteres, letra e número" placeholderTextColor={colors.textSecondary} value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoCapitalize="none" />
+                <TextInput style={[inputStyle, styles.passwordInput]} placeholder="Senha" placeholderTextColor={colors.textSecondary} value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoCapitalize="none" />
                 <TouchableOpacity style={styles.eyeBtn} onPress={() => setShowPassword((v) => !v)} accessibilityLabel={showPassword ? 'Ocultar senha' : 'Ver senha'}>
                   <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
+              <Text style={[styles.hint, { color: colors.textSecondary }]}>Mínimo 6 caracteres, com pelo menos uma letra e um número.</Text>
               <Text style={labelStyle}>Confirmar senha *</Text>
               <View style={styles.passwordWrap}>
                 <TextInput style={[inputStyle, styles.passwordInput]} placeholder="Repita a senha" placeholderTextColor={colors.textSecondary} value={passwordConfirm} onChangeText={setPasswordConfirm} secureTextEntry={!showPasswordConfirm} autoCapitalize="none" />

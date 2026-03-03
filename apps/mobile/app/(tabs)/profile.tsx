@@ -439,7 +439,7 @@ export default function ProfileScreen() {
           {preferenciasBuscaExpanded && (
           <>
           <Text style={[styles.profileBio, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
-            Filtros e preferências usados no feed e no match.
+            Filtros e preferências usados no feed e no match. Edite em Editar perfil.
           </Text>
           <View style={styles.triageGrid}>
             <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
@@ -453,6 +453,12 @@ export default function ProfileScreen() {
             <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
               <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Sexo preferido do pet</Text>
               <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>{preferences.sexPref ? (SEX_PREF_LABEL[preferences.sexPref] ?? preferences.sexPref) : 'Não informado'}</Text>
+            </View>
+            <View style={[styles.triageItem, { backgroundColor: colors.background }]}>
+              <Text style={[styles.triageItemLabel, { color: colors.textSecondary }]}>Castração</Text>
+              <Text style={[styles.triageItemValue, { color: colors.textPrimary }]}>
+                {preferences.neuteredPref === 'YES' ? 'Prefiro castrado' : preferences.neuteredPref === 'NO' ? 'Aceito não castrado' : preferences.neuteredPref ? 'Indiferente' : 'Não informado'}
+              </Text>
             </View>
           </View>
           </>
@@ -567,16 +573,6 @@ export default function ProfileScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={() => router.push('/preferences')}
-            >
-              <View style={styles.menuItemLeft}>
-                <Ionicons name="settings-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Preferências</Text>
-              </View>
-              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
               onPress={() => router.push('/saved-searches')}
             >
               <View style={styles.menuItemLeft}>
@@ -631,60 +627,62 @@ export default function ProfileScreen() {
         )}
       </View>
 
-      {/* Parceiro */}
-      <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
-        <TouchableOpacity
-          style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
-          onPress={() => setMenuParceiroExpanded((e) => !e)}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="people-outline" size={22} color={colors.primary} />
-          <Text style={[styles.menuSectionHeaderText, { color: colors.textPrimary }]}>Parceiro</Text>
-          <Ionicons name={menuParceiroExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
-        </TouchableOpacity>
-        {menuParceiroExpanded && (
-          <>
-            {user?.partner && (user.partner.isPaidPartner || user.partner.type === 'ONG') && (
-              <TouchableOpacity
-                style={[
-                  styles.menuItem,
-                  styles.menuItemPartner,
-                  { borderBottomColor: colors.surface, borderLeftColor: colors.primary },
-                ]}
-                onPress={() => router.push('/partner-portal')}
-              >
-                <View style={styles.menuItemLeft}>
-                  <Ionicons name="business-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-                  <Text style={[styles.menuLabel, { color: colors.primary }]}>Portal do parceiro</Text>
-                </View>
-                <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-              </TouchableOpacity>
-            )}
-            {user?.partner && !user.partner.isPaidPartner && user.partner.type !== 'ONG' && (
+      {/* Parceiro — apenas para usuários parceiros (comercial ou ONG) */}
+      {(user?.partner || user?.isPartner) && (
+        <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>
+          <TouchableOpacity
+            style={[styles.menuSectionHeader, { borderBottomColor: colors.surface }]}
+            onPress={() => setMenuParceiroExpanded((e) => !e)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="people-outline" size={22} color={colors.primary} />
+            <Text style={[styles.menuSectionHeaderText, { color: colors.textPrimary }]}>Parceiro</Text>
+            <Ionicons name={menuParceiroExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
+          </TouchableOpacity>
+          {menuParceiroExpanded && (
+            <>
+              {user?.partner && (user.partner.isPaidPartner || user.partner.type === 'ONG') && (
+                <TouchableOpacity
+                  style={[
+                    styles.menuItem,
+                    styles.menuItemPartner,
+                    { borderBottomColor: colors.surface, borderLeftColor: colors.primary },
+                  ]}
+                  onPress={() => router.push('/partner-portal')}
+                >
+                  <View style={styles.menuItemLeft}>
+                    <Ionicons name="business-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                    <Text style={[styles.menuLabel, { color: colors.primary }]}>Portal do parceiro</Text>
+                  </View>
+                  <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+                </TouchableOpacity>
+              )}
+              {user?.partner && !user.partner.isPaidPartner && user.partner.type !== 'ONG' && (
+                <TouchableOpacity
+                  style={[styles.menuItem, { borderBottomColor: colors.surface }]}
+                  onPress={() => router.push('/partner-subscription')}
+                >
+                  <View style={styles.menuItemLeft}>
+                    <Ionicons name="card-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                    <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Renovar assinatura do parceiro</Text>
+                  </View>
+                  <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-                onPress={() => router.push('/partner-subscription')}
+                onPress={() => router.push('/partners')}
               >
                 <View style={styles.menuItemLeft}>
-                  <Ionicons name="card-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-                  <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Renovar assinatura do parceiro</Text>
+                  <Ionicons name="people-outline" size={22} color={colors.primary} style={styles.menuIcon} />
+                  <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Parceiros Adopet</Text>
                 </View>
                 <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
               </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={[styles.menuItem, { borderBottomColor: colors.surface }]}
-              onPress={() => router.push('/partners')}
-            >
-              <View style={styles.menuItemLeft}>
-                <Ionicons name="people-outline" size={22} color={colors.primary} style={styles.menuIcon} />
-                <Text style={[styles.menuLabel, { color: colors.textPrimary }]}>Parceiros Adopet</Text>
-              </View>
-              <Text style={[styles.menuArrow, { color: colors.textSecondary }]}>›</Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </View>
+            </>
+          )}
+        </View>
+      )}
 
       {/* Suporte */}
       <View style={[styles.menuSection, { borderBottomColor: colors.surface }]}>

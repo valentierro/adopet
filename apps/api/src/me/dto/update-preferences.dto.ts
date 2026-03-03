@@ -26,6 +26,12 @@ export class UpdatePreferencesDto {
   @IsIn(['BOTH', 'male', 'female'])
   sexPref?: string | null;
 
+  @ApiPropertyOptional({ description: 'Preferência de castração para match: BOTH = indiferente, YES = prefiro castrado, NO = aceito não castrado' })
+  @IsOptional()
+  @IsString()
+  @IsIn(['BOTH', 'YES', 'NO'])
+  neuteredPref?: string | null;
+
   @ApiPropertyOptional({ description: 'Latitude para notificação "novos pets na região"' })
   @IsOptional()
   @ValidateIf((_, v) => v != null)

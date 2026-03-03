@@ -37,17 +37,24 @@ export type SizePref = 'BOTH' | 'small' | 'medium' | 'large' | 'xlarge';
 
 export type SexPref = 'BOTH' | 'male' | 'female';
 
+export type NeuteredPref = 'BOTH' | 'YES' | 'NO';
+
 export type PreferencesResponse = {
   species: 'DOG' | 'CAT' | 'BOTH';
   radiusKm: number;
   sizePref?: SizePref | null;
   sexPref?: SexPref | null;
+  neuteredPref?: NeuteredPref | null;
   latitude?: number | null;
   longitude?: number | null;
   notifyNewPets: boolean;
   notifyMessages: boolean;
   notifyReminders: boolean;
   notifyListingReminders: boolean;
+  /** Percentual de preenchimento das preferências usadas no match (0–100). */
+  completionPercent: number;
+  /** Campos ainda não preenchidos (para tooltip). */
+  missingFields: { key: string; label: string }[];
 };
 
 export type UpdatePreferencesBody = {
@@ -55,6 +62,7 @@ export type UpdatePreferencesBody = {
   radiusKm?: number;
   sizePref?: SizePref | null;
   sexPref?: SexPref | null;
+  neuteredPref?: NeuteredPref | null;
   latitude?: number | null;
   longitude?: number | null;
   notifyNewPets?: boolean;

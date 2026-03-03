@@ -190,7 +190,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="preferences"
-        options={{ href: null, title: 'Preferências', ...backWithLogoOptions }}
+        options={{ href: null, title: 'Notificações', ...backWithLogoOptions }}
       />
       <Tabs.Screen
         name="my-pets"

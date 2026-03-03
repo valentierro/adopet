@@ -31,7 +31,7 @@ export function computeMatchScore(
   let totalWeight = 0;
   let earnedWeight = 0;
 
-  const LABEL = { housing: 'Moradia', yard: 'Quintal', otherPets: 'Outros pets', children: 'Crianças', timeAtHome: 'Tempo em casa', petsAllowed: 'Pets no local', dogExp: 'Experiência com cachorro', catExp: 'Experiência com gato', householdAgrees: 'Concordância em casa', species: 'Espécie', sex: 'Sexo do pet', size: 'Porte', activity: 'Nível de atividade', age: 'Idade do pet', vetCare: 'Cuidados veterinários', walkFreq: 'Passeios', budget: 'Orçamento' } as const;
+  const LABEL = { housing: 'Moradia', yard: 'Quintal', otherPets: 'Outros pets', children: 'Crianças', timeAtHome: 'Tempo em casa', petsAllowed: 'Pets no local', dogExp: 'Experiência com cachorro', catExp: 'Experiência com gato', householdAgrees: 'Concordância em casa', species: 'Espécie', sex: 'Sexo do pet', neutered: 'Castração', size: 'Porte', activity: 'Nível de atividade', age: 'Idade do pet', vetCare: 'Cuidados veterinários', walkFreq: 'Passeios', budget: 'Orçamento' } as const;
 
   // Moradia
   if (petPreferences.preferredTutorHousingType != null && petPreferences.preferredTutorHousingType !== '') {
@@ -328,6 +328,38 @@ export function computeMatchScore(
     }
   }
 
+  // Castração do pet × preferência do adotante (preferredPetNeutered). BOTH = indiferente, YES = prefiro castrado, NO = aceito não castrado
+  const neuteredPref = adopter.preferredPetNeutered?.toUpperCase?.() ?? null;
+  if (neuteredPref && neuteredPref !== 'BOTH' && typeof petPreferences.neutered === 'boolean') {
+    totalWeight += 1;
+    const petNeutered = petPreferences.neutered;
+    if (neuteredPref === 'YES') {
+      if (petNeutered) {
+        earnedWeight += 1;
+        const msg = 'Pet castrado, conforme sua preferência.';
+        highlights.push(msg);
+        criteria.push({ label: LABEL.neutered, status: 'match', message: msg });
+      } else {
+        const msg = 'Você prefere pet castrado; este pet não é castrado.';
+        concerns.push(msg);
+        criteria.push({ label: LABEL.neutered, status: 'mismatch', message: msg });
+      }
+    } else {
+      // NO = aceito não castrado (match quando pet não castrado; quando castrado também conta como match pois aceita os dois)
+      if (!petNeutered) {
+        earnedWeight += 1;
+        const msg = 'Pet não castrado; você indicou que aceita não castrado.';
+        highlights.push(msg);
+        criteria.push({ label: LABEL.neutered, status: 'match', message: msg });
+      } else {
+        earnedWeight += 1;
+        const msg = 'Pet castrado (você aceita não castrado; castrado também é compatível).';
+        highlights.push(msg);
+        criteria.push({ label: LABEL.neutered, status: 'match', message: msg });
+      }
+    }
+  }
+
   // Porte do pet × preferência do adotante (sizePref)
   if (petPreferences.size != null && petPreferences.size !== '') {
     const adopterSizePref = adopter.sizePref?.toLowerCase?.() ?? null;
@@ -444,6 +476,23 @@ export function computeMatchScore(
         concerns.push(msg);
         criteria.push({ label: LABEL.walkFreq, status: 'mismatch', message: msg });
       }
+    }
+  }
+
+  // Castração: preferência do adotante (YES = prefiro castrado) × pet.neutered (segundo bloco do critério)
+  const adopterNeuteredPref = adopter.preferredPetNeutered;
+  if (adopterNeuteredPref === 'YES') {
+    totalWeight += 1;
+    const petNeutered = petPreferences.neutered === true;
+    if (petNeutered) {
+      earnedWeight += 1;
+      const msg = 'Pet castrado, conforme sua preferência.';
+      highlights.push(msg);
+      criteria.push({ label: LABEL.neutered, status: 'match', message: msg });
+    } else {
+      const msg = 'Você prefere pet castrado; este pet não é castrado.';
+      concerns.push(msg);
+      criteria.push({ label: LABEL.neutered, status: 'mismatch', message: msg });
     }
   }
 

@@ -1,13 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, TextInput, StyleSheet, Alert, TouchableOpacity, ActivityIndicator, Modal, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, PrimaryButton, LoadingLogo, ProfileMenuFooter, Toast } from '../src/components';
+import { ScreenContainer, PrimaryButton, LoadingLogo, ProfileMenuFooter, Toast, CircularProgress } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
-import { getMe, updateMe } from '../src/api/me';
+import { getMe, updateMe, getPreferences, updatePreferences } from '../src/api/me';
 import { useAuthStore } from '../src/stores/authStore';
 import { presign, confirmAvatarUpload } from '../src/api/uploads';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
@@ -83,11 +83,90 @@ const BUDGET_OPTIONS = [
   { value: 'HIGH' as const, label: 'Acima de ~R$ 300/mês' },
 ];
 
+const SPECIES_OPTIONS = [
+  { value: 'DOG' as const, label: 'Cachorros' },
+  { value: 'CAT' as const, label: 'Gatos' },
+  { value: 'BOTH' as const, label: 'Cachorros e gatos' },
+];
+
+const SIZE_PREF_OPTIONS = [
+  { value: 'BOTH' as const, label: 'Qualquer' },
+  { value: 'small' as const, label: 'Pequeno' },
+  { value: 'medium' as const, label: 'Médio' },
+  { value: 'large' as const, label: 'Grande' },
+  { value: 'xlarge' as const, label: 'Muito grande' },
+];
+
+const SEX_PREF_OPTIONS = [
+  { value: 'BOTH' as const, label: 'Qualquer' },
+  { value: 'male' as const, label: 'Macho' },
+  { value: 'female' as const, label: 'Fêmea' },
+];
+
+const NEUTERED_PREF_OPTIONS = [
+  { value: 'BOTH' as const, label: 'Indiferente' },
+  { value: 'YES' as const, label: 'Prefiro castrado' },
+  { value: 'NO' as const, label: 'Aceito não castrado' },
+];
+
+const PREFERENCE_MATCH_FIELDS = [
+  { key: 'species' as const, label: 'Espécie' },
+  { key: 'sizePref' as const, label: 'Tamanho preferido' },
+  { key: 'sexPref' as const, label: 'Sexo preferido do pet' },
+  { key: 'neuteredPref' as const, label: 'Preferência de castração' },
+];
+
+function getCompletionFromPrefs(prefs: {
+  species?: string | null;
+  sizePref?: string | null;
+  sexPref?: string | null;
+  neuteredPref?: string | null;
+}): { completionPercent: number; missingFields: { key: string; label: string }[] } {
+  const missingFields = PREFERENCE_MATCH_FIELDS.filter((f) => {
+    if (f.key === 'neuteredPref') return false; // Indiferente (BOTH ou null) = preenchido
+    const v = prefs[f.key];
+    return v == null || v === '';
+  });
+  const total = PREFERENCE_MATCH_FIELDS.length;
+  const filled = total - missingFields.length;
+  const completionPercent = total === 0 ? 100 : Math.round((filled / total) * 100);
+  return { completionPercent, missingFields: missingFields.map((f) => ({ key: f.key, label: f.label })) };
+}
+
+function CollapsibleSection({
+  title,
+  expanded,
+  onToggle,
+  children,
+  colors,
+}: {
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  colors: { textPrimary: string; textSecondary: string; surface: string };
+}) {
+  return (
+    <View style={[styles.collapsibleSection, { borderColor: colors.surface }]}>
+      <TouchableOpacity
+        style={[styles.collapsibleHeader, { backgroundColor: colors.surface }]}
+        onPress={onToggle}
+        activeOpacity={0.7}
+      >
+        <Text style={[styles.collapsibleTitle, { color: colors.textPrimary }]}>{title}</Text>
+        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
+      </TouchableOpacity>
+      {expanded && <View style={styles.collapsibleContent}>{children}</View>}
+    </View>
+  );
+}
+
 export default function ProfileEditScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { colors } = useTheme();
   const { data: user, isLoading } = useQuery({ queryKey: ['me'], queryFn: getMe });
+  const { data: prefs } = useQuery({ queryKey: ['me', 'preferences'], queryFn: getPreferences, enabled: !!user });
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
@@ -108,6 +187,15 @@ export default function ProfileEditScreen() {
   const [commitsToVetCare, setCommitsToVetCare] = useState<string>('');
   const [walkFrequency, setWalkFrequency] = useState<string>('');
   const [monthlyBudgetForPet, setMonthlyBudgetForPet] = useState<string>('');
+  const [species, setSpecies] = useState<'DOG' | 'CAT' | 'BOTH'>('BOTH');
+  const [sizePref, setSizePref] = useState<'BOTH' | 'small' | 'medium' | 'large' | 'xlarge'>('BOTH');
+  const [sexPref, setSexPref] = useState<'BOTH' | 'male' | 'female'>('BOTH');
+  const [neuteredPref, setNeuteredPref] = useState<'BOTH' | 'YES' | 'NO'>('BOTH');
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [sectionPetPrefsExpanded, setSectionPetPrefsExpanded] = useState(true);
+  const [sectionBasicExpanded, setSectionBasicExpanded] = useState(true);
+  const [sectionAdoptionExpanded, setSectionAdoptionExpanded] = useState(false);
+  const [sectionWhyExpanded, setSectionWhyExpanded] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -135,6 +223,15 @@ export default function ProfileEditScreen() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (prefs) {
+      setSpecies((prefs.species as 'DOG' | 'CAT' | 'BOTH') ?? 'BOTH');
+      setSizePref((prefs.sizePref as 'BOTH' | 'small' | 'medium' | 'large' | 'xlarge') ?? 'BOTH');
+      setSexPref((prefs.sexPref as 'BOTH' | 'male' | 'female') ?? 'BOTH');
+      setNeuteredPref((prefs.neuteredPref as 'BOTH' | 'YES' | 'NO') ?? 'BOTH');
+    }
+  }, [prefs]);
+
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const updateMutation = useMutation({
     mutationFn: (body: Parameters<typeof updateMe>[0]) => updateMe(body),
@@ -145,6 +242,17 @@ export default function ProfileEditScreen() {
     },
     onError: (e: unknown) => {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível salvar.'));
+    },
+  });
+
+  const updatePrefsMutation = useMutation({
+    mutationFn: (body: Parameters<typeof updatePreferences>[0]) => updatePreferences(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me', 'preferences'] });
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+    },
+    onError: (e: unknown) => {
+      Alert.alert('Erro nas preferências', getFriendlyErrorMessage(e, 'Não foi possível salvar preferências de pet.'));
     },
   });
 
@@ -268,7 +376,20 @@ export default function ProfileEditScreen() {
       walkFrequency: walkFrequency || undefined,
       monthlyBudgetForPet: monthlyBudgetForPet || undefined,
     });
+    updatePrefsMutation.mutate({ species, sizePref, sexPref, neuteredPref });
   };
+
+  const completion =
+    prefs && typeof prefs.completionPercent === 'number' && Array.isArray(prefs.missingFields)
+      ? { completionPercent: prefs.completionPercent, missingFields: prefs.missingFields }
+      : prefs
+        ? getCompletionFromPrefs({
+            species: prefs.species,
+            sizePref: prefs.sizePref,
+            sexPref: prefs.sexPref,
+            neuteredPref: prefs.neuteredPref,
+          })
+        : { completionPercent: 0, missingFields: [] };
 
   return (
     <ScreenContainer scroll>
@@ -294,7 +415,15 @@ export default function ProfileEditScreen() {
           </Text>
         </View>
 
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary, marginTop: spacing.lg }]}>Dados básicos</Text>
+        <CollapsibleSection
+          title="Dados básicos"
+          expanded={sectionBasicExpanded}
+          onToggle={() => setSectionBasicExpanded((e) => !e)}
+          colors={colors}
+        >
+        <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+          Nome, usuário, telefone e cidade.
+        </Text>
         <TextInput
           style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
           placeholder="Nome"
@@ -341,11 +470,149 @@ export default function ProfileEditScreen() {
           multiline
           numberOfLines={3}
         />
+        </CollapsibleSection>
 
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary, marginTop: spacing.lg }]}>
-          Informações para adoção (obrigatórias para o match score)
+        <Text style={[styles.sectionLabel, { color: colors.textSecondary, marginTop: spacing.lg, textAlign: 'center' }]}>
+          Preenchimento das preferências de pet
         </Text>
-        <Text style={[styles.hint, { color: colors.textSecondary, marginTop: -4 }]}>
+        <View style={styles.completionWrap}>
+          <View style={styles.completionRow}>
+            <CircularProgress
+              percent={completion.completionPercent}
+              size={80}
+              strokeWidth={6}
+              strokeColor={
+                completion.completionPercent >= 75
+                  ? colors.primary
+                  : completion.completionPercent >= 50
+                    ? '#D97706'
+                    : colors.error
+              }
+              backgroundColor={colors.surface}
+              textColor={colors.textPrimary}
+            />
+            <Pressable
+              style={({ pressed }) => [styles.infoIconWrap, pressed && { opacity: 0.7 }]}
+              onPress={() => setShowCompletionModal(true)}
+              accessibilityLabel="Ver detalhes do preenchimento"
+              accessibilityRole="button"
+            >
+              <Ionicons
+                name="information-circle-outline"
+                size={26}
+                color={
+                  completion.completionPercent >= 75
+                    ? colors.primary
+                    : completion.completionPercent >= 50
+                      ? '#D97706'
+                      : colors.error
+                }
+              />
+            </Pressable>
+          </View>
+        </View>
+        <Modal
+          visible={showCompletionModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowCompletionModal(false)}
+        >
+          <Pressable style={styles.modalBackdrop} onPress={() => setShowCompletionModal(false)}>
+            <Pressable style={[styles.modalCard, { backgroundColor: colors.cardBg }]} onPress={(e) => e.stopPropagation()}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Preenchimento das preferências</Text>
+              {completion.missingFields.length === 0 ? (
+                <Text style={[styles.modalBody, { color: colors.textSecondary }]}>
+                  Você preencheu todas as preferências usadas no cálculo de compatibilidade (match).
+                </Text>
+              ) : (
+                <>
+                  <Text style={[styles.modalSub, { color: colors.textSecondary }]}>Ainda não preenchido:</Text>
+                  {completion.missingFields.map((f) => (
+                    <Text key={f.key} style={[styles.modalBullet, { color: colors.textPrimary }]}>
+                      • {f.label}
+                    </Text>
+                  ))}
+                </>
+              )}
+              <Text style={[styles.modalImportance, { color: colors.textSecondary }]}>
+                Quanto mais preferências preenchidas, mais preciso fica o score de compatibilidade com cada pet.
+              </Text>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                onPress={() => setShowCompletionModal(false)}
+              >
+                <Text style={styles.modalBtnText}>Entendi</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <CollapsibleSection
+          title="Preferências em relação ao pet (feed e match)"
+          expanded={sectionPetPrefsExpanded}
+          onToggle={() => setSectionPetPrefsExpanded((e) => !e)}
+          colors={colors}
+        >
+          <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+            Usadas para filtrar o feed e para o cálculo de compatibilidade com cada pet.
+          </Text>
+          <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Espécie</Text>
+          <View style={styles.chipRow}>
+            {SPECIES_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.chip, { backgroundColor: species === opt.value ? colors.primary : colors.surface }]}
+                onPress={() => setSpecies(opt.value)}
+              >
+                <Text style={[styles.chipText, { color: species === opt.value ? '#fff' : colors.textPrimary }]}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Porte preferido</Text>
+          <View style={styles.chipRowWrap}>
+            {SIZE_PREF_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.chip, { backgroundColor: sizePref === opt.value ? colors.primary : colors.surface }]}
+                onPress={() => setSizePref(opt.value)}
+              >
+                <Text style={[styles.chipText, { color: sizePref === opt.value ? '#fff' : colors.textPrimary }]}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Sexo preferido do pet</Text>
+          <View style={styles.chipRow}>
+            {SEX_PREF_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.chip, { backgroundColor: sexPref === opt.value ? colors.primary : colors.surface }]}
+                onPress={() => setSexPref(opt.value)}
+              >
+                <Text style={[styles.chipText, { color: sexPref === opt.value ? '#fff' : colors.textPrimary }]}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Castração</Text>
+          <View style={styles.chipRow}>
+            {NEUTERED_PREF_OPTIONS.map((opt) => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.chip, { backgroundColor: neuteredPref === opt.value ? colors.primary : colors.surface }]}
+                onPress={() => setNeuteredPref(opt.value)}
+              >
+                <Text style={[styles.chipText, { color: neuteredPref === opt.value ? '#fff' : colors.textPrimary }]}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="Informações para adoção (obrigatórias para o match)"
+          expanded={sectionAdoptionExpanded}
+          onToggle={() => setSectionAdoptionExpanded((e) => !e)}
+          colors={colors}
+        >
+        <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
           O anunciante pode ver estes dados para avaliar se você combina com o pet. Preencha todos para o match score funcionar.
         </Text>
         <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Tipo de moradia</Text>
@@ -537,8 +804,14 @@ export default function ProfileEditScreen() {
             </TouchableOpacity>
           ))}
         </View>
+        </CollapsibleSection>
 
-        <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Por que quer adotar? (opcional)</Text>
+        <CollapsibleSection
+          title="Por que quer adotar? (opcional)"
+          expanded={sectionWhyExpanded}
+          onToggle={() => setSectionWhyExpanded((e) => !e)}
+          colors={colors}
+        >
         <TextInput
           style={[styles.input, styles.bioInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
           placeholder="Ex.: quero um companheiro para minha família, perdi meu pet e quero dar um novo lar..."
@@ -549,11 +822,12 @@ export default function ProfileEditScreen() {
           numberOfLines={3}
           maxLength={500}
         />
+        </CollapsibleSection>
 
         <PrimaryButton
-          title={updateMutation.isPending ? 'Salvando...' : 'Salvar'}
+          title={updateMutation.isPending || updatePrefsMutation.isPending ? 'Salvando...' : 'Salvar'}
           onPress={handleSave}
-          disabled={updateMutation.isPending}
+          disabled={updateMutation.isPending || updatePrefsMutation.isPending}
         />
       </View>
       <ProfileMenuFooter />
@@ -583,6 +857,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarHint: { fontSize: 12, marginTop: spacing.sm, textAlign: 'center', paddingHorizontal: spacing.md },
+  collapsibleSection: {
+    marginTop: spacing.lg,
+    borderWidth: 1,
+    borderColor: 'transparent',
+    overflow: 'hidden',
+  },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+  },
+  collapsibleTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+  },
+  collapsibleContent: {
+    paddingHorizontal: spacing.sm,
+    paddingBottom: spacing.md,
+    gap: spacing.sm,
+  },
   sectionLabel: {
     fontSize: 13,
     fontWeight: '600',
@@ -620,4 +917,35 @@ const styles = StyleSheet.create({
     minHeight: 80,
     textAlignVertical: 'top',
   },
+  completionWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  completionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  infoIconWrap: { padding: spacing.xs },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 340,
+    borderRadius: 16,
+    padding: spacing.xl,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.md },
+  modalBody: { fontSize: 15, lineHeight: 22, marginBottom: spacing.md },
+  modalSub: { fontSize: 14, fontWeight: '600', marginBottom: spacing.xs },
+  modalBullet: { fontSize: 15, marginBottom: 2 },
+  modalImportance: { fontSize: 14, lineHeight: 20, marginTop: spacing.md, marginBottom: spacing.lg },
+  modalBtn: { paddingVertical: spacing.md, borderRadius: 10, alignItems: 'center' },
+  modalBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

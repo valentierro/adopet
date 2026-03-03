@@ -319,7 +319,10 @@ export default function FeedGridScreen() {
         ListFooterComponent={
           isFetchingNextPage && items.length > 0 ? (
             <View style={styles.footer}>
-              <LoadingLogo size={40} />
+              <LoadingLogo size={64} />
+              <Text style={[styles.footerLoadingText, { color: colors.textSecondary }]}>
+                Carregando mais...
+              </Text>
             </View>
           ) : null
         }
@@ -421,5 +424,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
   },
   emptyWrap: { flex: 1, justifyContent: 'center', paddingVertical: spacing.xl },
-  footer: { paddingVertical: spacing.lg, alignItems: 'center' },
+  footer: {
+    paddingVertical: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  footerLoadingText: {
+    fontSize: 14,
+  },
 });

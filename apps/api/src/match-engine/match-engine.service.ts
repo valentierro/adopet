@@ -34,6 +34,7 @@ export class MatchEngineService {
           preferredTutorHouseholdAgrees: true,
           preferredTutorWalkFrequency: true,
           hasOngoingCosts: true,
+          neutered: true,
           size: true,
           age: true,
           energyLevel: true,
@@ -63,7 +64,7 @@ export class MatchEngineService {
       }),
       this.prisma.userPreferences.findUnique({
         where: { userId: adopterId },
-        select: { sizePref: true, species: true, sexPref: true },
+        select: { sizePref: true, species: true, sexPref: true, neuteredPref: true },
       }),
     ]);
 
@@ -81,6 +82,7 @@ export class MatchEngineService {
       sizePref: prefs?.sizePref ?? undefined,
       speciesPref: prefs?.species ?? undefined,
       sexPref: prefs?.sexPref ?? undefined,
+      preferredPetNeutered: prefs?.neuteredPref ?? undefined,
     };
     return computeMatchScore(profileForMatch, pet);
   }
@@ -116,7 +118,7 @@ export class MatchEngineService {
       }),
       this.prisma.userPreferences.findUnique({
         where: { userId: adopterId },
-        select: { sizePref: true, species: true, sexPref: true },
+        select: { sizePref: true, species: true, sexPref: true, neuteredPref: true },
       }),
       this.prisma.pet.findMany({
         where: { id: { in: petIds } },
@@ -135,6 +137,7 @@ export class MatchEngineService {
           preferredTutorHouseholdAgrees: true,
           preferredTutorWalkFrequency: true,
           hasOngoingCosts: true,
+          neutered: true,
           size: true,
           age: true,
           energyLevel: true,
@@ -149,6 +152,7 @@ export class MatchEngineService {
       sizePref: prefs?.sizePref ?? undefined,
       speciesPref: prefs?.species ?? undefined,
       sexPref: prefs?.sexPref ?? undefined,
+      preferredPetNeutered: prefs?.neuteredPref ?? undefined,
     };
     const result: Record<string, number | null> = {};
     for (const pet of pets) {

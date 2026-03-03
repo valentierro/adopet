@@ -110,6 +110,7 @@ model UserPreferences {
   radiusKm         Int      @default(50)
   sizePref         String?  // BOTH | small | medium | large | xlarge (para recomendação)
   sexPref          String?  // BOTH | male | female — preferência de sexo do pet (match)
+  neuteredPref     String?  // BOTH | YES | NO — preferência castração: YES = prefiro castrado, NO = aceito não castrado, BOTH = indiferente (match)
   latitude         Float?   // última localização (para notificação "novos pets na região")
   longitude        Float?
   notifyNewPets           Boolean  @default(true)

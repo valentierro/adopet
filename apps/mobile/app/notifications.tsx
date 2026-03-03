@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   View,
@@ -10,6 +10,7 @@ import {
   Alert,
   Pressable,
   ScrollView,
+  Switch,
 } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +19,8 @@ import { useTheme } from '../src/hooks/useTheme';
 import {
   getMyNotifications,
   getMyNotificationsUnreadCount,
+  getPreferences,
+  updatePreferences,
   markNotificationAsRead,
   markAllNotificationsAsRead,
   archiveNotification,
@@ -90,6 +93,63 @@ export default function NotificationsScreen() {
     () => new Set(['hoje', 'semanaPassada', 'mesPassado']),
   );
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [prefsSectionExpanded, setPrefsSectionExpanded] = useState(false);
+  const [notifyNewPets, setNotifyNewPets] = useState(true);
+  const [notifyMessages, setNotifyMessages] = useState(true);
+  const [notifyReminders, setNotifyReminders] = useState(true);
+  const [notifyListingReminders, setNotifyListingReminders] = useState(true);
+
+  const { data: prefs } = useQuery({
+    queryKey: ['me', 'preferences'],
+    queryFn: getPreferences,
+  });
+
+  useEffect(() => {
+    if (prefs) {
+      setNotifyNewPets(prefs.notifyNewPets);
+      setNotifyMessages(prefs.notifyMessages);
+      setNotifyReminders(prefs.notifyReminders);
+      setNotifyListingReminders(prefs.notifyListingReminders ?? true);
+    }
+  }, [prefs]);
+
+  const updatePrefsMutation = useMutation({
+    mutationFn: updatePreferences,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me', 'preferences'] });
+      queryClient.invalidateQueries({ queryKey: ['feed'] });
+      setToastMessage('Preferências de notificações atualizadas.');
+    },
+    onError: (e: unknown) => Alert.alert('Não foi possível salvar', getFriendlyErrorMessage(e, 'Tente novamente.')),
+  });
+
+  const updateNotificationPref = useCallback(
+    (key: 'notifyNewPets' | 'notifyMessages' | 'notifyReminders' | 'notifyListingReminders', value: boolean) => {
+      if (key === 'notifyNewPets') setNotifyNewPets(value);
+      else if (key === 'notifyMessages') setNotifyMessages(value);
+      else if (key === 'notifyReminders') setNotifyReminders(value);
+      else setNotifyListingReminders(value);
+      updatePrefsMutation.mutate({
+        [key]: value,
+        notifyNewPets: key === 'notifyNewPets' ? value : notifyNewPets,
+        notifyMessages: key === 'notifyMessages' ? value : notifyMessages,
+        notifyReminders: key === 'notifyReminders' ? value : notifyReminders,
+        notifyListingReminders: key === 'notifyListingReminders' ? value : notifyListingReminders,
+        ...(prefs?.radiusKm != null && { radiusKm: prefs.radiusKm }),
+      });
+    },
+    [notifyNewPets, notifyMessages, notifyReminders, notifyListingReminders, prefs?.radiusKm, updatePrefsMutation],
+  );
+
+  const handleSavePrefs = useCallback(() => {
+    updatePrefsMutation.mutate({
+      notifyNewPets,
+      notifyMessages,
+      notifyReminders,
+      notifyListingReminders,
+      ...(prefs?.radiusKm != null && { radiusKm: prefs.radiusKm }),
+    });
+  }, [notifyNewPets, notifyMessages, notifyReminders, notifyListingReminders, prefs?.radiusKm, updatePrefsMutation]);
 
   const archived = tab === 'archived';
 
@@ -382,6 +442,103 @@ export default function NotificationsScreen() {
       >
         <PageIntro title="Notificações" subtitle="Avisos sobre sua conta e parcerias." />
 
+        {/* Preferências de notificações (colapsável, fechado por padrão) */}
+        <View style={[styles.prefsSection, { borderColor: colors.surface }]}>
+          <TouchableOpacity
+            style={[styles.prefsSectionHeader, { backgroundColor: colors.surface }]}
+            onPress={() => setPrefsSectionExpanded((e) => !e)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="settings-outline" size={20} color={colors.primary} />
+            <Text style={[styles.prefsSectionTitle, { color: colors.textPrimary }]}>Preferências de notificações</Text>
+            <Ionicons name={prefsSectionExpanded ? 'chevron-up' : 'chevron-down'} size={22} color={colors.textSecondary} />
+          </TouchableOpacity>
+          {prefsSectionExpanded && (
+            <View style={styles.prefsSectionContent}>
+              <Text style={[styles.prefsSectionHint, { color: colors.textSecondary }]}>
+                Escolha quais notificações push deseja receber.
+              </Text>
+              <View style={[styles.prefsRow, { backgroundColor: colors.background }]}>
+                <View style={styles.prefsRowContent}>
+                  <Ionicons name="paw-outline" size={20} color={colors.primary} style={styles.prefsRowIcon} />
+                  <View>
+                    <Text style={[styles.prefsRowLabel, { color: colors.textPrimary }]}>Novos pets na sua região</Text>
+                    <Text style={[styles.prefsRowDesc, { color: colors.textSecondary }]}>
+                      Avisos quando surgirem pets novos (espécie e raio em Editar perfil e na aba Mapa)
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={notifyNewPets}
+                  onValueChange={(v) => updateNotificationPref('notifyNewPets', v)}
+                  trackColor={{ false: colors.background, true: colors.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+              <View style={[styles.prefsRow, { backgroundColor: colors.background }]}>
+                <View style={styles.prefsRowContent}>
+                  <Ionicons name="chatbubbles-outline" size={20} color={colors.primary} style={styles.prefsRowIcon} />
+                  <View>
+                    <Text style={[styles.prefsRowLabel, { color: colors.textPrimary }]}>Mensagens e conversas</Text>
+                    <Text style={[styles.prefsRowDesc, { color: colors.textSecondary }]}>
+                      Quando alguém enviar mensagem ou iniciar conversa sobre um pet
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={notifyMessages}
+                  onValueChange={(v) => updateNotificationPref('notifyMessages', v)}
+                  trackColor={{ false: colors.background, true: colors.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+              <View style={[styles.prefsRow, { backgroundColor: colors.background }]}>
+                <View style={styles.prefsRowContent}>
+                  <Ionicons name="time-outline" size={20} color={colors.primary} style={styles.prefsRowIcon} />
+                  <View>
+                    <Text style={[styles.prefsRowLabel, { color: colors.textPrimary }]}>Lembretes de conversas</Text>
+                    <Text style={[styles.prefsRowDesc, { color: colors.textSecondary }]}>
+                      Lembrete quando você não responde há um tempo
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={notifyReminders}
+                  onValueChange={(v) => updateNotificationPref('notifyReminders', v)}
+                  trackColor={{ false: colors.background, true: colors.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+              <View style={[styles.prefsRow, { backgroundColor: colors.background }]}>
+                <View style={styles.prefsRowContent}>
+                  <Ionicons name="document-text-outline" size={20} color={colors.primary} style={styles.prefsRowIcon} />
+                  <View>
+                    <Text style={[styles.prefsRowLabel, { color: colors.textPrimary }]}>Lembretes para atualizar anúncios</Text>
+                    <Text style={[styles.prefsRowDesc, { color: colors.textSecondary }]}>
+                      Mensagem periódica (~30 dias) para conferir se seus anúncios estão em dia
+                    </Text>
+                  </View>
+                </View>
+                <Switch
+                  value={notifyListingReminders}
+                  onValueChange={(v) => updateNotificationPref('notifyListingReminders', v)}
+                  trackColor={{ false: colors.background, true: colors.primary }}
+                  thumbColor="#fff"
+                />
+              </View>
+              <TouchableOpacity
+                style={[styles.prefsSaveBtn, { backgroundColor: colors.primary }]}
+                onPress={handleSavePrefs}
+                disabled={updatePrefsMutation.isPending}
+              >
+                <Text style={styles.prefsSaveBtnText}>
+                  {updatePrefsMutation.isPending ? 'Salvando...' : 'Salvar preferências'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
         {/* Tabs */}
         <View style={[styles.tabs, { backgroundColor: colors.surface }]}>
           <TouchableOpacity
@@ -588,6 +745,72 @@ const styles = StyleSheet.create({
   },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: spacing.xl },
+  prefsSection: {
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  prefsSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  prefsSectionTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  prefsSectionContent: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  prefsSectionHint: {
+    fontSize: 13,
+    marginBottom: spacing.sm,
+  },
+  prefsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: 12,
+    marginBottom: spacing.sm,
+  },
+  prefsRowContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    flex: 1,
+    marginRight: spacing.sm,
+  },
+  prefsRowIcon: {
+    marginRight: spacing.sm,
+    marginTop: 2,
+  },
+  prefsRowLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  prefsRowDesc: {
+    fontSize: 13,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  prefsSaveBtn: {
+    marginTop: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  prefsSaveBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   tabs: {
     flexDirection: 'row',
     marginTop: spacing.md,

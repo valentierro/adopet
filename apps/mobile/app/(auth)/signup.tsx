@@ -370,7 +370,7 @@ export default function SignupScreen() {
           <View style={styles.passwordWrap}>
             <TextInput
               style={[styles.input, styles.passwordInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
-              placeholder="Senha (mín. 6 caracteres, letra e número)"
+              placeholder="Senha"
               placeholderTextColor={colors.textSecondary}
               value={password}
               onChangeText={setPassword}
@@ -381,6 +381,9 @@ export default function SignupScreen() {
               <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
+          <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: -4, marginBottom: 4 }}>
+            Mínimo 6 caracteres, com pelo menos uma letra e um número.
+          </Text>
           <View style={styles.passwordWrap}>
             <TextInput
               style={[styles.input, styles.passwordInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}

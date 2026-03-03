@@ -35,14 +35,11 @@ describe('MeService', () => {
     it('should return default when no preferences', async () => {
       prisma.userPreferences.findUnique.mockResolvedValue(null);
       const res = await service.getPreferences('user-1');
-      expect(res).toEqual({
-        species: 'BOTH',
-        radiusKm: 50,
-        notifyNewPets: true,
-        notifyMessages: true,
-        notifyReminders: true,
-        notifyListingReminders: true,
-      });
+      expect(res.species).toBe('BOTH');
+      expect(res.radiusKm).toBe(50);
+      expect(res.notifyNewPets).toBe(true);
+      expect(res.completionPercent).toBe(25);
+      expect(res.missingFields).toHaveLength(3);
     });
 
     it('should return stored preferences', async () => {
@@ -51,7 +48,10 @@ describe('MeService', () => {
         radiusKm: 25,
       });
       const res = await service.getPreferences('user-1');
-      expect(res).toEqual({ species: 'DOG', radiusKm: 25 });
+      expect(res.species).toBe('DOG');
+      expect(res.radiusKm).toBe(25);
+      expect(res.completionPercent).toBe(25);
+      expect(res.missingFields).toHaveLength(3);
     });
   });
 
@@ -65,7 +65,10 @@ describe('MeService', () => {
         species: 'CAT',
         radiusKm: 100,
       });
-      expect(res).toEqual({ species: 'CAT', radiusKm: 100 });
+      expect(res.species).toBe('CAT');
+      expect(res.radiusKm).toBe(100);
+      expect(res.completionPercent).toBeDefined();
+      expect(res.missingFields).toBeDefined();
     });
   });
 });

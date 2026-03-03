@@ -9,6 +9,29 @@ import type { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import type { MeResponseDto } from './dto/me-response.dto';
 import type { PreferencesResponseDto } from './dto/preferences-response.dto';
 
+/** Campos de preferência usados no match score; preenchimento = melhor cálculo de compatibilidade */
+const PREFERENCE_MATCH_FIELDS = [
+  { key: 'species' as const, label: 'Espécie' },
+  { key: 'sizePref' as const, label: 'Tamanho preferido' },
+  { key: 'sexPref' as const, label: 'Sexo preferido do pet' },
+  { key: 'neuteredPref' as const, label: 'Preferência de castração' },
+];
+
+function getPreferencesCompletion(prefs: { species?: string | null; sizePref?: string | null; sexPref?: string | null; neuteredPref?: string | null }): { completionPercent: number; missingFields: { key: string; label: string }[] } {
+  const total = PREFERENCE_MATCH_FIELDS.length;
+  const missingFields = PREFERENCE_MATCH_FIELDS.filter((f) => {
+    if (f.key === 'neuteredPref') return false; // Indiferente (BOTH ou null) = preenchido, tanto faz
+    const v = prefs[f.key];
+    return v == null || v === '';
+  });
+  const filled = total - missingFields.length;
+  const completionPercent = total === 0 ? 100 : Math.round((filled / total) * 100);
+  return {
+    completionPercent,
+    missingFields: missingFields.map((f) => ({ key: f.key, label: f.label })),
+  };
+}
+
 const ADOPTER_SELECT = {
   housingType: true,
   hasYard: true,
@@ -330,7 +353,7 @@ export class MeService {
       }),
       this.prisma.userPreferences.findUnique({
         where: { userId },
-        select: { sizePref: true, species: true, sexPref: true },
+        select: { sizePref: true, species: true, sexPref: true, neuteredPref: true },
       }),
     ]);
     const adoptionIds = adoptions.map((a) => a.id);
@@ -340,7 +363,7 @@ export class MeService {
     });
     const surveyByAdoption = new Map(surveys.map((s) => [s.adoptionId, s]));
 
-    const profileForMatch = adopterProfile ? { ...adopterProfile, sizePref: prefs?.sizePref ?? undefined, speciesPref: prefs?.species ?? undefined, sexPref: prefs?.sexPref ?? undefined } as AdopterProfile : null;
+    const profileForMatch = adopterProfile ? { ...adopterProfile, sizePref: prefs?.sizePref ?? undefined, speciesPref: prefs?.species ?? undefined, sexPref: prefs?.sexPref ?? undefined, preferredPetNeutered: prefs?.neuteredPref ?? undefined } as AdopterProfile : null;
     const items = adoptions.map((a) => {
       const pet = a.pet as { adoptionRejectedAt?: Date | null; adopetConfirmedAt?: Date | null };
       const partner = a.pet.partner as { isPaidPartner?: boolean } | null;
@@ -377,6 +400,7 @@ export class MeService {
       where: { userId },
     });
     if (!prefs) {
+      const completion = getPreferencesCompletion({ species: 'BOTH' });
       return {
         species: 'BOTH',
         radiusKm: 50,
@@ -384,24 +408,31 @@ export class MeService {
         notifyMessages: true,
         notifyReminders: true,
         notifyListingReminders: true,
+        neuteredPref: undefined,
+        completionPercent: completion.completionPercent,
+        missingFields: completion.missingFields,
       };
     }
+    const completion = getPreferencesCompletion(prefs);
     return {
       species: prefs.species as 'DOG' | 'CAT' | 'BOTH',
       radiusKm: prefs.radiusKm,
       sizePref: prefs.sizePref ?? undefined,
       sexPref: prefs.sexPref ?? undefined,
+      neuteredPref: prefs.neuteredPref ?? undefined,
       latitude: prefs.latitude ?? undefined,
       longitude: prefs.longitude ?? undefined,
       notifyNewPets: prefs.notifyNewPets,
       notifyMessages: prefs.notifyMessages,
       notifyReminders: prefs.notifyReminders,
       notifyListingReminders: prefs.notifyListingReminders,
+      completionPercent: completion.completionPercent,
+      missingFields: completion.missingFields,
     };
   }
 
   async updatePreferences(userId: string, dto: UpdatePreferencesDto): Promise<PreferencesResponseDto> {
-    const matchPrefsSent = dto.species !== undefined || dto.sizePref !== undefined || dto.sexPref !== undefined;
+    const matchPrefsSent = dto.species !== undefined || dto.sizePref !== undefined || dto.sexPref !== undefined || dto.neuteredPref !== undefined;
     const userBefore = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { missionPreferencesCompleteAt: true },
@@ -414,6 +445,7 @@ export class MeService {
         radiusKm: dto.radiusKm ?? 300,
         sizePref: dto.sizePref ?? undefined,
         sexPref: dto.sexPref ?? undefined,
+        neuteredPref: dto.neuteredPref ?? undefined,
         latitude: dto.latitude ?? undefined,
         longitude: dto.longitude ?? undefined,
         notifyNewPets: dto.notifyNewPets ?? true,
@@ -426,6 +458,7 @@ export class MeService {
         ...(dto.radiusKm !== undefined && { radiusKm: dto.radiusKm }),
         ...(dto.sizePref !== undefined && { sizePref: dto.sizePref }),
         ...(dto.sexPref !== undefined && { sexPref: dto.sexPref }),
+        ...(dto.neuteredPref !== undefined && { neuteredPref: dto.neuteredPref }),
         ...(dto.latitude !== undefined && { latitude: dto.latitude }),
         ...(dto.longitude !== undefined && { longitude: dto.longitude }),
         ...(dto.notifyNewPets !== undefined && { notifyNewPets: dto.notifyNewPets }),
@@ -454,17 +487,21 @@ export class MeService {
         );
       }
     }
+    const completion = getPreferencesCompletion(prefs);
     return {
       species: prefs.species,
       radiusKm: prefs.radiusKm,
       sizePref: prefs.sizePref ?? undefined,
       sexPref: prefs.sexPref ?? undefined,
+      neuteredPref: prefs.neuteredPref ?? undefined,
       latitude: prefs.latitude ?? undefined,
       longitude: prefs.longitude ?? undefined,
       notifyNewPets: prefs.notifyNewPets,
       notifyMessages: prefs.notifyMessages,
       notifyReminders: prefs.notifyReminders,
       notifyListingReminders: prefs.notifyListingReminders,
+      completionPercent: completion.completionPercent,
+      missingFields: completion.missingFields,
     };
   }
 

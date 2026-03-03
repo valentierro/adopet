@@ -1,4 +1,5 @@
 export { ScreenContainer } from './ScreenContainer';
+export { CircularProgress } from './CircularProgress';
 export { PrimaryButton } from './PrimaryButton';
 export { SecondaryButton } from './SecondaryButton';
 export { PetCard } from './PetCard';

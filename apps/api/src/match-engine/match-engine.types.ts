@@ -17,6 +17,8 @@ export interface AdopterProfile {
   speciesPref?: string | null;
   /** Preferência de sexo do pet (de UserPreferences.sexPref): BOTH | male | female */
   sexPref?: string | null;
+  /** Preferência de castração (de UserPreferences.neuteredPref): BOTH | YES | NO — YES = prefiro castrado, NO = aceito não castrado */
+  preferredPetNeutered?: string | null;
   /** Nível de atividade: LOW | MEDIUM | HIGH */
   activityLevel?: string | null;
   /** Idade preferida do pet: PUPPY | ADULT | SENIOR | ANY */
@@ -48,6 +50,8 @@ export interface PetTutorPreferences {
   preferredTutorHouseholdAgrees?: string | null;
   preferredTutorWalkFrequency?: string | null;
   hasOngoingCosts?: boolean | null;
+  /** Pet castrado (para match com preferredPetNeutered do adotante) */
+  neutered?: boolean | null;
   /** Atributos do pet para match: espécie, sexo, porte, idade, energia, necessidades especiais */
   species?: string | null;
   sex?: string | null;
