@@ -3,20 +3,21 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi, type AdminUserListItem } from '@/api/admin';
 import { useToast } from '@/context/ToastContext';
 
-const PAGE_SIZE = 30;
+const PAGE_SIZES = [10, 20, 50, 100] as const;
 
 export function Users() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
   const [banUserId, setBanUserId] = useState<string | null>(null);
   const [banReason, setBanReason] = useState('');
   const [unbanUserId, setUnbanUserId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['admin', 'users-list', search, page],
-    queryFn: () => adminApi.getUsersList(search.trim() || undefined, page, PAGE_SIZE),
+    queryKey: ['admin', 'users-list', search, page, pageSize],
+    queryFn: () => adminApi.getUsersList(search.trim() || undefined, page, pageSize),
   });
 
   const banMutation = useMutation({
@@ -45,7 +46,7 @@ export function Users() {
 
   const items: AdminUserListItem[] = data?.items ?? [];
   const total = data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const totalPages = Math.ceil(total / pageSize);
 
   const handleSearch = () => {
     setPage(1);
@@ -55,7 +56,7 @@ export function Users() {
   return (
     <div>
       <h1 className="text-2xl font-display font-bold text-adopet-text-primary mb-4">Usuários</h1>
-      <div className="mb-4 flex flex-wrap gap-3 items-end">
+      <div className="mb-4 flex flex-wrap gap-4 items-end">
         <div className="max-w-md flex-1 min-w-[200px]">
           <label className="block text-sm font-medium mb-1">Buscar por nome ou e-mail</label>
           <div className="flex gap-2">
@@ -75,6 +76,18 @@ export function Users() {
               Buscar
             </button>
           </div>
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Itens por página</label>
+          <select
+            value={pageSize}
+            onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+            className="px-3 py-2 rounded-lg border border-adopet-primary/30 bg-adopet-card"
+          >
+            {PAGE_SIZES.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -190,7 +203,7 @@ export function Users() {
                             <button
                               type="button"
                               onClick={() => setUnbanUserId(u.id)}
-                              className="text-adopet-primary font-medium hover:underline"
+                              className="px-2 py-1 rounded-lg bg-adopet-primary/15 text-adopet-primary font-medium hover:bg-adopet-primary/25"
                             >
                               Desbanir
                             </button>
@@ -203,17 +216,27 @@ export function Users() {
               </table>
             </div>
           </div>
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4">
-              <p className="text-sm text-adopet-text-secondary">
-                {total} usuário(s) — página {page} de {totalPages}
-              </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+            <p className="text-sm text-adopet-text-secondary">
+              {total} usuário(s) — página {page} de {totalPages}
+            </p>
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-adopet-text-secondary">Itens por página:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                className="px-2 py-1 rounded border border-adopet-primary/30 bg-adopet-card text-sm"
+              >
+                {PAGE_SIZES.map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1}
-                  className="px-3 py-1 rounded-lg border border-adopet-primary/30 disabled:opacity-50"
+                  className="px-3 py-1 rounded-lg border border-adopet-primary/30 disabled:opacity-50 text-sm"
                 >
                   Anterior
                 </button>
@@ -221,13 +244,13 @@ export function Users() {
                   type="button"
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
-                  className="px-3 py-1 rounded-lg border border-adopet-primary/30 disabled:opacity-50"
+                  className="px-3 py-1 rounded-lg border border-adopet-primary/30 disabled:opacity-50 text-sm"
                 >
                   Próxima
                 </button>
               </div>
             </div>
-          )}
+          </div>
         </>
       )}
     </div>

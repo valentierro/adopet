@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi, type PartnerItem } from '@/api/admin';
 import { useToast } from '@/context/ToastContext';
+import { PaginationBar } from '@/components/PaginationBar';
 
 export function Partners() {
   const queryClient = useQueryClient();
@@ -13,6 +14,10 @@ export function Partners() {
   const [bulkRejectReason, setBulkRejectReason] = useState('');
   const [showBulkReject, setShowBulkReject] = useState(false);
   const [endId, setEndId] = useState<string | null>(null);
+  const [filterName, setFilterName] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const { data: partners = [], isLoading } = useQuery({
     queryKey: ['admin', 'partners'],
@@ -92,6 +97,26 @@ export function Partners() {
   };
 
   const pendingPartners = partners.filter((p: PartnerItem) => !p.approvedAt);
+
+  const filtered = useMemo(() => {
+    let list = partners;
+    const name = filterName.trim().toLowerCase();
+    const type = filterType.trim().toLowerCase();
+    if (name) list = list.filter((p: PartnerItem) => (p.name ?? '').toLowerCase().includes(name));
+    if (type) list = list.filter((p: PartnerItem) => (p.type ?? '').toLowerCase().includes(type));
+    return list;
+  }, [partners, filterName, filterType]);
+
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pageSafe = Math.min(page, totalPages);
+  const paginated = useMemo(
+    () => filtered.slice((pageSafe - 1) * pageSize, pageSafe * pageSize),
+    [filtered, pageSafe, pageSize]
+  );
+  const pendingOnPage = paginated.filter((p: PartnerItem) => !p.approvedAt);
+  const allPendingOnPageSelected =
+    pendingOnPage.length > 0 && pendingOnPage.every((p: PartnerItem) => selectedIds.has(p.id));
 
   const openEdit = (p: PartnerItem) => {
     setEditId(p.id);
@@ -302,25 +327,49 @@ export function Partners() {
       {isLoading ? (
         <div className="text-adopet-text-secondary">Carregando…</div>
       ) : (
-        <div className="bg-adopet-card rounded-xl border border-adopet-primary/10 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-adopet-header border-b border-adopet-primary/20">
-                  {pendingPartners.length > 0 && (
-                    <th className="text-left p-3 w-10">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.size === pendingPartners.length && pendingPartners.length > 0}
-                        onChange={() => {
-                          if (selectedIds.size === pendingPartners.length) setSelectedIds(new Set());
-                          else setSelectedIds(new Set(pendingPartners.map((x: PartnerItem) => x.id)));
-                        }}
-                        aria-label="Selecionar pendentes"
-                      />
-                    </th>
-                  )}
-                  <th className="text-left p-3">Nome</th>
+        <>
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <input
+              type="text"
+              value={filterName}
+              onChange={(e) => { setFilterName(e.target.value); setPage(1); }}
+              placeholder="Filtrar por nome..."
+              className="px-3 py-1.5 rounded-lg border border-adopet-primary/20 text-sm w-40"
+            />
+            <input
+              type="text"
+              value={filterType}
+              onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
+              placeholder="Filtrar por tipo (ONG, CLINIC...)"
+              className="px-3 py-1.5 rounded-lg border border-adopet-primary/20 text-sm w-44"
+            />
+          </div>
+          <div className="bg-adopet-card rounded-xl border border-adopet-primary/10 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-adopet-header border-b border-adopet-primary/20">
+                    {pendingPartners.length > 0 && (
+                      <th className="text-left p-3 w-10">
+                        <input
+                          type="checkbox"
+                          checked={allPendingOnPageSelected}
+                          onChange={() => {
+                            if (allPendingOnPageSelected) {
+                              const next = new Set(selectedIds);
+                              pendingOnPage.forEach((x: PartnerItem) => next.delete(x.id));
+                              setSelectedIds(next);
+                            } else {
+                              const next = new Set(selectedIds);
+                              pendingOnPage.forEach((x: PartnerItem) => next.add(x.id));
+                              setSelectedIds(next);
+                            }
+                          }}
+                          aria-label="Selecionar pendentes da página"
+                        />
+                      </th>
+                    )}
+                    <th className="text-left p-3">Nome</th>
                   <th className="text-left p-3">Tipo</th>
                   <th className="text-left p-3">Slug</th>
                   <th className="text-left p-3">Cidade</th>
@@ -330,7 +379,7 @@ export function Partners() {
                 </tr>
               </thead>
               <tbody>
-                {partners.map((p: PartnerItem) => (
+                {paginated.map((p: PartnerItem) => (
                   <tr key={p.id} className="border-b border-adopet-primary/10 hover:bg-adopet-background/50">
                     {pendingPartners.length > 0 && (
                       <td className="p-3">
@@ -388,7 +437,17 @@ export function Partners() {
               </tbody>
             </table>
           </div>
+          <div className="px-3 py-2 border-t border-adopet-primary/10">
+            <PaginationBar
+              page={pageSafe}
+              pageSize={pageSize}
+              total={total}
+              onPageChange={setPage}
+              onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+            />
+          </div>
         </div>
+        </>
       )}
     </div>
   );

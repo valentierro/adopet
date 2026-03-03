@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi, type Pet } from '@/api/admin';
 import { useToast } from '@/context/ToastContext';
 import { EmptyState } from '@/components/EmptyState';
+import { PaginationBar } from '@/components/PaginationBar';
 
 export function PendingPets() {
   const queryClient = useQueryClient();
@@ -10,6 +11,10 @@ export function PendingPets() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [action, setAction] = useState<'APPROVED' | 'REJECTED' | null>(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [filterName, setFilterName] = useState('');
+  const [filterSpecies, setFilterSpecies] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const { data: pets = [], isLoading, error } = useQuery({
     queryKey: ['admin', 'pending-pets'],
@@ -34,6 +39,23 @@ export function PendingPets() {
     onError: () => toast.addToast('error', 'Não foi possível atualizar o anúncio.'),
   });
 
+  const filtered = useMemo(() => {
+    let list = pets;
+    const name = filterName.trim().toLowerCase();
+    const species = filterSpecies.trim().toLowerCase();
+    if (name) list = list.filter((p) => p.name?.toLowerCase().includes(name));
+    if (species) list = list.filter((p) => (p.species ?? '').toLowerCase().includes(species));
+    return list;
+  }, [pets, filterName, filterSpecies]);
+
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pageSafe = Math.min(page, totalPages);
+  const paginated = useMemo(
+    () => filtered.slice((pageSafe - 1) * pageSize, pageSafe * pageSize),
+    [filtered, pageSafe, pageSize]
+  );
+
   const toggle = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -43,9 +65,17 @@ export function PendingPets() {
     });
   };
 
+  const allOnPageSelected = paginated.length > 0 && paginated.every((p) => selected.has(p.id));
   const selectAll = () => {
-    if (selected.size === pets.length) setSelected(new Set());
-    else setSelected(new Set(pets.map((p) => p.id)));
+    if (allOnPageSelected) {
+      const next = new Set(selected);
+      paginated.forEach((p) => next.delete(p.id));
+      setSelected(next);
+    } else {
+      const next = new Set(selected);
+      paginated.forEach((p) => next.add(p.id));
+      setSelected(next);
+    }
   };
 
   const applyBatch = async () => {
@@ -77,9 +107,23 @@ export function PendingPets() {
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-3 mb-4">
+            <input
+              type="text"
+              value={filterName}
+              onChange={(e) => { setFilterName(e.target.value); setPage(1); }}
+              placeholder="Filtrar por nome..."
+              className="px-3 py-1.5 rounded-lg border border-adopet-primary/20 text-sm w-40"
+            />
+            <input
+              type="text"
+              value={filterSpecies}
+              onChange={(e) => { setFilterSpecies(e.target.value); setPage(1); }}
+              placeholder="Filtrar por espécie..."
+              className="px-3 py-1.5 rounded-lg border border-adopet-primary/20 text-sm w-32"
+            />
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={selected.size === pets.length} onChange={selectAll} className="rounded" />
-              <span className="text-sm">Selecionar todos</span>
+              <input type="checkbox" checked={allOnPageSelected} onChange={selectAll} className="rounded" />
+              <span className="text-sm">Selecionar todos (página)</span>
             </label>
             {selected.size > 0 && (
               <>
@@ -132,7 +176,7 @@ export function PendingPets() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pets.map((pet) => (
+                  {paginated.map((pet) => (
                     <tr key={pet.id} className="border-b border-adopet-primary/10 hover:bg-adopet-background/50">
                       <td className="p-3">
                         <input
@@ -175,6 +219,15 @@ export function PendingPets() {
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="px-3 py-2 border-t border-adopet-primary/10">
+              <PaginationBar
+                page={pageSafe}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={setPage}
+                onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+              />
             </div>
           </div>
         </>

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adminApi, type ReportItem } from '@/api/admin';
 import { useToast } from '@/context/ToastContext';
 import { EmptyState } from '@/components/EmptyState';
+import { PaginationBar } from '@/components/PaginationBar';
 import { Badge, Button, Card, PageHeading } from '@/components/ui';
 
 type FilterTab = 'all' | 'pending' | 'resolved';
@@ -14,6 +15,10 @@ export function Reports() {
   const [feedback, setFeedback] = useState('');
   const [banReportedUser, setBanReportedUser] = useState(false);
   const [filter, setFilter] = useState<FilterTab>('all');
+  const [filterReason, setFilterReason] = useState('');
+  const [filterTarget, setFilterTarget] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const { data: reports = [], isLoading, error } = useQuery({
     queryKey: ['admin', 'reports'],
@@ -21,10 +26,23 @@ export function Reports() {
   });
 
   const filtered = useMemo(() => {
-    if (filter === 'pending') return reports.filter((r) => !r.resolvedAt);
-    if (filter === 'resolved') return reports.filter((r) => r.resolvedAt);
-    return reports;
-  }, [reports, filter]);
+    let list = reports;
+    if (filter === 'pending') list = list.filter((r) => !r.resolvedAt);
+    else if (filter === 'resolved') list = list.filter((r) => r.resolvedAt);
+    const reason = filterReason.trim().toLowerCase();
+    const target = filterTarget.trim().toLowerCase();
+    if (reason) list = list.filter((r) => (r.reason ?? '').toLowerCase().includes(reason));
+    if (target) list = list.filter((r) => `${r.targetType} ${r.targetId}`.toLowerCase().includes(target));
+    return list;
+  }, [reports, filter, filterReason, filterTarget]);
+
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const pageSafe = Math.min(page, totalPages);
+  const paginated = useMemo(
+    () => filtered.slice((pageSafe - 1) * pageSize, pageSafe * pageSize),
+    [filtered, pageSafe, pageSize]
+  );
 
   const resolveMutation = useMutation({
     mutationFn: (reportId: string) =>
@@ -52,18 +70,34 @@ export function Reports() {
         title="Denúncias"
         description="Gerir denúncias de anúncios, usuários e mensagens."
       />
-      <div className="flex gap-2 mb-4">
+      <div className="flex flex-wrap gap-3 mb-4">
         {(['all', 'pending', 'resolved'] as const).map((tab) => (
           <Button
             key={tab}
             type="button"
             variant={filter === tab ? 'primary' : 'secondary'}
             size="sm"
-            onClick={() => setFilter(tab)}
+            onClick={() => { setFilter(tab); setPage(1); }}
           >
             {tab === 'all' ? 'Todas' : tab === 'pending' ? 'Pendentes' : 'Resolvidas'}
           </Button>
         ))}
+        <div className="flex flex-wrap items-center gap-2 ml-auto">
+          <input
+            type="text"
+            value={filterTarget}
+            onChange={(e) => { setFilterTarget(e.target.value); setPage(1); }}
+            placeholder="Filtrar por alvo..."
+            className="px-3 py-1.5 rounded-lg border border-adopet-primary/20 text-sm w-40"
+          />
+          <input
+            type="text"
+            value={filterReason}
+            onChange={(e) => { setFilterReason(e.target.value); setPage(1); }}
+            placeholder="Filtrar por motivo..."
+            className="px-3 py-1.5 rounded-lg border border-adopet-primary/20 text-sm w-40"
+          />
+        </div>
       </div>
       {reports.length === 0 ? (
         <EmptyState message="Nenhuma denúncia." />
@@ -121,7 +155,7 @@ export function Reports() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((r: ReportItem) => (
+                  {paginated.map((r: ReportItem) => (
                     <tr key={r.id} className="border-b border-adopet-primary/10 hover:bg-adopet-background/50 transition-colors">
                       <td className="p-3 font-mono text-xs text-adopet-text-secondary">{r.targetType} #{r.targetId.slice(0, 8)}</td>
                       <td className="p-3">{r.reason}</td>
@@ -145,6 +179,15 @@ export function Reports() {
                   ))}
                 </tbody>
               </table>
+            </div>
+            <div className="px-3 py-2 border-t border-adopet-primary/10">
+              <PaginationBar
+                page={pageSafe}
+                pageSize={pageSize}
+                total={total}
+                onPageChange={setPage}
+                onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+              />
             </div>
           </Card>
         </div>
