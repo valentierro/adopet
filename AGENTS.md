@@ -201,6 +201,7 @@ Exporta: `types`, `schemas` (Zod), `utils/validation`. Usado por api e mobile. A
 - **Prettier** para formatação (`pnpm format`)
 - **API:** injeção de dependência NestJS; services sem lógica HTTP direta
 - **Mobile:** componentes funcionais; hooks para lógica reutilizável
+- **Mobile – Rules of Hooks:** nunca chamar hooks (useState, useEffect, useCallback, useMemo, useQuery, useMutation) depois de um `return` condicional. Todos os hooks devem estar no topo do componente, antes de qualquer `if (...) return (...)`; caso contrário ocorre erro "Rendered more hooks than during the previous render".
 - **Nomenclatura:** camelCase (código), kebab-case (arquivos quando fizer sentido)
 
 ---

@@ -7,7 +7,8 @@ export function getSpeciesLabel(species: string | null | undefined): string {
   const s = String(species).toLowerCase();
   if (s === 'dog' || s === 'cachorro') return 'Cachorro';
   if (s === 'cat' || s === 'gato') return 'Gato';
-  return species;
+  if (s === 'both' || s === 'qualquer') return 'Qualquer';
+  return 'Pet';
 }
 
 export function getSizeLabel(size: string | null | undefined): string {
@@ -17,7 +18,8 @@ export function getSizeLabel(size: string | null | undefined): string {
   if (s === 'medium') return 'Médio';
   if (s === 'large') return 'Grande';
   if (s === 'xlarge') return 'Muito grande';
-  return size;
+  if (s === 'both') return 'Qualquer';
+  return '';
 }
 
 export function getSexLabel(sex: string | null | undefined): string {
@@ -25,5 +27,6 @@ export function getSexLabel(sex: string | null | undefined): string {
   const s = String(sex).toLowerCase();
   if (s === 'male') return 'Macho';
   if (s === 'female') return 'Fêmea';
-  return sex;
+  if (s === 'both') return 'Indiferente';
+  return '';
 }

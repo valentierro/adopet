@@ -8,6 +8,9 @@ import type { UpdateMeDto } from './dto/update-me.dto';
 import type { UpdatePreferencesDto } from './dto/update-preferences.dto';
 import type { MeResponseDto } from './dto/me-response.dto';
 import type { PreferencesResponseDto } from './dto/preferences-response.dto';
+import { KycExtractionService } from '../kyc-extraction/kyc-extraction.service';
+import { InAppNotificationsService, IN_APP_NOTIFICATION_TYPES } from '../notifications/in-app-notifications.service';
+import { getKycCancellationReasonLabel } from './dto/cancel-kyc.dto';
 
 /** Campos de preferência usados no match score; preenchimento = melhor cálculo de compatibilidade */
 const PREFERENCE_MATCH_FIELDS = [
@@ -16,6 +19,16 @@ const PREFERENCE_MATCH_FIELDS = [
   { key: 'sexPref' as const, label: 'Sexo preferido do pet' },
   { key: 'neuteredPref' as const, label: 'Preferência de castração' },
 ];
+
+/** Normaliza RG para armazenamento: dígitos + até uma letra no final. Retorna null se vazio. */
+function normalizeRgOptional(value: string | undefined): string | null {
+  const s = String(value ?? '').replace(/\s/g, '').toUpperCase().trim();
+  if (!s) return null;
+  const digits = s.replace(/\D/g, '');
+  const trailingLetter = s.match(/([A-Z])$/)?.[1] ?? '';
+  const out = (digits + trailingLetter).slice(0, 20);
+  return out || null;
+}
 
 function getPreferencesCompletion(prefs: { species?: string | null; sizePref?: string | null; sexPref?: string | null; neuteredPref?: string | null }): { completionPercent: number; missingFields: { key: string; label: string }[] } {
   const total = PREFERENCE_MATCH_FIELDS.length;
@@ -55,6 +68,8 @@ export class MeService {
     private readonly prisma: PrismaService,
     private readonly verificationService: VerificationService,
     private readonly config: ConfigService,
+    private readonly kycExtractionService: KycExtractionService,
+    private readonly inAppNotifications: InAppNotificationsService,
   ) {}
 
   async getMe(userId: string): Promise<MeResponseDto> {
@@ -73,13 +88,15 @@ export class MeService {
     return this.toMeDto(user, verified, isAdmin);
   }
 
-  /** Retorna apenas o status KYC do usuário (para uso em GET /me/kyc-status). */
+  /** Retorna o status KYC do usuário (para uso em GET /me/kyc-status). Inclui kycExtractionStatus para o app exibir feedback pós-envio (aprovado automaticamente vs. análise manual). */
   async getKycStatus(userId: string): Promise<{
     kycStatus: string | null;
     kycSubmittedAt: string | null;
     kycVerifiedAt: string | null;
     kycRejectedAt: string | null;
     kycRejectionReason: string | null;
+    kycExtractionStatus: string | null;
+    kycDecidedBy: string | null;
   }> {
     const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
@@ -89,6 +106,8 @@ export class MeService {
         kycVerifiedAt: true,
         kycRejectedAt: true,
         kycRejectionReason: true,
+        kycExtractionStatus: true,
+        kycDecidedBy: true,
       },
     });
     return {
@@ -97,14 +116,17 @@ export class MeService {
       kycVerifiedAt: user.kycVerifiedAt?.toISOString() ?? null,
       kycRejectedAt: user.kycRejectedAt?.toISOString() ?? null,
       kycRejectionReason: user.kycRejectionReason ?? null,
+      kycExtractionStatus: user.kycExtractionStatus ?? null,
+      kycDecidedBy: user.kycDecidedBy ?? null,
     };
   }
 
-  /** Envia documento e selfie para análise KYC. Só permite quando status é null ou REJECTED. Exige consentimento explícito. */
+  /** Envia documento e selfie para análise KYC. Só permite quando status é null ou REJECTED. Exige consentimento explícito. documentVersoKey opcional (verso do RG). */
   async submitKyc(
     userId: string,
     selfieWithDocKey: string,
     consentGiven: boolean,
+    documentVersoKey?: string,
   ): Promise<{ kycStatus: string; kycSubmittedAt: string }> {
     if (!consentGiven) {
       throw new BadRequestException(
@@ -128,14 +150,76 @@ export class MeService {
         kycStatus: 'PENDING',
         kycDocumentKey: null,
         kycSelfieKey: selfieWithDocKey,
+        kycDocumentVersoKey: documentVersoKey?.trim() || null,
         kycSubmittedAt: now,
         kycVerifiedAt: null,
         kycRejectedAt: null,
         kycRejectionReason: null,
         kycConsentAt: now,
+        kycExtractionStatus: 'PENDING',
+        kycExtractedBirthDate: null,
+        kycExtractedName: null,
+        kycExtractedCpf: null,
+        kycExtractedDocNumber: null,
+        kycExtractionRunAt: null,
+        kycFraudSignal: null,
       },
     });
+    // Extração OCR em background (Tesseract): data de nascimento no documento para conferência com cadastro
+    this.kycExtractionService.runExtraction(userId).catch((e) => {
+      console.warn('[MeService] KYC extraction failed for user', userId, e);
+    });
     return { kycStatus: 'PENDING', kycSubmittedAt: now.toISOString() };
+  }
+
+  /**
+   * Cancela a solicitação de KYC em análise (PENDING). Zera status e documentos, grava motivo e notifica admins.
+   * O usuário deixa de aparecer na lista de verificações pendentes do admin.
+   */
+  async cancelKyc(userId: string, cancellationReason: string): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { kycStatus: true, name: true },
+    });
+    if (user.kycStatus !== 'PENDING') {
+      throw new BadRequestException(
+        'Só é possível cancelar uma solicitação que está em análise. Se já foi aprovada ou rejeitada, não há cancelamento.',
+      );
+    }
+    const now = new Date();
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        kycStatus: null,
+        kycSubmittedAt: null,
+        kycDocumentKey: null,
+        kycSelfieKey: null,
+        kycDocumentVersoKey: null,
+        kycExtractionStatus: null,
+        kycExtractedBirthDate: null,
+        kycExtractedName: null,
+        kycExtractedCpf: null,
+        kycExtractedDocNumber: null,
+        kycExtractionRunAt: null,
+        kycFraudSignal: null,
+        kycDecidedBy: null,
+        kycCancelledAt: now,
+        kycCancellationReason: cancellationReason,
+      },
+    });
+    const reasonLabel = getKycCancellationReasonLabel(cancellationReason);
+    const adminIds = this.config.get<string>('ADMIN_USER_IDS')?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+    if (adminIds.length > 0) {
+      const title = 'KYC cancelado pelo usuário';
+      const body = `${user.name} cancelou a solicitação de verificação. Motivo: ${reasonLabel}.`;
+      const pushData = { screen: 'adminPendingKyc', type: IN_APP_NOTIFICATION_TYPES.KYC_CANCELLED_BY_USER };
+      for (const adminId of adminIds) {
+        this.inAppNotifications
+          .create(adminId, IN_APP_NOTIFICATION_TYPES.KYC_CANCELLED_BY_USER, title, body, { userId }, pushData)
+          .catch(() => {});
+      }
+    }
+    return { message: 'Solicitação de verificação cancelada. Você pode enviar novamente quando quiser.' };
   }
 
   /** ADMIN_USER_IDS no .env deve estar entre aspas (ex.: "uuid-a,uuid-b") para não ser interpretado como expressão. */
@@ -198,6 +282,12 @@ export class MeService {
           ...(dto.avatarUrl !== undefined && { avatarUrl: dto.avatarUrl }),
           ...(dto.phone !== undefined && { phone: dto.phone }),
           ...(dto.city !== undefined && { city: dto.city }),
+          ...(dto.birthDate !== undefined && {
+            birthDate: dto.birthDate ? new Date(dto.birthDate) : null,
+          }),
+          ...(dto.rg !== undefined && {
+            rg: normalizeRgOptional(dto.rg),
+          }),
           ...(profileComplete && { missionProfileCompleteAt: new Date() }),
           ...(dto.bio !== undefined && { bio: dto.bio }),
           ...(dto.housingType !== undefined && { housingType: dto.housingType }),
@@ -307,7 +397,7 @@ export class MeService {
   async getMyAdoptions(
     userId: string,
     species?: 'BOTH' | 'DOG' | 'CAT',
-    role: 'ADOPTER' | 'TUTOR' = 'ADOPTER',
+    role?: 'ADOPTER' | 'TUTOR',
   ): Promise<{
     items: Array<{
       adoptionId: string;
@@ -328,11 +418,12 @@ export class MeService {
       matchScore?: number | null;
     }>;
   }> {
-    const isAdopter = role === 'ADOPTER';
+    const roleFilter =
+      role === 'TUTOR' ? { tutorId: userId } : role === 'ADOPTER' ? { adopterId: userId } : { OR: [{ adopterId: userId }, { tutorId: userId }] };
     const [adoptions, adopterProfile, prefs] = await Promise.all([
       this.prisma.adoption.findMany({
         where: {
-          ...(isAdopter ? { adopterId: userId } : { tutorId: userId }),
+          ...roleFilter,
           ...(species && species !== 'BOTH' && { pet: { species: species.toUpperCase() } }),
         },
         orderBy: { adoptedAt: 'desc' },
@@ -357,14 +448,17 @@ export class MeService {
       }),
     ]);
     const adoptionIds = adoptions.map((a) => a.id);
+    const surveysWhere: { userId: string; adoptionId: { in: string[] }; role?: 'ADOPTER' | 'TUTOR' } = { userId, adoptionId: { in: adoptionIds } };
+    if (role) surveysWhere.role = role;
     const surveys = await this.prisma.satisfactionSurvey.findMany({
-      where: { userId, adoptionId: { in: adoptionIds }, role },
+      where: surveysWhere,
       select: { adoptionId: true, overallScore: true },
     });
     const surveyByAdoption = new Map(surveys.map((s) => [s.adoptionId, s]));
 
     const profileForMatch = adopterProfile ? { ...adopterProfile, sizePref: prefs?.sizePref ?? undefined, speciesPref: prefs?.species ?? undefined, sexPref: prefs?.sexPref ?? undefined, preferredPetNeutered: prefs?.neuteredPref ?? undefined } as AdopterProfile : null;
     const items = adoptions.map((a) => {
+      const isAdopter = a.adopterId === userId;
       const pet = a.pet as { adoptionRejectedAt?: Date | null; adopetConfirmedAt?: Date | null };
       const partner = a.pet.partner as { isPaidPartner?: boolean } | null;
       let matchScore: number | null | undefined;
@@ -676,6 +770,8 @@ export class MeService {
       phone: user.phone ?? undefined,
       createdAt: user.createdAt.toISOString(),
       city: user.city ?? undefined,
+      birthDate: (user as { birthDate?: Date | null }).birthDate?.toISOString().slice(0, 10) ?? undefined,
+      rg: (user as { rg?: string | null }).rg ?? undefined,
       bio: user.bio ?? undefined,
       housingType: user.housingType ?? undefined,
       hasYard: user.hasYard ?? undefined,

@@ -29,10 +29,10 @@ import { isSignup409Conflict } from '../../src/utils/signupError';
 import { isValidCpfOrCnpj } from '../../src/utils/cpfCnpj';
 import { setShouldShowOnboardingAfterSignup } from '../../src/storage/onboarding';
 import { formatPhoneInput, getPhoneDigits } from '../../src/utils/phoneMask';
+import { formatDateInputDDMMAAAA, parseDDMMAAAAToISO } from '../../src/utils/dateMask';
+import { isBirthDateStringAtLeast18 } from '../../src/utils/age';
 import { spacing } from '../../src/theme';
-import { presign } from '../../src/api/uploads';
-import { submitKyc } from '../../src/api/me';
-import { checkEmailAvailable, checkDocumentAvailable } from '../../src/api/auth';
+import { checkEmailAvailable, checkDocumentAvailable, presignSignupKyc } from '../../src/api/auth';
 
 const LogoSplash = require('../../assets/brand/logo/logo_splash.png');
 const APP_VERSION = Constants.expoConfig?.version ?? '1.1.1';
@@ -67,19 +67,22 @@ export default function SignupScreen() {
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [phone, setPhone] = useState('');
   const [document, setDocument] = useState('');
+  const [rg, setRg] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [username, setUsername] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [wantKycNow, setWantKycNow] = useState(false);
   const [selfieWithDocUri, setSelfieWithDocUri] = useState<string | null>(null);
+  const [versoDocUri, setVersoDocUri] = useState<string | null>(null);
   const [isUploadingKyc, setIsUploadingKyc] = useState(false);
   const [showWhyKycModal, setShowWhyKycModal] = useState(false);
 
-  /** Envia uma imagem já escolhida (URI local) para o servidor; retorna a key. Requer estar logado. */
-  const uploadImageFromUri = useCallback(async (uri: string, label: string): Promise<string> => {
+  /** Upload de documento KYC antes do signup (presign sem auth). Retorna a key para enviar no signup. */
+  const uploadSignupKycFromUri = useCallback(async (uri: string): Promise<string> => {
     const ext = uri.split('.').pop()?.toLowerCase() || 'jpg';
-    const filename = `${label}-${Date.now()}.${ext === 'jpg' ? 'jpg' : ext}`;
+    const filename = `selfie-with-doc-${Date.now()}.${ext === 'jpg' ? 'jpg' : ext}`;
     const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
-    const { uploadUrl, key } = await presign(filename, contentType);
+    const { uploadUrl, key } = await presignSignupKyc(filename, contentType);
     const response = await fetch(uri);
     const blob = await response.blob();
     const putRes = await fetch(uploadUrl, {
@@ -106,6 +109,21 @@ export default function SignupScreen() {
     if (!result.canceled && result.assets[0]?.uri) setSelfieWithDocUri(result.assets[0].uri);
   }, []);
 
+  const pickVersoForKyc = useCallback(async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permissão', 'Precisamos acessar suas fotos.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+    });
+    if (!result.canceled && result.assets[0]?.uri) setVersoDocUri(result.assets[0].uri);
+  }, []);
+
   /** Formata como CPF (11 dígitos) ou CNPJ (14 dígitos) conforme o usuário digita. */
   const formatDocumentDisplay = (raw: string) => {
     const digits = raw.replace(/\D/g, '').slice(0, 14);
@@ -119,8 +137,20 @@ export default function SignupScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!name.trim() || !email.trim() || !password || !passwordConfirm || !phone.trim() || !document.trim()) {
-      Alert.alert('Erro', 'Preencha nome, email, CPF ou CNPJ, telefone, senha e confirmação da senha.');
+    if (!name.trim() || !email.trim() || !password || !passwordConfirm || !phone.trim() || !document.trim() || !birthDate.trim()) {
+      Alert.alert('Erro', 'Preencha nome, email, CPF ou CNPJ, telefone, data de nascimento, senha e confirmação da senha.');
+      return;
+    }
+    const birthDateIso = parseDDMMAAAAToISO(birthDate);
+    if (!birthDateIso) {
+      Alert.alert('Data inválida', 'Informe uma data de nascimento válida no formato DD/MM/AAAA.');
+      return;
+    }
+    if (!isBirthDateStringAtLeast18(birthDateIso)) {
+      Alert.alert(
+        'Cadastro apenas para maiores de 18 anos',
+        'Para criar uma conta no Adopet é necessário ter 18 anos ou mais, de acordo com boas práticas de adoção responsável.',
+      );
       return;
     }
     if (!EMAIL_REGEX.test(email.trim())) {
@@ -170,6 +200,14 @@ export default function SignupScreen() {
       Alert.alert('Aceite os termos', 'Para criar sua conta, você precisa aceitar os Termos de Uso e a Política de Privacidade.');
       return;
     }
+    const rgTrimmed = rg.trim();
+    if (!rgTrimmed || rgTrimmed.length < 4) {
+      Alert.alert(
+        'RG obrigatório',
+        'O número do RG é obrigatório no cadastro. Pessoas com 18 anos ou mais normalmente possuem RG. Se você não tiver, entre em contato conosco para ver como proceder.',
+      );
+      return;
+    }
     if (wantKycNow && !selfieWithDocUri) {
       Alert.alert(
         'Verificação de identidade',
@@ -203,7 +241,48 @@ export default function SignupScreen() {
       }
     }
     try {
-      const res = await signup(email.trim(), password, name.trim(), phoneDigits, documentDigits, userInput);
+      let kycKey: string | undefined;
+      let versoKey: string | undefined;
+      if (wantKycNow && selfieWithDocUri) {
+        setIsUploadingKyc(true);
+        try {
+          kycKey = await uploadSignupKycFromUri(selfieWithDocUri);
+          if (versoDocUri) {
+            const ext = versoDocUri.split('.').pop()?.toLowerCase() || 'jpg';
+            const filename = `doc-verso-${Date.now()}.${ext === 'jpg' ? 'jpg' : ext}`;
+            const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+            const { uploadUrl, key } = await presignSignupKyc(filename, contentType);
+            const response = await fetch(versoDocUri);
+            const blob = await response.blob();
+            const putRes = await fetch(uploadUrl, {
+              method: 'PUT',
+              body: blob,
+              headers: { 'Content-Type': blob.type || 'image/jpeg' },
+            });
+            if (putRes.ok) versoKey = key;
+          }
+        } catch (uploadErr) {
+          setIsUploadingKyc(false);
+          Alert.alert(
+            'Upload da foto',
+            getFriendlyErrorMessage(uploadErr, 'Não foi possível enviar a foto. Tente novamente ou faça a verificação depois em Perfil.'),
+          );
+          return;
+        } finally {
+          setIsUploadingKyc(false);
+        }
+      }
+      const res = await signup(
+        email.trim(),
+        password,
+        name.trim(),
+        phoneDigits,
+        documentDigits,
+        birthDateIso,
+        userInput,
+        kycKey ? { selfieWithDocKey: kycKey, consentKyc: true, documentVersoKey: versoKey } : undefined,
+        rgTrimmed,
+      );
       try {
         const { trackEvent } = await import('../../src/analytics');
         trackEvent({ name: 'signup_complete', properties: {} });
@@ -213,7 +292,9 @@ export default function SignupScreen() {
       if (res.requiresEmailVerification) {
         Alert.alert(
           'Conta criada!',
-          'Enviamos um e-mail de confirmação para você. Clique no link que enviamos para ativar sua conta. Depois, faça login com seu e-mail e senha.',
+          wantKycNow && kycKey
+            ? 'Enviamos um e-mail de confirmação. Clique no link para ativar sua conta. Sua verificação de identidade já foi enviada e estará em análise quando você fizer login.'
+            : 'Enviamos um e-mail de confirmação para você. Clique no link que enviamos para ativar sua conta. Depois, faça login com seu e-mail e senha.',
           [{ text: 'Ir para o login', onPress: () => router.replace('/(auth)/login') }]
         );
       } else {
@@ -226,35 +307,20 @@ export default function SignupScreen() {
             // Não falhar o fluxo; a flag em memória garante que o onboarding será exibido
           }
         }
-        if (wantKycNow && selfieWithDocUri) {
-          setIsUploadingKyc(true);
-          try {
-            const key = await uploadImageFromUri(selfieWithDocUri, 'selfie-with-doc');
-            await submitKyc(key, true);
-            queryClient.invalidateQueries({ queryKey: ['me'] });
-            queryClient.invalidateQueries({ queryKey: ['me', 'kyc-status'] });
-            Alert.alert(
-              'Conta criada!',
-              'Sua conta foi criada e sua verificação de identidade foi enviada. Em breve nossa equipe analisará e você poderá confirmar adoções.',
-              [{ text: 'Continuar', onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(tabs)')) }]
-            );
-          } catch (kycErr) {
-            Alert.alert(
-              'Conta criada!',
-              'Sua conta foi criada com sucesso. O envio da verificação de identidade falhou; você pode fazer depois em Perfil > Solicitar verificação.',
-              [{ text: 'Continuar', onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(tabs)')) }]
-            );
-          } finally {
-            setIsUploadingKyc(false);
-          }
-        } else {
-          Alert.alert('Conta criada!', 'Sua conta foi criada com sucesso. Bem-vindo(a)!', [
+        queryClient.invalidateQueries({ queryKey: ['me'] });
+        queryClient.invalidateQueries({ queryKey: ['me', 'kyc-status'] });
+        Alert.alert(
+          'Conta criada!',
+          wantKycNow && kycKey
+            ? 'Sua conta foi criada e sua verificação de identidade foi enviada. Em breve nossa equipe analisará e você poderá confirmar adoções.'
+            : 'Sua conta foi criada com sucesso. Bem-vindo(a)!',
+          [
             {
               text: 'Continuar',
               onPress: () => (redirectPetId ? router.replace(`/(tabs)/pet/${redirectPetId}`) : router.replace('/(tabs)')),
             },
-          ]);
-        }
+          ]
+        );
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e ?? '');
@@ -315,18 +381,21 @@ export default function SignupScreen() {
         <View style={[styles.dataNotice, { backgroundColor: (colors.warning || '#d97706') + '18', borderColor: (colors.warning || '#d97706') + '50' }]}>
           <Ionicons name="shield-checkmark" size={20} color={colors.warning || '#d97706'} style={styles.dataNoticeIcon} />
           <Text style={[styles.dataNoticeText, { color: colors.textPrimary }]}>
-            Informe apenas dados reais. Seus dados estão protegidos e não serão compartilhados com outros usuários.
+            É necessário ter 18 anos ou mais para criar uma conta. Informe apenas dados reais. Seus dados estão protegidos e não serão compartilhados com outros usuários.
           </Text>
         </View>
         <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={Platform.OS === 'android' ? insets.top : 0} style={styles.form}>
           <TextInput
             style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
-            placeholder="Nome"
+            placeholder="Nome completo (como no documento de identidade)"
             placeholderTextColor={colors.textSecondary}
             value={name}
             onChangeText={setName}
             autoComplete="name"
           />
+          <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: -4, marginBottom: 4 }}>
+            Use o mesmo nome que consta no RG ou CNH para facilitar a verificação de identidade.
+          </Text>
           <TextInput
             style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
             placeholder="Email"
@@ -354,6 +423,27 @@ export default function SignupScreen() {
             onChangeText={(t) => setDocument(formatDocumentDisplay(t))}
             keyboardType="number-pad"
             maxLength={18}
+          />
+          <TextInput
+            style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+            placeholder="Número do RG"
+            placeholderTextColor={colors.textSecondary}
+            value={rg}
+            onChangeText={setRg}
+            autoCapitalize="characters"
+            autoCorrect={false}
+          />
+          <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: -4, marginBottom: 4 }}>
+            Obrigatório. Será usado na validação automática do documento na verificação de identidade. Sem RG, entre em contato conosco.
+          </Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+            placeholder="Data de nascimento (DD/MM/AAAA)"
+            placeholderTextColor={colors.textSecondary}
+            value={birthDate}
+            onChangeText={(t) => setBirthDate(formatDateInputDDMMAAAA(t))}
+            keyboardType="number-pad"
+            maxLength={10}
           />
           <TextInput
             style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
@@ -435,7 +525,7 @@ export default function SignupScreen() {
               <View style={styles.kycFields}>
                 <Text style={[styles.kycLabel, { color: colors.textSecondary }]}>Selfie com a frente do documento (RG ou CNH)</Text>
                 <Text style={[styles.kycRetentionHint, { color: colors.textSecondary }]}>
-                  A imagem é usada apenas para esta verificação e não é armazenada após a análise.
+                  Se for RG, envie também o verso — a data de nascimento costuma estar no verso e precisamos dela para conferir com seu cadastro. As imagens são usadas apenas para esta verificação e não são armazenadas após a análise.
                 </Text>
                 <TouchableOpacity
                   style={[styles.kycUploadBox, { borderColor: colors.primary + '60', backgroundColor: colors.background + '80' }]}
@@ -460,7 +550,30 @@ export default function SignupScreen() {
                     activeOpacity={0.8}
                   >
                     <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
-                    <Text style={[styles.kycRemoveText, { color: colors.textSecondary }]}>Apagar imagem</Text>
+                    <Text style={[styles.kycRemoveText, { color: colors.textSecondary }]}>Apagar</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <Text style={[styles.kycLabel, { color: colors.textSecondary, marginTop: spacing.md }]}>Verso do documento (se for RG)</Text>
+                <TouchableOpacity
+                  style={[styles.kycUploadBox, styles.kycUploadBoxSmall, { borderColor: colors.textSecondary + '60', backgroundColor: colors.background + '60' }]}
+                  onPress={pickVersoForKyc}
+                >
+                  {versoDocUri ? (
+                    <View style={styles.kycUploadDone}>
+                      <Ionicons name="checkmark-circle" size={24} color={colors.textSecondary} />
+                      <Text style={[styles.kycUploadDoneText, { color: colors.textPrimary, fontSize: 14 }]}>Verso selecionado</Text>
+                    </View>
+                  ) : (
+                    <>
+                      <Ionicons name="document-outline" size={32} color={colors.textSecondary} />
+                      <Text style={[styles.kycUploadHint, { color: colors.textSecondary, fontSize: 13 }]}>Toque para escolher verso (opcional)</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                {versoDocUri ? (
+                  <TouchableOpacity onPress={() => setVersoDocUri(null)} style={styles.kycRemoveWrap} activeOpacity={0.8}>
+                    <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
+                    <Text style={[styles.kycRemoveText, { color: colors.textSecondary }]}>Remover verso</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
@@ -587,6 +700,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 100,
   },
+  kycUploadBoxSmall: { minHeight: 72, padding: spacing.md },
   kycUploadDone: { alignItems: 'center', gap: spacing.xs },
   kycUploadDoneText: { fontSize: 14, fontWeight: '600' },
   kycUploadHint: { fontSize: 13, marginTop: spacing.xs },

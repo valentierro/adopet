@@ -67,6 +67,8 @@ describe('AuthController', () => {
         name: PROD_LIKE.name,
         phone: PROD_LIKE.phone,
         document: PROD_LIKE.document,
+        rg: '123456789',
+        birthDate: '1990-05-15',
         username: PROD_LIKE.username,
       };
       authService.signup.mockResolvedValue({
@@ -90,6 +92,8 @@ describe('AuthController', () => {
         name: PROD_LIKE.name,
         phone: PROD_LIKE.phone,
         document: PROD_LIKE.document,
+        rg: '123456789',
+        birthDate: '1990-05-15',
         username: PROD_LIKE.username,
       });
       expect(res).toHaveProperty('message');

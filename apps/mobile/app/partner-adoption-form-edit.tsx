@@ -313,7 +313,7 @@ export default function PartnerAdoptionFormEditScreen() {
         return (
           <TextInput
             style={baseInputStyle}
-            placeholder={q.placeholder || (q.type === 'DATE' ? 'AAAA-MM-DD' : '')}
+            placeholder={q.placeholder || (q.type === 'DATE' ? 'DD/MM/AAAA' : '')}
             placeholderTextColor={colors.textSecondary + '99'}
             editable={false}
             value=""

@@ -43,7 +43,7 @@ export type PetStatus = 'AVAILABLE' | 'IN_PROCESS' | 'ADOPTED';
 
 export type PetResponse = Pet & { status?: string };
 
-export type MinePetsPage = { items: PetResponse[]; nextCursor: string | null };
+export type MinePetsPage = { items: PetResponse[]; nextCursor: string | null; totalCount?: number };
 
 export type MinePetsFilters = {
   cursor?: string;

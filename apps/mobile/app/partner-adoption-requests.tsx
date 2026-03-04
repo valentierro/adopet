@@ -49,19 +49,116 @@ const STATUS_COLOR: Record<string, string> = {
   ADOPTION_CONFIRMED: '#059669',
 };
 
+/** Mapa de fallback para exibir valores em português quando a pergunta não tem options no snapshot. */
+const ANSWER_DISPLAY_FALLBACK: Record<string, string> = {
+  true: 'Sim',
+  false: 'Não',
+  DAILY: 'Diariamente',
+  FEW_TIMES_WEEK: 'Algumas vezes por semana',
+  RARELY: 'Raramente',
+  INDIFERENTE: 'Indiferente / Depende do pet',
+  LOW: 'Calmo',
+  MEDIUM: 'Moderado',
+  HIGH: 'Ativo',
+  DOG: 'Cachorro',
+  CAT: 'Gato',
+  BOTH: 'Tanto faz / Indiferente',
+  small: 'Pequeno',
+  medium: 'Médio',
+  large: 'Grande',
+  xlarge: 'Extra grande / Muito grande',
+  male: 'Macho',
+  female: 'Fêmea',
+  puppy: 'Filhote (até 1 ano)',
+  young: 'Jovem (1 a 3 anos)',
+  adult: 'Adulto (3 a 7 anos)',
+  senior: 'Idoso (7+ anos)',
+  any: 'Indiferente',
+  YES: 'Sim',
+  NO: 'Não',
+  UNKNOWN: 'Não sei',
+  nao_tem: 'Não tenho outros pets',
+  site: 'Site',
+  redes: 'Redes sociais',
+  indicacao: 'Indicação',
+  evento: 'Evento',
+  outro: 'Outro',
+  casa: 'Casa',
+  apartamento: 'Apartamento',
+  propria: 'Própria',
+  alugada: 'Alugada',
+  parentes: 'Com parentes/amigos',
+  sim_total: 'Sim, totalmente telado',
+  providenciar: 'Ainda não, mas providenciarei em até 7 dias',
+  nao: 'Não',
+  nao_se_aplica: 'Não se aplica',
+  dry: 'Ração seca',
+  wet: 'Ração úmida',
+  mixed: 'Mista',
+  natural: 'Natural',
+  other: 'Outra',
+  nao_sei: 'Ainda não sei',
+  filhote: 'Filhote (0–1 ano)',
+  idoso: 'Idoso (7+ anos)',
+  indiferente: 'Indiferente',
+};
+
+type SnapshotQuestion = {
+  id: string;
+  label: string;
+  type?: string;
+  options?: Array<{ value: string; label: string }>;
+};
+
+function formatAnswerForDisplay(question: SnapshotQuestion, value: unknown): string {
+  if (value == null || value === '') return '—';
+  const str = (v: unknown) => (v === true || v === 'true' ? 'Sim' : v === false || v === 'false' ? 'Não' : String(v));
+
+  if (question.type === 'CHECKBOX') {
+    return str(value);
+  }
+  if (question.type === 'SELECT_SINGLE') {
+    const key = String(value).trim();
+    const label = question.options?.find((o) => o.value === key)?.label;
+    if (label) return label;
+    return ANSWER_DISPLAY_FALLBACK[key] ?? key;
+  }
+  if (question.type === 'SELECT_MULTIPLE' && Array.isArray(value)) {
+    const labels = (value as string[]).map((v) => {
+      const label = question.options?.find((o) => o.value === String(v))?.label;
+      return label ?? ANSWER_DISPLAY_FALLBACK[String(v)] ?? String(v);
+    });
+    return labels.filter(Boolean).length > 0 ? labels.join(', ') : '—';
+  }
+  if (Array.isArray(value)) {
+    return (value as string[]).map((v) => ANSWER_DISPLAY_FALLBACK[String(v)] ?? String(v)).join(', ');
+  }
+  const key = String(value).trim();
+  return ANSWER_DISPLAY_FALLBACK[key] ?? key;
+}
+
+/** Traduz answerDisplay do breakdown quando a API envia valor bruto (ex: FEW_TIMES_WEEK). */
+function translateAnswerDisplay(text: string): string {
+  if (!text || text === '—') return text;
+  const trimmed = text.trim();
+  return ANSWER_DISPLAY_FALLBACK[trimmed] ?? text;
+}
+
 export default function PartnerAdoptionRequestsScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ petId?: string }>();
+  const params = useLocalSearchParams<{ petId?: string; requestId?: string }>();
   const queryClient = useQueryClient();
   const { colors } = useTheme();
   const [filter, setFilter] = useState<'all' | 'pending'>('pending');
   const [petFilter, setPetFilter] = useState<string | null>(params.petId ?? null);
-  const [sortByScore, setSortByScore] = useState(true);
 
   useEffect(() => {
     if (params.petId) setPetFilter(params.petId);
   }, [params.petId]);
   const [detailRequestId, setDetailRequestId] = useState<string | null>(null);
+  useEffect(() => {
+    if (params.requestId) setDetailRequestId(params.requestId);
+  }, [params.requestId]);
   const [approveConfirmRequest, setApproveConfirmRequest] = useState<AdoptionRequestWithDetails | null>(null);
   const [rejectFeedback, setRejectFeedback] = useState('');
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -86,12 +183,9 @@ export default function PartnerAdoptionRequestsScreen() {
       : requests;
 
   const sorted = [...filtered].sort((a, b) => {
-    if (sortByScore) {
-      const sa = a.submission?.matchScore ?? -1;
-      const sb = b.submission?.matchScore ?? -1;
-      return sb - sa;
-    }
-    return 0;
+    const ta = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+    const tb = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+    return tb - ta;
   });
 
   const uniquePets = Array.from(
@@ -154,7 +248,6 @@ export default function PartnerAdoptionRequestsScreen() {
   const renderItem = ({ item }: { item: AdoptionRequestWithDetails }) => {
     const statusColor = STATUS_COLOR[item.status] ?? colors.textSecondary;
     const showActions = canApprove(item) || canReject(item);
-    const matchScore = item.submission?.matchScore;
 
     return (
       <TouchableOpacity
@@ -179,11 +272,6 @@ export default function PartnerAdoptionRequestsScreen() {
                   {STATUS_LABEL[item.status] ?? item.status}
                 </Text>
               </View>
-              {matchScore != null && (
-                <View style={[styles.matchScoreBadge, { backgroundColor: colors.primary + '20' }]}>
-                  <Text style={[styles.matchScoreText, { color: colors.primary }]}>{Math.round(matchScore)}%</Text>
-                </View>
-              )}
             </View>
           </View>
           <Ionicons name="chevron-forward" size={22} color={colors.textSecondary} />
@@ -287,17 +375,6 @@ export default function PartnerAdoptionRequestsScreen() {
             ))}
           </ScrollView>
         )}
-        <View style={[styles.sortRow, { backgroundColor: colors.background }]}>
-          <TouchableOpacity
-            style={[styles.sortBtn, sortByScore && { backgroundColor: colors.primary + '30' }]}
-            onPress={() => setSortByScore(!sortByScore)}
-          >
-            <Ionicons name="analytics-outline" size={18} color={sortByScore ? colors.primary : colors.textSecondary} />
-            <Text style={[styles.sortText, { color: sortByScore ? colors.primary : colors.textSecondary }]}>
-              Ordenar por compatibilidade
-            </Text>
-          </TouchableOpacity>
-        </View>
         <FlatList
           data={sorted}
           keyExtractor={(r) => r.id}
@@ -338,7 +415,7 @@ export default function PartnerAdoptionRequestsScreen() {
         </Pressable>
       </Modal>
 
-      <Modal visible={!!detailRequestId} transparent animationType="fade">
+      <Modal visible={!!detailRequestId} transparent animationType="slide">
         <Pressable style={styles.modalOverlay} onPress={() => setDetailRequestId(null)}>
           <Pressable
             style={[styles.modalContent, { backgroundColor: colors.surface }]}
@@ -350,77 +427,7 @@ export default function PartnerAdoptionRequestsScreen() {
                   <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
                     {detailRequest.pet?.name} · {detailRequest.adopter?.name}
                   </Text>
-                  <View style={styles.modalHeaderBadges}>
-                    <View
-                      style={[
-                        styles.statusBadge,
-                        { backgroundColor: (STATUS_COLOR[detailRequest.status] ?? colors.textSecondary) + '20' },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.statusText,
-                          { color: STATUS_COLOR[detailRequest.status] ?? colors.textSecondary },
-                        ]}
-                      >
-                        {STATUS_LABEL[detailRequest.status] ?? detailRequest.status}
-                      </Text>
-                    </View>
-                    {detailRequest.submission?.matchScore != null && (
-                      <View style={[styles.matchScoreBadgeLarge, { backgroundColor: colors.primary + '20' }]}>
-                        <Ionicons name="analytics" size={20} color={colors.primary} />
-                        <Text style={[styles.matchScoreTextLarge, { color: colors.primary }]}>
-                          Match Score: {Math.round(detailRequest.submission.matchScore)}%
-                        </Text>
-                      </View>
-                    )}
-                  </View>
                 </View>
-                {detailRequest.submission?.matchScoreBreakdown &&
-                  Array.isArray(detailRequest.submission.matchScoreBreakdown) &&
-                  detailRequest.submission.matchScoreBreakdown.length > 0 && (
-                    <View style={[styles.breakdownSection, { borderTopColor: colors.border }]}>
-                      <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Detalhamento do Score</Text>
-                      {(detailRequest.submission.matchScoreBreakdown as Array<{
-                        label: string;
-                        answerDisplay: string;
-                        points: number;
-                        maxPoints: number;
-                        status: string;
-                      }>).map((b, i) => (
-                        <View key={i} style={[styles.breakdownRow, { borderBottomColor: colors.border }]}>
-                          <View style={styles.breakdownLeft}>
-                            <Ionicons
-                              name={
-                                b.status === 'match'
-                                  ? 'checkmark-circle'
-                                  : b.status === 'mismatch'
-                                    ? 'alert-circle'
-                                    : 'help-circle'
-                              }
-                              size={18}
-                              color={
-                                b.status === 'match'
-                                  ? '#059669'
-                                  : b.status === 'mismatch'
-                                    ? '#dc2626'
-                                    : colors.textSecondary
-                              }
-                            />
-                            <Text style={[styles.breakdownLabel, { color: colors.textPrimary }]} numberOfLines={1}>
-                              {b.label}
-                            </Text>
-                          </View>
-                          <Text style={[styles.breakdownAnswer, { color: colors.textSecondary }]} numberOfLines={1}>
-                            {b.answerDisplay}
-                          </Text>
-                          <Text style={[styles.breakdownPoints, { color: colors.primary }]}>
-                            {b.points}/{b.maxPoints}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
                 {detailRequest.submission && (
                   <View style={[styles.submissionSection, { borderTopColor: colors.border }]}>
                     <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
@@ -429,112 +436,85 @@ export default function PartnerAdoptionRequestsScreen() {
                     {(() => {
                       const answers = detailRequest.submission.answers as Record<string, unknown>;
                       const snapshot = detailRequest.submission.templateSnapshot as {
-                        questions?: Array<{ id: string; label: string }>;
+                        questions?: SnapshotQuestion[];
                       };
                       const questions = snapshot?.questions ?? [];
-                      return questions.map((q) => (
-                        <View
-                          key={q.id}
-                          style={[styles.answerRow, { borderBottomColor: colors.border }]}
-                        >
-                          <Text style={[styles.answerLabel, { color: colors.textSecondary }]}>
-                            {q.label}
-                          </Text>
-                          <Text style={[styles.answerValue, { color: colors.textPrimary }]}>
-                            {answers[q.id] != null
-                              ? Array.isArray(answers[q.id])
-                                ? (answers[q.id] as string[]).join(', ')
-                                : String(answers[q.id])
-                              : '—'}
-                          </Text>
-                        </View>
-                      ));
+                      return (
+                        <>
+                          <View style={[styles.answerTableHeader, { borderBottomColor: colors.border }]}>
+                            <Text style={[styles.answerTableHeaderText, styles.answerColPergunta, { color: colors.textSecondary }]}>
+                              Pergunta
+                            </Text>
+                            <Text style={[styles.answerTableHeaderText, styles.answerColResposta, { color: colors.textSecondary }]}>
+                              Resposta
+                            </Text>
+                          </View>
+                          {questions.map((q) => (
+                            <View
+                              key={q.id}
+                              style={[styles.answerRow, { borderBottomColor: colors.border }]}
+                            >
+                              <View style={styles.answerColPergunta}>
+                                <Text style={[styles.answerLabel, { color: colors.textSecondary }]}>
+                                  {q.label}
+                                </Text>
+                              </View>
+                              <View style={styles.answerColResposta}>
+                                <Text style={[styles.answerValue, { color: colors.textPrimary }]}>
+                                  {formatAnswerForDisplay(q, answers[q.id])}
+                                </Text>
+                              </View>
+                            </View>
+                          ))}
+                        </>
+                      );
                     })()}
                   </View>
                 )}
-                {canReject(detailRequest) && (
-                  <View style={[styles.rejectSection, { borderTopColor: colors.border }]}>
-                    <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-                      Rejeitar (feedback opcional)
-                    </Text>
-                    <TextInput
-                      style={[
-                        styles.feedbackInput,
-                        {
-                          backgroundColor: colors.background,
-                          color: colors.textPrimary,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                      value={rejectFeedback}
-                      onChangeText={setRejectFeedback}
-                      placeholder="Motivo da rejeição (será enviado ao interessado)"
-                      placeholderTextColor={colors.textSecondary}
-                      multiline
-                      numberOfLines={3}
-                    />
-                  </View>
-                )}
                 <View style={styles.modalActions}>
-                  {detailRequest.submission && (
-                    <TouchableOpacity
-                      style={[styles.chatBtn, { borderColor: colors.primary }]}
-                      onPress={async () => {
-                        setDownloadingPdf(true);
-                        try {
-                          await downloadAdoptionRequestSubmissionPdf(
-                            detailRequest.id,
-                            getAccessToken,
-                            detailRequest.pet?.name,
-                          );
-                        } catch (e) {
-                          Alert.alert(
-                            'Erro',
-                            getFriendlyErrorMessage(e, 'Não foi possível baixar o PDF.'),
-                          );
-                        } finally {
-                          setDownloadingPdf(false);
-                        }
-                      }}
-                      disabled={downloadingPdf}
-                    >
-                      <Ionicons name="download-outline" size={18} color={colors.primary} />
-                      <Text style={[styles.chatBtnText, { color: colors.primary }]}>
-                        {downloadingPdf ? 'Baixando...' : 'Download PDF'}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  {detailRequest.conversationId && (
-                    <TouchableOpacity
-                      style={[styles.chatBtn, { borderColor: colors.primary }]}
-                      onPress={() => {
-                        setDetailRequestId(null);
-                        router.push(`/(tabs)/chat/${detailRequest.conversationId}`);
-                      }}
-                    >
-                      <Ionicons name="chatbubble-outline" size={18} color={colors.primary} />
-                      <Text style={[styles.chatBtnText, { color: colors.primary }]}>Ver conversa</Text>
-                    </TouchableOpacity>
-                  )}
-                  <SecondaryButton title="Fechar" onPress={() => setDetailRequestId(null)} />
-                  {canApprove(detailRequest) && (
-                    <PrimaryButton
-                      title="Aprovar"
-                      onPress={() => handleApprove(detailRequest)}
-                      disabled={approveMutation.isPending}
-                    />
-                  )}
-                  {canReject(detailRequest) && (
-                    <TouchableOpacity
-                      style={[styles.rejectBtn, { backgroundColor: colors.error || '#DC2626' }]}
-                      onPress={confirmReject}
-                      disabled={rejectMutation.isPending}
-                    >
-                      <Text style={styles.rejectBtnText}>
-                        {rejectMutation.isPending ? 'Rejeitando...' : 'Rejeitar'}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
+                  <View style={styles.modalActionsRow}>
+                    {detailRequest.submission && (
+                      <TouchableOpacity
+                        style={[styles.modalActionBtn, styles.modalActionBtnPrimary, { borderColor: colors.primary }]}
+                        onPress={async () => {
+                          setDownloadingPdf(true);
+                          try {
+                            await downloadAdoptionRequestSubmissionPdf(
+                              detailRequest.id,
+                              getAccessToken,
+                              detailRequest.pet?.name,
+                            );
+                          } catch (e) {
+                            Alert.alert(
+                              'Erro',
+                              getFriendlyErrorMessage(e, 'Não foi possível baixar o PDF.'),
+                            );
+                          } finally {
+                            setDownloadingPdf(false);
+                          }
+                        }}
+                        disabled={downloadingPdf}
+                      >
+                        <Ionicons name="download-outline" size={20} color={colors.primary} />
+                        <Text style={[styles.modalActionBtnText, { color: colors.primary }]}>
+                          {downloadingPdf ? 'Baixando...' : 'Download PDF'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                    {detailRequest.conversationId && (
+                      <TouchableOpacity
+                        style={[styles.modalActionBtn, styles.modalActionBtnPrimary, { borderColor: colors.primary }]}
+                        onPress={() => {
+                          setDetailRequestId(null);
+                          router.push(`/(tabs)/chat/${detailRequest.conversationId}`);
+                        }}
+                      >
+                        <Ionicons name="chatbubble-outline" size={20} color={colors.primary} />
+                        <Text style={[styles.modalActionBtnText, { color: colors.primary }]}>Ver conversa</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <SecondaryButton title="Fechar" onPress={() => setDetailRequestId(null)} style={styles.modalCloseBtn} />
                 </View>
               </ScrollView>
             ) : (
@@ -639,7 +619,7 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '100%',
     maxWidth: 400,
-    maxHeight: '85%',
+    maxHeight: '92%',
     borderRadius: 16,
     padding: spacing.lg,
   },
@@ -653,7 +633,7 @@ const styles = StyleSheet.create({
   approveConfirmText: { fontSize: 15, lineHeight: 22, marginBottom: spacing.lg },
   approveConfirmActions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' },
   approveConfirmBtn: { flex: 1 },
-  modalScroll: { maxHeight: 400 },
+  modalScroll: { maxHeight: 560 },
   modalHeader: { marginBottom: spacing.md },
   modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
   modalHeaderBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
@@ -673,14 +653,15 @@ const styles = StyleSheet.create({
   },
   breakdownRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
     gap: 8,
+    flexWrap: 'wrap',
   },
-  breakdownLeft: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 },
-  breakdownLabel: { fontSize: 14, flex: 1 },
-  breakdownAnswer: { fontSize: 13, maxWidth: 80 },
+  breakdownLeft: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, flex: 1, minWidth: 0 },
+  breakdownLabel: { fontSize: 14, flex: 1, flexWrap: 'wrap' },
+  breakdownAnswer: { fontSize: 13, flex: 1, minWidth: 0, flexWrap: 'wrap' },
   breakdownPoints: { fontSize: 14, fontWeight: '700' },
   submissionSection: {
     paddingTop: spacing.md,
@@ -688,12 +669,25 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   sectionTitle: { fontSize: 16, fontWeight: '600', marginBottom: spacing.sm },
+  answerTableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 2,
+    gap: spacing.sm,
+  },
+  answerTableHeaderText: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  answerColPergunta: { flex: 1.2, minWidth: 0 },
+  answerColResposta: { flex: 1, minWidth: 0 },
   answerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     paddingVertical: spacing.sm,
     borderBottomWidth: 1,
+    gap: spacing.sm,
   },
-  answerLabel: { fontSize: 13, marginBottom: 2 },
-  answerValue: { fontSize: 15 },
+  answerLabel: { fontSize: 13, flexWrap: 'wrap' },
+  answerValue: { fontSize: 15, flexWrap: 'wrap' },
   rejectSection: {
     paddingTop: spacing.md,
     borderTopWidth: 1,
@@ -708,11 +702,31 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   modalActions: {
+    marginTop: spacing.lg,
+    gap: spacing.md,
+  },
+  modalActionsRow: {
     flexDirection: 'row',
     gap: spacing.sm,
-    marginTop: spacing.md,
     flexWrap: 'wrap',
   },
+  modalActionBtn: {
+    flex: 1,
+    minWidth: 140,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 2,
+  },
+  modalActionBtnPrimary: {
+    // borderColor e texto definidos inline com colors.primary
+  },
+  modalActionBtnText: { fontSize: 15, fontWeight: '600' },
+  modalCloseBtn: { alignSelf: 'stretch' },
   rejectBtn: {
     paddingVertical: 12,
     paddingHorizontal: 20,

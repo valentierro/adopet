@@ -10,8 +10,9 @@ const LABELS = {
   preferredAge: { PUPPY: 'Filhote', ADULT: 'Adulto', SENIOR: 'Idoso', ANY: 'Qualquer' },
   walkFreq: { DAILY: 'Diariamente', FEW_TIMES_WEEK: 'Algumas vezes por semana', RARELY: 'Raramente', NOT_APPLICABLE: 'Não se aplica', INDIFERENTE: 'Indiferente' },
   budget: { LOW: 'Até ~R$ 100/mês', MEDIUM: '~R$ 100–300/mês', HIGH: 'Acima de ~R$ 300/mês' },
-  species: { DOG: 'Cachorro', CAT: 'Gato' },
-  sex: { male: 'Macho', female: 'Fêmea' },
+  species: { DOG: 'Cachorro', CAT: 'Gato', BOTH: 'Qualquer' },
+  sex: { male: 'Macho', female: 'Fêmea', both: 'Indiferente' },
+  size: { small: 'Pequeno', medium: 'Médio', large: 'Grande', xlarge: 'Muito grande', both: 'Qualquer' },
 } as const;
 
 /**
@@ -366,13 +367,15 @@ export function computeMatchScore(
     if (adopterSizePref && adopterSizePref !== 'both') {
       totalWeight += 1;
       const petSize = petPreferences.size.toLowerCase();
+      const petSizeLabel = LABELS.size[petSize as keyof typeof LABELS.size] ?? petSize;
+      const adopterSizeLabel = LABELS.size[adopterSizePref as keyof typeof LABELS.size] ?? adopterSizePref;
       if (petSize === adopterSizePref) {
         earnedWeight += 1;
-        const msg = `Porte compatível com sua preferência (${petSize}).`;
+        const msg = `Porte compatível com sua preferência (${petSizeLabel}).`;
         highlights.push(msg);
         criteria.push({ label: LABEL.size, status: 'match', message: msg });
       } else {
-        const msg = `Você prefere pet ${adopterSizePref}; este pet é ${petSize}.`;
+        const msg = `Você prefere pet ${adopterSizeLabel}; este pet é ${petSizeLabel}.`;
         concerns.push(msg);
         criteria.push({ label: LABEL.size, status: 'mismatch', message: msg });
       }

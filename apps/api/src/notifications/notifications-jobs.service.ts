@@ -51,7 +51,7 @@ export class NotificationsJobsService implements OnModuleInit {
   }
 
   /**
-   * Remove referências e arquivos órfãos de KYC: usuários já VERIFIED ou REJECTED que ainda tenham kycDocumentKey/kycSelfieKey.
+   * Remove referências e arquivos órfãos de KYC: usuários já VERIFIED ou REJECTED que ainda tenham chaves de foto.
    * Garante que nenhuma foto fique retida em caso de falha pontual no delete ao aprovar/rejeitar.
    */
   private async runKycOrphanCleanupJob(): Promise<void> {
@@ -59,16 +59,21 @@ export class NotificationsJobsService implements OnModuleInit {
       const users = await this.prisma.user.findMany({
         where: {
           kycStatus: { in: ['VERIFIED', 'REJECTED'] },
-          OR: [{ kycDocumentKey: { not: null } }, { kycSelfieKey: { not: null } }],
+          OR: [
+            { kycDocumentKey: { not: null } },
+            { kycSelfieKey: { not: null } },
+            { kycDocumentVersoKey: { not: null } },
+          ],
         },
-        select: { id: true, kycDocumentKey: true, kycSelfieKey: true },
+        select: { id: true, kycDocumentKey: true, kycSelfieKey: true, kycDocumentVersoKey: true },
       });
       for (const u of users) {
         await this.uploadsService.deleteByKey(u.kycDocumentKey);
         await this.uploadsService.deleteByKey(u.kycSelfieKey);
+        await this.uploadsService.deleteByKey(u.kycDocumentVersoKey);
         await this.prisma.user.update({
           where: { id: u.id },
-          data: { kycDocumentKey: null, kycSelfieKey: null },
+          data: { kycDocumentKey: null, kycSelfieKey: null, kycDocumentVersoKey: null },
         });
       }
       if (users.length > 0) {

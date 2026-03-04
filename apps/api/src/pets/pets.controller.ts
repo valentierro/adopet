@@ -44,7 +44,7 @@ export class PetsController {
     @Query('cursor') cursor?: string,
     @Query('species') species?: string,
     @Query('status') status?: string,
-  ): Promise<{ items: PetResponseDto[]; nextCursor: string | null }> {
+  ): Promise<{ items: PetResponseDto[]; nextCursor: string | null; totalCount?: number }> {
     return this.petsService.findMine(user.id, { cursor, species, status });
   }
 

@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, ForbiddenException, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { randomUUID } from 'crypto';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { PrismaService } from '../prisma/prisma.service';
 import type { PresignDto } from './dto/presign.dto';
@@ -8,6 +9,7 @@ import type { ConfirmUploadDto } from './dto/confirm.dto';
 import type { PresignResponseDto } from './dto/presign-response.dto';
 
 const DEFAULT_EXPIRES_IN = 600; // 10 min
+const SIGNUP_KYC_PREFIX = 'signup-kyc/';
 
 @Injectable()
 export class UploadsService {
@@ -60,6 +62,30 @@ export class UploadsService {
     const publicUrl = this.publicBase ? `${this.publicBase.replace(/\/$/, '')}/${key}` : key;
 
     return { uploadUrl, key, publicUrl };
+  }
+
+  /**
+   * Presign para upload de documento KYC durante o cadastro (sem autenticação).
+   * Chave no formato signup-kyc/{uuid}-{filename} para ser aceita no signup e associada ao usuário.
+   */
+  async presignSignupKyc(filename: string, contentType?: string): Promise<{ uploadUrl: string; key: string }> {
+    if (!this.config.get<string>('S3_ACCESS_KEY') || !this.config.get<string>('S3_SECRET_KEY')) {
+      throw new ServiceUnavailableException(
+        'Upload de fotos não configurado. Configure S3 no servidor (veja .env.example).',
+      );
+    }
+    const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100) || 'selfie.jpg';
+    const ext = sanitized.replace(/^.*\./, '').toLowerCase();
+    const finalFilename = ext && /^(jpg|jpeg|png|webp|gif)$/.test(ext) ? sanitized : `${sanitized}.jpg`;
+    const key = `${SIGNUP_KYC_PREFIX}${randomUUID()}-${finalFilename}`;
+    const type = contentType ?? `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+    const command = new PutObjectCommand({
+      Bucket: this.bucket,
+      Key: key,
+      ContentType: type,
+    });
+    const uploadUrl = await getSignedUrl(this.s3, command, { expiresIn: DEFAULT_EXPIRES_IN });
+    return { uploadUrl, key };
   }
 
   async confirm(userId: string, dto: ConfirmUploadDto): Promise<{ id: string; url: string }> {
@@ -125,6 +151,31 @@ export class UploadsService {
   getPublicUrl(key: string | null | undefined): string | null {
     if (!key?.trim()) return null;
     return this.buildPublicUrl(key.trim());
+  }
+
+  /**
+   * Baixa o objeto do S3 e retorna o corpo como Buffer. Usado para processamento server-side (ex.: OCR no documento KYC).
+   * Retorna null se a chave for vazia ou o objeto não existir.
+   */
+  async getObjectBuffer(key: string | null | undefined): Promise<Buffer | null> {
+    const k = key?.trim();
+    if (!k) return null;
+    try {
+      const cmd = new GetObjectCommand({ Bucket: this.bucket, Key: k });
+      const response = await this.s3.send(cmd);
+      const body = response.Body as { on?(e: string, fn: (...args: unknown[]) => void): void; once?(e: string, fn: (...args: unknown[]) => void): void } | undefined;
+      if (!body?.on) return null;
+      const chunks: Buffer[] = [];
+      await new Promise<void>((resolve, reject) => {
+        body.on!('data', (chunk: Buffer) => chunks.push(chunk));
+        body.once!('end', () => resolve());
+        body.once!('error', reject);
+      });
+      return Buffer.concat(chunks);
+    } catch (err) {
+      if ((err as { name?: string }).name === 'NoSuchKey') return null;
+      throw err;
+    }
   }
 
   /**

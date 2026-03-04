@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import {
   View,
   Text,
@@ -30,6 +31,90 @@ import {
 import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
 import { spacing } from '../../../src/theme';
 
+/** Formata CPF para exibição (xxx.xxx.xxx-xx). */
+function formatCpfDisplay(digits: string | null | undefined): string {
+  if (!digits || digits.length !== 11) return digits ?? '—';
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+}
+
+/** Retorna status por campo para o bullet: 'ok' | 'fail' | 'na'. Em NOT_EXTRACTED usa dados extraídos reais (ex.: data extraída = ok). */
+function getBulletStatus(
+  status: string | null | undefined,
+  fraudSignal: string | null | undefined,
+  item?: PendingKycItem | ApprovedKycItem | null,
+): { data: 'ok' | 'fail' | 'na'; cpf: 'ok' | 'fail' | 'na'; rg: 'ok' | 'fail' | 'na'; nome: 'ok' | 'fail' | 'na' } {
+  if (!status || status === 'PENDING') return { data: 'na', cpf: 'na', rg: 'na', nome: 'na' };
+  if (status === 'NOT_EXTRACTED') {
+    if (item != null) {
+      return {
+        data: item.kycExtractedBirthDate ? 'ok' : 'fail',
+        cpf: item.kycExtractedCpf ? 'ok' : 'na',
+        rg: item.kycExtractedDocNumber ? 'ok' : 'na',
+        nome: item.kycExtractedName ? 'ok' : 'fail',
+      };
+    }
+    return { data: 'fail', cpf: 'na', rg: 'na', nome: 'na' };
+  }
+  if (status === 'OK') return { data: 'ok', cpf: 'ok', rg: 'ok', nome: 'ok' };
+  if (status === 'DIVERGENT' && item != null) {
+    const normDigits = (s: string | null | undefined) => (s ?? '').replace(/\D/g, '').trim();
+    const sameDate = (a: string | null | undefined, b: string | null | undefined) =>
+      a && b ? a.slice(0, 10) === b.slice(0, 10) : false;
+    const data =
+      item.kycExtractedBirthDate && item.birthDate
+        ? sameDate(item.kycExtractedBirthDate, item.birthDate)
+          ? 'ok'
+          : 'fail'
+        : fraudSignal === 'BIRTH_DATE_OR_AGE_DIVERGENT'
+          ? 'fail'
+          : 'na';
+    const cpf =
+      item.kycExtractedCpf != null && item.document != null
+        ? normDigits(item.kycExtractedCpf) === normDigits(item.document)
+          ? 'ok'
+          : 'fail'
+        : item.kycExtractedCpf != null || item.document != null
+          ? 'na'
+          : fraudSignal === 'CPF_DIVERGENT'
+            ? 'fail'
+            : 'na';
+    const rg =
+      item.kycExtractedDocNumber != null && item.rg != null
+        ? normDigits(item.kycExtractedDocNumber) === normDigits(item.rg)
+          ? 'ok'
+          : 'fail'
+        : item.kycExtractedDocNumber != null || item.rg != null
+          ? 'na'
+          : fraudSignal === 'RG_DIVERGENT'
+            ? 'fail'
+            : 'na';
+    const nome =
+      item.kycExtractedName != null && item.name != null
+        ? fraudSignal === 'NAME_DIVERGENT'
+          ? 'fail'
+          : 'ok'
+        : fraudSignal === 'NAME_DIVERGENT'
+          ? 'fail'
+          : 'na';
+    return { data, cpf, rg, nome };
+  }
+  if (status === 'DIVERGENT') {
+    switch (fraudSignal) {
+      case 'BIRTH_DATE_OR_AGE_DIVERGENT':
+        return { data: 'fail', cpf: 'na', rg: 'na', nome: 'na' };
+      case 'NAME_DIVERGENT':
+        return { data: 'ok', cpf: 'na', rg: 'na', nome: 'fail' };
+      case 'CPF_DIVERGENT':
+        return { data: 'ok', cpf: 'fail', rg: 'na', nome: 'ok' };
+      case 'RG_DIVERGENT':
+        return { data: 'ok', cpf: 'ok', rg: 'fail', nome: 'ok' };
+      default:
+        return { data: 'fail', cpf: 'na', rg: 'na', nome: 'na' };
+    }
+  }
+  return { data: 'na', cpf: 'na', rg: 'na', nome: 'na' };
+}
+
 function formatDate(iso: string) {
   try {
     return new Date(iso).toLocaleString('pt-BR', {
@@ -49,7 +134,11 @@ type Tab = 'pending' | 'approved';
 export default function PendingKycScreen() {
   const { colors } = useTheme();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<Tab>('pending');
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const [tab, setTab] = useState<Tab>(params.tab === 'approved' ? 'approved' : 'pending');
+  useEffect(() => {
+    if (params.tab === 'approved') setTab('approved');
+  }, [params.tab]);
   const [toast, setToast] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectingUserId, setRejectingUserId] = useState<string | null>(null);
@@ -86,7 +175,7 @@ export default function PendingKycScreen() {
     },
     onError: (err) => {
       setRejectingUserId(null);
-      setToast(getFriendlyErrorMessage(err) || 'Erro ao atualizar KYC.');
+      setToast(getFriendlyErrorMessage(err, 'Erro ao atualizar KYC.'));
     },
   });
 
@@ -103,7 +192,7 @@ export default function PendingKycScreen() {
       setToast(status === 'VERIFIED' ? `${data.processed} aprovado(s).${errMsg}` : `${data.processed} rejeitado(s).${errMsg}`);
     },
     onError: (err) => {
-      setToast(getFriendlyErrorMessage(err) || 'Erro na ação em massa.');
+      setToast(getFriendlyErrorMessage(err, 'Erro na ação em massa.'));
     },
   });
 
@@ -117,7 +206,7 @@ export default function PendingKycScreen() {
       setToast('KYC revogado. O usuário foi notificado.');
     },
     onError: (err) => {
-      setToast(getFriendlyErrorMessage(err) || 'Erro ao revogar.');
+      setToast(getFriendlyErrorMessage(err, 'Erro ao revogar.'));
     },
   });
 
@@ -300,6 +389,121 @@ export default function PendingKycScreen() {
                           <Text style={[styles.phone, { color: colors.textSecondary }]}>{item.phone}</Text>
                         )}
                         <Text style={[styles.date, { color: colors.textSecondary }]}>Enviado em {formatDate(item.kycSubmittedAt)}</Text>
+                        {(() => {
+                          const bullet = getBulletStatus(item.kycExtractionStatus, item.kycFraudSignal, item);
+                          const green = (colors as { success?: string }).success ?? '#22c55e';
+                          const red = colors.error ?? '#dc3545';
+                          const gray = colors.textSecondary;
+                          const showDetail = (title: string, cadastro: string, documento: string) => {
+                            Alert.alert(title, `Cadastro: ${cadastro}\nDocumento (OCR): ${documento}`);
+                          };
+                          const BulletRow = ({
+                            label,
+                            status,
+                            onPressDetail,
+                            cadastro,
+                            doc,
+                          }: {
+                            label: string;
+                            status: 'ok' | 'fail' | 'na';
+                            onPressDetail?: () => void;
+                            cadastro: string;
+                            doc: string;
+                          }) => {
+                            const hasInfo = cadastro !== '—' || doc !== '—';
+                            return (
+                              <View style={styles.bulletItem}>
+                                <View style={styles.bulletRow}>
+                                  {status === 'ok' && <Ionicons name="checkmark-circle" size={18} color={green} />}
+                                  {status === 'fail' && <Ionicons name="close-circle" size={18} color={red} />}
+                                  {status === 'na' && <Text style={[styles.bulletDash, { color: gray }]}>—</Text>}
+                                  <Text style={[styles.bulletLabel, { color: colors.textPrimary }]}>{label}</Text>
+                                  {status === 'fail' && onPressDetail != null && (
+                                    <TouchableOpacity onPress={onPressDetail} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                                      <Ionicons name="information-circle-outline" size={18} color={red} />
+                                    </TouchableOpacity>
+                                  )}
+                                </View>
+                                {hasInfo && (
+                                  <Text style={[styles.bulletDetail, { color: gray }]} numberOfLines={2}>
+                                    Cadastro: {cadastro} · Doc: {doc}
+                                  </Text>
+                                )}
+                              </View>
+                            );
+                          };
+                          return (
+                            <View style={styles.bulletBlock}>
+                              <BulletRow
+                                label="Data de nascimento"
+                                status={bullet.data}
+                                onPressDetail={bullet.data === 'fail' ? () => showDetail('Data de nascimento', item.birthDate ?? '—', item.kycExtractedBirthDate ?? '—') : undefined}
+                                cadastro={item.birthDate ?? '—'}
+                                doc={item.kycExtractedBirthDate ?? '—'}
+                              />
+                              <BulletRow
+                                label="CPF"
+                                status={bullet.cpf}
+                                onPressDetail={bullet.cpf === 'fail' ? () => showDetail('CPF', item.document ? formatCpfDisplay(item.document) : '—', item.kycExtractedCpf ? formatCpfDisplay(item.kycExtractedCpf) : '—') : undefined}
+                                cadastro={item.document ? formatCpfDisplay(item.document) : '—'}
+                                doc={item.kycExtractedCpf ? formatCpfDisplay(item.kycExtractedCpf) : '—'}
+                              />
+                              <BulletRow
+                                label="RG"
+                                status={bullet.rg}
+                                onPressDetail={bullet.rg === 'fail' ? () => showDetail('RG', item.rg ?? '—', item.kycExtractedDocNumber ?? '—') : undefined}
+                                cadastro={item.rg ?? '—'}
+                                doc={item.kycExtractedDocNumber ?? '—'}
+                              />
+                              <BulletRow
+                                label="Nome"
+                                status={bullet.nome}
+                                onPressDetail={bullet.nome === 'fail' ? () => showDetail('Nome', item.name ?? '—', item.kycExtractedName ?? '—') : undefined}
+                                cadastro={item.name ?? '—'}
+                                doc={item.kycExtractedName ?? '—'}
+                              />
+                            </View>
+                          );
+                        })()}
+                        {/* Veredito automático: Passou (✅) ou Falhou (❌) */}
+                        <View
+                          style={[
+                            styles.vereditoBox,
+                            {
+                              backgroundColor:
+                                item.kycExtractionStatus === 'OK'
+                                  ? ((colors as { success?: string }).success ?? '#22c55e') + '18'
+                                  : item.kycExtractionStatus === 'DIVERGENT' || item.kycExtractionStatus === 'NOT_EXTRACTED'
+                                    ? (colors.error ?? '#dc3545') + '18'
+                                    : colors.surface,
+                              borderColor:
+                                item.kycExtractionStatus === 'OK'
+                                  ? ((colors as { success?: string }).success ?? '#22c55e') + '50'
+                                  : item.kycExtractionStatus === 'DIVERGENT' || item.kycExtractionStatus === 'NOT_EXTRACTED'
+                                    ? (colors.error ?? '#dc3545') + '50'
+                                    : colors.textSecondary + '30',
+                            },
+                          ]}
+                        >
+                          {item.kycExtractionStatus === 'OK' && (
+                            <>
+                              <Text style={styles.vereditoEmoji}>✅</Text>
+                              <Text style={[styles.vereditoText, { color: (colors as { success?: string }).success ?? '#22c55e' }]}>Passou</Text>
+                            </>
+                          )}
+                          {(item.kycExtractionStatus === 'DIVERGENT' || item.kycExtractionStatus === 'NOT_EXTRACTED') && (
+                            <>
+                              <Text style={styles.vereditoEmoji}>❌</Text>
+                              <Text style={[styles.vereditoText, { color: colors.error ?? '#dc3545' }]}>Falhou</Text>
+                            </>
+                          )}
+                          {item.kycExtractionStatus === 'PENDING' && (
+                            <>
+                              <Text style={[styles.vereditoEmojiSmall, { color: colors.textSecondary }]}>⏳</Text>
+                              <Text style={[styles.vereditoTextSmall, { color: colors.textSecondary }]}>Aguardando análise</Text>
+                            </>
+                          )}
+                        </View>
                       </View>
                     </TouchableOpacity>
                     <View style={styles.thumbRow}>
@@ -319,6 +523,15 @@ export default function PendingKycScreen() {
                         >
                           <ExpoImage source={{ uri: item.selfieUrl }} style={styles.thumb} contentFit="cover" />
                           <Text style={[styles.thumbLabel, { color: colors.textSecondary }]}>Selfie</Text>
+                        </TouchableOpacity>
+                      )}
+                      {item.documentVersoUrl != null && (
+                        <TouchableOpacity
+                          style={styles.thumbWrap}
+                          onPress={() => item.documentVersoUrl && Linking.openURL(item.documentVersoUrl)}
+                        >
+                          <ExpoImage source={{ uri: item.documentVersoUrl }} style={styles.thumb} contentFit="cover" />
+                          <Text style={[styles.thumbLabel, { color: colors.textSecondary }]}>Verso</Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -394,10 +607,107 @@ export default function PendingKycScreen() {
                     <View style={styles.cardRow}>
                       <Text style={[styles.name, { color: colors.textPrimary }]}>{item.name}</Text>
                       <Text style={[styles.email, { color: colors.textSecondary }]} numberOfLines={1}>{item.email}</Text>
+                      {item.phone != null && item.phone !== '' && (
+                        <Text style={[styles.phone, { color: colors.textSecondary }]}>{item.phone}</Text>
+                      )}
                       {item.username ? (
                         <Text style={[styles.phone, { color: colors.textSecondary }]}>@{item.username}</Text>
                       ) : null}
+                      <Text style={[styles.date, { color: colors.textSecondary }]}>Enviado em {formatDate(item.kycSubmittedAt)}</Text>
                       <Text style={[styles.date, { color: colors.textSecondary }]}>Aprovado em {formatDate(item.kycVerifiedAt)}</Text>
+                      {(() => {
+                        const bullet = getBulletStatus(item.kycExtractionStatus, item.kycFraudSignal, item);
+                        const green = (colors as { success?: string }).success ?? '#22c55e';
+                        const red = colors.error ?? '#dc3545';
+                        const gray = colors.textSecondary;
+                        const showDetail = (title: string, cadastro: string, documento: string) => {
+                          Alert.alert(title, `Cadastro: ${cadastro}\nDocumento (OCR): ${documento}`);
+                        };
+                        const BulletRow = ({
+                          label,
+                          status,
+                          onPressDetail,
+                          cadastro,
+                          doc,
+                        }: {
+                          label: string;
+                          status: 'ok' | 'fail' | 'na';
+                          onPressDetail?: () => void;
+                          cadastro: string;
+                          doc: string;
+                        }) => {
+                          const hasInfo = cadastro !== '—' || doc !== '—';
+                          return (
+                            <View style={styles.bulletItem}>
+                              <View style={styles.bulletRow}>
+                                {status === 'ok' && <Ionicons name="checkmark-circle" size={18} color={green} />}
+                                {status === 'fail' && <Ionicons name="close-circle" size={18} color={red} />}
+                                {status === 'na' && <Text style={[styles.bulletDash, { color: gray }]}>—</Text>}
+                                <Text style={[styles.bulletLabel, { color: colors.textPrimary }]}>{label}</Text>
+                                {status === 'fail' && onPressDetail != null && (
+                                  <TouchableOpacity onPress={onPressDetail} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                                    <Ionicons name="information-circle-outline" size={18} color={red} />
+                                  </TouchableOpacity>
+                                )}
+                              </View>
+                              {hasInfo && (
+                                <Text style={[styles.bulletDetail, { color: gray }]} numberOfLines={2}>
+                                  Cadastro: {cadastro} · Doc: {doc}
+                                </Text>
+                              )}
+                            </View>
+                          );
+                        };
+                        return (
+                          <View style={styles.bulletBlock}>
+                            <BulletRow
+                              label="Data de nascimento"
+                              status={bullet.data}
+                              onPressDetail={bullet.data === 'fail' ? () => showDetail('Data de nascimento', item.birthDate ?? '—', item.kycExtractedBirthDate ?? '—') : undefined}
+                              cadastro={item.birthDate ?? '—'}
+                              doc={item.kycExtractedBirthDate ?? '—'}
+                            />
+                            <BulletRow
+                              label="CPF"
+                              status={bullet.cpf}
+                              onPressDetail={bullet.cpf === 'fail' ? () => showDetail('CPF', item.document ? formatCpfDisplay(item.document) : '—', item.kycExtractedCpf ? formatCpfDisplay(item.kycExtractedCpf) : '—') : undefined}
+                              cadastro={item.document ? formatCpfDisplay(item.document) : '—'}
+                              doc={item.kycExtractedCpf ? formatCpfDisplay(item.kycExtractedCpf) : '—'}
+                            />
+                            <BulletRow
+                              label="RG"
+                              status={bullet.rg}
+                              onPressDetail={bullet.rg === 'fail' ? () => showDetail('RG', item.rg ?? '—', item.kycExtractedDocNumber ?? '—') : undefined}
+                              cadastro={item.rg ?? '—'}
+                              doc={item.kycExtractedDocNumber ?? '—'}
+                            />
+                            <BulletRow
+                              label="Nome"
+                              status={bullet.nome}
+                              onPressDetail={bullet.nome === 'fail' ? () => showDetail('Nome', item.name ?? '—', item.kycExtractedName ?? '—') : undefined}
+                              cadastro={item.name ?? '—'}
+                              doc={item.kycExtractedName ?? '—'}
+                            />
+                          </View>
+                        );
+                      })()}
+                      <View
+                        style={[
+                          styles.vereditoBox,
+                          {
+                            backgroundColor: item.kycExtractionStatus === 'OK' ? ((colors as { success?: string }).success ?? '#22c55e') + '18' : (colors.error ?? '#dc3545') + '18',
+                            borderColor: item.kycExtractionStatus === 'OK' ? ((colors as { success?: string }).success ?? '#22c55e') + '50' : (colors.error ?? '#dc3545') + '50',
+                          },
+                        ]}
+                      >
+                        <Text style={styles.vereditoEmoji}>✅</Text>
+                        <Text style={[styles.vereditoText, { color: (colors as { success?: string }).success ?? '#22c55e' }]}>
+                          {item.kycDecidedBy == null ? 'Validação automática' : 'Passou'}
+                        </Text>
+                      </View>
+                      <Text style={[styles.date, { color: colors.textSecondary, marginTop: spacing.sm }]}>
+                        {item.kycDecidedBy == null ? 'Aprovado automaticamente' : 'Aprovado pela equipe'}
+                      </Text>
                     </View>
                     <TouchableOpacity
                       style={[styles.revokeBtn, { borderColor: '#dc3545' + '60' }]}
@@ -543,6 +853,26 @@ const styles = StyleSheet.create({
   email: { fontSize: 13, marginTop: 2 },
   phone: { fontSize: 13, marginTop: 2 },
   date: { fontSize: 12, marginTop: 4 },
+  bulletBlock: { marginTop: 8, gap: 6 },
+  bulletItem: { gap: 2 },
+  bulletRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  bulletDash: { fontSize: 14, width: 18, textAlign: 'center' },
+  bulletLabel: { fontSize: 13, flex: 1 },
+  bulletDetail: { fontSize: 11, marginLeft: 24 },
+  vereditoBox: {
+    marginTop: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 72,
+  },
+  vereditoEmoji: { fontSize: 32, marginBottom: 4 },
+  vereditoText: { fontSize: 18, fontWeight: '700' },
+  vereditoEmojiSmall: { fontSize: 24, marginBottom: 4 },
+  vereditoTextSmall: { fontSize: 14, fontWeight: '600' },
   thumbRow: { flexDirection: 'row', gap: spacing.md, marginVertical: spacing.sm },
   thumbWrap: { alignItems: 'center' },
   thumb: { width: 80, height: 100, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.06)' },

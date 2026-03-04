@@ -96,12 +96,14 @@ export class FavoritesService {
 
   private readonly PAGE_SIZE = 20;
 
-  async list(userId: string, cursor?: string): Promise<{ items: FavoriteItemDto[]; nextCursor: string | null }> {
+  async list(userId: string, cursor?: string): Promise<{ items: FavoriteItemDto[]; nextCursor: string | null; totalCount?: number }> {
+    const where = {
+      userId,
+      pet: { owner: { deactivatedAt: null } },
+    };
+    const totalCountPromise = !cursor ? this.prisma.favorite.count({ where }) : Promise.resolve(undefined);
     const list = await this.prisma.favorite.findMany({
-      where: {
-        userId,
-        pet: { owner: { deactivatedAt: null } },
-      },
+      where,
       take: this.PAGE_SIZE + 1,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
       orderBy: { createdAt: 'desc' },
@@ -148,7 +150,8 @@ export class FavoritesService {
         return dto;
       })
       .filter((d): d is FavoriteItemDto => d != null);
-    return { items: dtos, nextCursor };
+    const totalCount = await totalCountPromise;
+    return { items: dtos, nextCursor, ...(totalCount !== undefined && { totalCount }) };
   }
 
   private toItemDto(

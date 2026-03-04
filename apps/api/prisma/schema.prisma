@@ -18,6 +18,8 @@ model User {
   avatarUrl    String?
   phone        String?
   document     String?   @unique // CPF (11 dígitos) ou CNPJ (14 dígitos); obrigatório no cadastro; único para evitar cadastros duplicados
+  rg           String?   // número do RG (opcional); usado para conferência OCR no KYC quando o documento enviado for RG
+  birthDate    DateTime? @db.Date // data de nascimento (cadastro usuário não parceiro)
   city         String?
   bio          String?   // texto curto sobre o usuário (ex: "Amo animais, quero adotar")
   housingType  String?   // CASA | APARTAMENTO — para o anunciante avaliar
@@ -47,8 +49,9 @@ model User {
   missionPreferencesCompleteAt DateTime? // quando adicionou preferências — pontos de missão
   // KYC (verificação de identidade) — obrigatório para adotantes antes de confirmar adoção
   kycStatus          String?   // PENDING | VERIFIED | REJECTED; null = nunca enviou
-  kycDocumentKey     String?   // chave do documento (upload)
-  kycSelfieKey       String?   // chave da selfie com documento
+  kycDocumentKey       String?   // chave do documento (upload)
+  kycSelfieKey         String?   // chave da selfie com documento
+  kycDocumentVersoKey  String?   // chave do verso do documento (RG); usado para extrair data de nascimento quando a frente não tem
   kycSubmittedAt     DateTime? // quando enviou para análise
   kycVerifiedAt      DateTime? // quando admin aprovou
   kycRejectedAt      DateTime? // quando admin rejeitou
@@ -56,6 +59,16 @@ model User {
   kycConsentAt       DateTime? // quando o usuário aceitou o uso das fotos apenas para análise e exclusão após decisão
   kycDecidedBy       String?   // id do admin que aprovou/rejeitou (auditoria)
   kycDecidedAt       DateTime? // quando o admin tomou a decisão
+  // Extração automática (OCR Vision/Tesseract): nome, CPF, nº doc e data no documento para conferência com cadastro
+  kycExtractedBirthDate   DateTime? @db.Date // data extraída do documento
+  kycExtractedName        String?   // nome extraído do documento (para conferência com user.name)
+  kycExtractedCpf         String?   // CPF extraído do documento (11 dígitos; para conferência com user.document quando CPF)
+  kycExtractedDocNumber   String?   // número do RG ou CNH extraído do documento (para conferência com user.rg ou exibição)
+  kycExtractionStatus     String?   // OK | DIVERGENT | NOT_EXTRACTED | PENDING
+  kycExtractionRunAt      DateTime? // quando a extração foi executada
+  kycFraudSignal          String?   // CPF_DIVERGENT | RG_DIVERGENT | NAME_DIVERGENT | BIRTH_DATE_OR_AGE_DIVERGENT — alerta fraude para admin
+  kycCancelledAt         DateTime? // quando o usuário cancelou a solicitação (estava PENDING)
+  kycCancellationReason  String?   @db.Text // motivo do cancelamento (select no app)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   pets         Pet[]

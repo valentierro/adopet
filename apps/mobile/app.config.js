@@ -3,19 +3,19 @@
 const baseExpo = {
   name: 'Adopet',
   slug: 'adopet',
-  version: '1.1.10',
+  version: '1.1.11',
   orientation: 'portrait',
   icon: './assets/brand/icon/app_icon_light.png',
   userInterfaceStyle: 'automatic',
   scheme: 'adopet',
   splash: {
-    image: './assets/brand/logo/logo_splash.png',
-    resizeMode: 'contain',
-    backgroundColor: '#FFFFFF',
+    image: './assets/brand/splash/splash_full.png',
+    resizeMode: 'cover',
+    backgroundColor: '#7CB342',
   },
   ios: {
     supportsTablet: true,
-    buildNumber: '66',
+    buildNumber: '67',
     bundleIdentifier: 'br.com.adopet.app',
     associatedDomains: ['applinks:appadopet.com.br'],
     infoPlist: { UIBackgroundModes: [] },
@@ -32,8 +32,8 @@ const baseExpo = {
       backgroundColor: '#FFFFFF',
     },
     package: 'br.com.adopet.app',
-    // Último publicado na Play Store: 66. Cada novo upload precisa de versionCode maior.
-    versionCode: 66,
+    // Último publicado na Play Store: 67. Cada novo upload precisa de versionCode maior.
+    versionCode: 67,
     intentFilters: [
       {
         action: 'VIEW',
@@ -51,13 +51,13 @@ const baseExpo = {
     [
       'expo-splash-screen',
       {
-        backgroundColor: '#FFFFFF',
-        image: './assets/brand/logo/logo_splash.png',
-        resizeMode: 'contain',
+        backgroundColor: '#7CB342',
+        image: './assets/brand/splash/splash_full.png',
+        resizeMode: 'cover',
         dark: {
-          backgroundColor: '#1B4332',
-          image: './assets/brand/logo/logo_splash.png',
-          resizeMode: 'contain',
+          backgroundColor: '#5A8F2E',
+          image: './assets/brand/splash/splash_full.png',
+          resizeMode: 'cover',
         },
       },
     ],

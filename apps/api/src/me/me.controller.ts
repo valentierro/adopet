@@ -21,6 +21,7 @@ import { CreateCheckoutSessionDto } from './dto/checkout-session.dto';
 import { CreateBillingPortalSessionDto } from './dto/billing-portal.dto';
 import { BecomePartnerDto } from './dto/become-partner.dto';
 import { SubmitKycDto } from './dto/submit-kyc.dto';
+import { CancelKycDto } from './dto/cancel-kyc.dto';
 import { SubmitSatisfactionDto } from '../satisfaction/dto/submit-satisfaction.dto';
 import { SatisfactionService } from '../satisfaction/satisfaction.service';
 import type { MeResponseDto } from './dto/me-response.dto';
@@ -75,7 +76,13 @@ export class MeController {
   @Post('kyc')
   @ApiOperation({ summary: 'Enviar documento e selfie para verificação KYC (obrigatório para adotante confirmar adoção)' })
   async submitKyc(@CurrentUser() user: { id: string }, @Body() dto: SubmitKycDto) {
-    return this.meService.submitKyc(user.id, dto.selfieWithDocKey, dto.consentGiven);
+    return this.meService.submitKyc(user.id, dto.selfieWithDocKey, dto.consentGiven, dto.documentVersoKey);
+  }
+
+  @Post('kyc/cancel')
+  @ApiOperation({ summary: 'Cancelar solicitação de KYC em análise (PENDING). Notifica admins e remove da fila de pendentes.' })
+  async cancelKyc(@CurrentUser() user: { id: string }, @Body() dto: CancelKycDto): Promise<{ message: string }> {
+    return this.meService.cancelKyc(user.id, dto.cancellationReason);
   }
 
   @Post('satisfaction-survey')
@@ -525,13 +532,13 @@ export class MeController {
   }
 
   @Get('adoptions')
-  @ApiOperation({ summary: 'Listar adoções: role=ADOPTER (pets que adotou) ou role=TUTOR (anúncios que viraram adoção)' })
+  @ApiOperation({ summary: 'Listar adoções: role=ADOPTER (pets que adotou), role=TUTOR (anúncios que viraram adoção) ou sem role (todas, para contagem no dashboard)' })
   async getMyAdoptions(
     @CurrentUser() user: { id: string },
     @Query('species') species?: 'BOTH' | 'DOG' | 'CAT',
     @Query('role') role?: 'ADOPTER' | 'TUTOR',
   ): Promise<MyAdoptionsResponseDto> {
-    const roleParam = role === 'TUTOR' ? 'TUTOR' : 'ADOPTER';
+    const roleParam = role === 'TUTOR' ? 'TUTOR' : role === 'ADOPTER' ? 'ADOPTER' : undefined;
     return this.meService.getMyAdoptions(user.id, species, roleParam);
   }
 

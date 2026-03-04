@@ -36,7 +36,7 @@ export class FavoritesController {
   async list(
     @CurrentUser() user: { id: string },
     @Query('cursor') cursor?: string,
-  ): Promise<{ items: FavoriteItemDto[]; nextCursor: string | null }> {
+  ): Promise<{ items: FavoriteItemDto[]; nextCursor: string | null; totalCount?: number }> {
     return this.favoritesService.list(user.id, cursor);
   }
 }

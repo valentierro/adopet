@@ -13,6 +13,7 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { useResponsiveGridColumns } from '../../src/hooks/useResponsiveGridColumns';
 import { fetchFeed, type FeedResponse, type FeedSpeciesFilter } from '../../src/api/feed';
 import { getPreferences } from '../../src/api/me';
+import { getSpeciesLabel } from '../../src/utils/petLabels';
 import { spacing } from '../../src/theme';
 
 const GRID_PADDING = spacing.md;
@@ -255,11 +256,7 @@ export default function FeedGridScreen() {
                 )}
               </View>
               <Text style={[styles.cardMeta, { color: colors.textSecondary }]} numberOfLines={1}>
-                {String(item.species).toUpperCase() === 'DOG'
-                  ? 'Cachorro'
-                  : String(item.species).toUpperCase() === 'CAT'
-                    ? 'Gato'
-                    : item.species}{' '}
+                {getSpeciesLabel(item.species)}{' '}
                 • {item.age} ano(s)
               </Text>
               {(item.city != null || formatDistanceKm(item.distanceKm) != null) && (
@@ -291,65 +288,85 @@ export default function FeedGridScreen() {
 
   return (
     <ScreenContainer scroll={false}>
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.id}
-        numColumns={numColumns}
-        key={`grid-${numColumns}`}
-        style={[styles.list, { backgroundColor: colors.background }]}
-        contentContainerStyle={[
-          styles.listContent,
-          items.length === 0 && styles.listContentEmpty,
-          { paddingHorizontal: GRID_PADDING },
-        ]}
-        columnWrapperStyle={styles.row}
-        renderItem={renderItem}
-        onEndReached={() => {
-          if (hasNextPage && !isFetchingNextPage) fetchNextPage();
-        }}
-        onEndReachedThreshold={0.4}
-        ListEmptyComponent={
-          !isLoading && items.length === 0 ? (
-            <View style={styles.emptyWrap}>
-              <EmptyState
-                title="Nenhum pet no momento"
-                message="Não há pets com esse filtro na sua região. Tente alterar o raio na aba Mapa."
-                icon={<Ionicons name="paw-outline" size={56} color={colors.textSecondary} />}
-              />
-            </View>
-          ) : null
-        }
-        ListHeaderComponent={
-          items.length > 0 ? (
-            <>
-              <PageIntro title={title} subtitle="Toque em um pet para ver detalhes e conversar com o tutor." />
-              <Text style={[styles.countHint, { color: colors.textSecondary }]}>
-                {items.length}
-                {totalCount > 0 ? ` de ${totalCount} ` : ' '}
-                pets
-              </Text>
-            </>
-          ) : null
-        }
-        ListFooterComponent={
-          isFetchingNextPage && items.length > 0 ? (
-            <View style={styles.footer}>
-              <LoadingLogo size={64} />
-              <Text style={[styles.footerLoadingText, { color: colors.textSecondary }]}>
-                Carregando mais...
-              </Text>
-            </View>
-          ) : null
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefetching && !isLoading}
-            onRefresh={() => refetch()}
-            tintColor={colors.primary}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-      />
+      <View style={styles.listWrap}>
+        <FlatList
+          data={items}
+          keyExtractor={(item) => item.id}
+          numColumns={numColumns}
+          key={`grid-${numColumns}`}
+          style={[styles.list, { backgroundColor: colors.background }]}
+          contentContainerStyle={[
+            styles.listContent,
+            items.length === 0 && styles.listContentEmpty,
+            { paddingHorizontal: GRID_PADDING, paddingBottom: isFetchingNextPage && items.length > 0 ? 160 : undefined },
+          ]}
+          columnWrapperStyle={styles.row}
+          renderItem={renderItem}
+          onEndReached={() => {
+            if (hasNextPage && !isFetchingNextPage) fetchNextPage();
+          }}
+          onEndReachedThreshold={0.5}
+          ListEmptyComponent={
+            !isLoading && items.length === 0 ? (
+              <View style={styles.emptyWrap}>
+                <EmptyState
+                  title="Nenhum pet no momento"
+                  message="Não há pets com esse filtro na sua região. Tente alterar o raio na aba Mapa."
+                  icon={<Ionicons name="paw-outline" size={56} color={colors.textSecondary} />}
+                />
+              </View>
+            ) : null
+          }
+          ListHeaderComponent={
+            items.length > 0 ? (
+              <>
+                <PageIntro title={title} subtitle="Toque em um pet para ver detalhes e conversar com o tutor." />
+                <Text style={[styles.countHint, { color: colors.textSecondary }]}>
+                  {items.length}
+                  {totalCount > 0 ? ` de ${totalCount} ` : ' '}
+                  pets
+                </Text>
+              </>
+            ) : null
+          }
+          ListFooterComponent={
+            isFetchingNextPage && items.length > 0 ? (
+              <View style={[styles.footer, { backgroundColor: colors.background }]}>
+                <LoadingLogo size={80} />
+                <Text style={[styles.footerLoadingText, { color: colors.textSecondary }]}>
+                  Carregando mais pets...
+                </Text>
+              </View>
+            ) : null
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching && !isLoading}
+              onRefresh={() => refetch()}
+              tintColor={colors.primary}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        />
+        {isFetchingNextPage && items.length > 0 ? (
+          <View
+            style={[
+              styles.loadingMoreOverlay,
+              {
+                backgroundColor: colors.background,
+                bottom: insets.bottom + 56,
+                paddingBottom: spacing.lg,
+              },
+            ]}
+            pointerEvents="none"
+          >
+            <LoadingLogo size={72} />
+            <Text style={[styles.footerLoadingText, { color: colors.textSecondary }]}>
+              Carregando mais pets...
+            </Text>
+          </View>
+        ) : null}
+      </View>
     </ScreenContainer>
   );
 }
@@ -368,7 +385,18 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   loadingText: { fontSize: 15 },
+  listWrap: { flex: 1, position: 'relative' },
   list: { flex: 1 },
+  loadingMoreOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    paddingTop: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    minHeight: 100,
+  },
   listContent: {
     paddingHorizontal: GRID_PADDING,
     paddingTop: spacing.sm,
@@ -445,12 +473,15 @@ const styles = StyleSheet.create({
   },
   emptyWrap: { flex: 1, justifyContent: 'center', paddingVertical: spacing.xl },
   footer: {
-    paddingVertical: spacing.xl,
+    minHeight: 220,
+    paddingVertical: spacing.xl * 1.5,
+    paddingBottom: spacing.xl * 2,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   footerLoadingText: {
-    fontSize: 14,
+    fontSize: 15,
+    fontWeight: '500',
   },
 });

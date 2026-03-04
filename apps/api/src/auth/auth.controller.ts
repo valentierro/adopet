@@ -13,6 +13,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { SetPasswordDto } from './dto/set-password.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { SignupResponseDto } from './dto/signup-response.dto';
+import { PresignSignupKycDto } from './dto/presign-signup-kyc.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from './current-user.decorator';
 
@@ -40,6 +41,12 @@ export class AuthController {
       throw new BadRequestException('Informe o documento (CPF ou CNPJ).');
     }
     return this.authService.checkDocumentAvailable(document);
+  }
+
+  @Post('presign-signup-kyc')
+  @ApiOperation({ summary: 'Obter URL para upload de documento KYC antes do signup (sem autenticação). Envie a key no signup como selfieWithDocKey.' })
+  async presignSignupKyc(@Body() dto: PresignSignupKycDto): Promise<{ uploadUrl: string; key: string }> {
+    return this.authService.presignSignupKyc(dto.filename, dto.contentType);
   }
 
   @Post('signup')

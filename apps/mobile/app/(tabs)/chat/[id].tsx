@@ -34,7 +34,9 @@ import { createReport } from '../../../src/api/reports';
 import { blockUser } from '../../../src/api/blocks';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFriendlyErrorMessage, isKycRequiredError, isKycNotCompleteError, getApiErrorBodyMessage } from '../../../src/utils/errorMessage';
+import { isUserEligibleToAdoptByAge } from '../../../src/utils/age';
 import { getMatchScoreColor } from '../../../src/utils/matchScoreColor';
+import { getSpeciesLabel, getSizeLabel } from '../../../src/utils/petLabels';
 import { configureExpandAnimation } from '../../../src/utils/layoutAnimation';
 import { trackEvent } from '../../../src/analytics';
 import { LoadingLogo, PrimaryButton, SecondaryButton, Toast, MatchScoreBadge, VerifiedBadge } from '../../../src/components';
@@ -46,13 +48,11 @@ const CHAT_REMINDER_KEY_PREFIX = 'adopet_chat_reminder_';
 
 const TYPING_DEBOUNCE_MS = 500;
 
-const SPECIES_LABEL: Record<string, string> = { dog: 'Cachorro', cat: 'Gato' };
-const SIZE_LABEL: Record<string, string> = { small: 'Pequeno', medium: 'Médio', large: 'Grande', xlarge: 'Muito grande' };
 function formatPetBasicInfo(pet: { species?: string; size?: string; age?: number } | undefined): string {
   if (!pet) return '';
   const parts: string[] = [];
-  if (pet.species) parts.push(SPECIES_LABEL[pet.species] ?? pet.species);
-  if (pet.size) parts.push(SIZE_LABEL[pet.size] ?? pet.size);
+  if (pet.species) parts.push(getSpeciesLabel(pet.species));
+  if (pet.size) parts.push(getSizeLabel(pet.size));
   if (pet.age != null) parts.push(pet.age === 1 ? '1 ano' : `${pet.age} anos`);
   return parts.join(' • ');
 }
@@ -182,6 +182,7 @@ export default function ChatRoomScreen() {
   const otherUserIsPartner = conversation?.otherUser?.isPartner === true;
   const canMarkAsAdopterWithoutKyc = otherUserKycVerified || otherUserIsPartner;
   const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe });
+  const ageEligibility = isUserEligibleToAdoptByAge(me);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
@@ -423,6 +424,7 @@ export default function ChatRoomScreen() {
     )?.submission?.matchScore;
   const [showFormTemplatePicker, setShowFormTemplatePicker] = useState(false);
   const [formSendToast, setFormSendToast] = useState<string | null>(null);
+  const formSendInProgressRef = useRef(false);
   const [showKycInfoBeforeFormModal, setShowKycInfoBeforeFormModal] = useState(false);
   const [pendingFormSendTemplateId, setPendingFormSendTemplateId] = useState<string | undefined>(undefined);
   const sendAdoptionFormMutation = useMutation({
@@ -439,10 +441,15 @@ export default function ChatRoomScreen() {
     onError: (e: unknown) => {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível enviar o formulário.'));
     },
+    onSettled: () => {
+      formSendInProgressRef.current = false;
+    },
   });
 
   const doSendForm = useCallback(
     (templateId?: string) => {
+      if (formSendInProgressRef.current) return;
+      formSendInProgressRef.current = true;
       sendAdoptionFormMutation.mutate(templateId);
     },
     [sendAdoptionFormMutation],
@@ -451,6 +458,7 @@ export default function ChatRoomScreen() {
   const requestSendForm = useCallback(
     (templateId?: string) => {
       if (!canMarkAsAdopterWithoutKyc) {
+        setShowFormTemplatePicker(false);
         setPendingFormSendTemplateId(templateId);
         setShowKycInfoBeforeFormModal(true);
         return;
@@ -1069,6 +1077,7 @@ export default function ChatRoomScreen() {
           }
 
           if (isFormSubmitted) {
+            const showFormLink = canSendAdoptionForm && !!adoptionRequestId;
             return (
               <View
                 style={[
@@ -1093,6 +1102,16 @@ export default function ChatRoomScreen() {
                     {item.content || 'Formulário preenchido'}
                   </Text>
                 </View>
+                {showFormLink && (
+                  <TouchableOpacity
+                    style={[styles.formCardBtn, { backgroundColor: colors.primary, marginTop: spacing.sm, alignSelf: 'flex-start' }]}
+                    onPress={() => router.push(`/partner-adoption-requests?requestId=${encodeURIComponent(adoptionRequestId!)}` as '/partner-adoption-requests')}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.formCardBtnText}>Ver formulário preenchido</Text>
+                    <Ionicons name="open-outline" size={18} color="#fff" />
+                  </TouchableOpacity>
+                )}
                 {item.senderId === userId ? (
                   <View style={styles.bubbleMetaRow}>
                     <Text style={[styles.bubbleMetaText, { color: 'rgba(255,255,255,0.8)' }]}>
@@ -1226,11 +1245,9 @@ export default function ChatRoomScreen() {
     </Modal>
 
     <Modal visible={showFormTemplatePicker} transparent animationType="fade" onRequestClose={() => setShowFormTemplatePicker(false)}>
-      <Pressable style={[styles.reportModalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]} onPress={() => setShowFormTemplatePicker(false)}>
-        <Pressable
-          style={[styles.reportModalBox, { backgroundColor: colors.surface, maxWidth: 360 }]}
-          onPress={(e) => e.stopPropagation()}
-        >
+      <View style={[styles.reportModalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowFormTemplatePicker(false)} />
+        <View style={[styles.reportModalBox, { backgroundColor: colors.surface, maxWidth: 360 }]}>
           <Text style={[styles.reportModalTitle, { color: colors.textPrimary, marginBottom: spacing.md }]}>
             Escolha o formulário para enviar
           </Text>
@@ -1251,9 +1268,12 @@ export default function ChatRoomScreen() {
                   },
                 ]}
                 onPress={() => {
+                  if (formSendInProgressRef.current || sendAdoptionFormMutation.isPending) return;
+                  setShowFormTemplatePicker(false);
                   requestSendForm(t.id);
                 }}
                 disabled={sendAdoptionFormMutation.isPending}
+                activeOpacity={0.7}
               >
                 <Ionicons name="document-text-outline" size={22} color={colors.primary} />
                 <Text style={[styles.confirmAdoptionBtnText, { color: colors.textPrimary, flex: 1 }]}>{t.name}</Text>
@@ -1266,8 +1286,8 @@ export default function ChatRoomScreen() {
           <View style={[styles.reportModalActions, { marginTop: spacing.md }]}>
             <SecondaryButton title="Cancelar" onPress={() => setShowFormTemplatePicker(false)} />
           </View>
-        </Pressable>
-      </Pressable>
+        </View>
+      </View>
     </Modal>
 
     <Modal
@@ -1439,6 +1459,17 @@ export default function ChatRoomScreen() {
                   Marque todos os itens para confirmar que realizou a adoção
                 </Text>
               </View>
+              {!ageEligibility.eligible && ageEligibility.reason && (
+                <TouchableOpacity
+                  style={[styles.adoptionChecklistRow, { backgroundColor: (colors.warning || '#d97706') + '18', borderColor: (colors.warning || '#d97706') + '50', marginHorizontal: spacing.md, marginBottom: spacing.sm, padding: spacing.sm, borderRadius: 10 }]}
+                  onPress={() => { setShowAdopterChecklistModal(false); router.push('/profile-edit'); }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="calendar-outline" size={20} color={colors.warning || '#d97706'} style={{ marginRight: spacing.sm }} />
+                  <Text style={[styles.adoptionChecklistLabel, { color: colors.textPrimary, flex: 1 }]}>{ageEligibility.reason}</Text>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
               <ScrollView style={styles.matchScoreModalScroll} contentContainerStyle={styles.matchScoreModalScrollContent} showsVerticalScrollIndicator>
                 {ADOPTER_CHECKLIST_ITEMS.map((item) => (
                   <TouchableOpacity
@@ -1507,16 +1538,18 @@ export default function ChatRoomScreen() {
                     {
                       backgroundColor: colors.primary,
                       borderWidth: 0,
-                      opacity: ADOPTER_CHECKLIST_ITEMS.every((i) => adopterChecklist[i.key]) ? 1 : 0.5,
+                      opacity: ADOPTER_CHECKLIST_ITEMS.every((i) => adopterChecklist[i.key]) && ageEligibility.eligible ? 1 : 0.5,
                     },
                   ]}
                   disabled={
                     !ADOPTER_CHECKLIST_ITEMS.every((i) => adopterChecklist[i.key]) ||
                     confirmAdoptionMutation.isPending ||
-                    declineAdoptionMutation.isPending
+                    declineAdoptionMutation.isPending ||
+                    !ageEligibility.eligible
                   }
                   onPress={() => {
                     if (!ADOPTER_CHECKLIST_ITEMS.every((i) => adopterChecklist[i.key])) return;
+                    if (!ageEligibility.eligible) return;
                     setShowAdopterChecklistModal(false);
                     setAdopterChecklist({});
                     confirmAdoptionMutation.mutate(true);

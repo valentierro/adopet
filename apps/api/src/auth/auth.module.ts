@@ -11,6 +11,8 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { PartnersModule } from '../partners/partners.module';
 import { EmailModule } from '../email/email.module';
 import { FeatureFlagModule } from '../feature-flag/feature-flag.module';
+import { UploadsModule } from '../uploads/uploads.module';
+import { MeModule } from '../me/me.module';
 
 @Global()
 @Module({
@@ -19,6 +21,8 @@ import { FeatureFlagModule } from '../feature-flag/feature-flag.module';
     forwardRef(() => PartnersModule),
     EmailModule,
     FeatureFlagModule,
+    UploadsModule,
+    forwardRef(() => MeModule),
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

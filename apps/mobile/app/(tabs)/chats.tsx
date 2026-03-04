@@ -144,51 +144,6 @@ export default function ChatsScreen() {
     setSectionExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
-  if (isLoading && conversations.length === 0 && blockedConversations.length === 0) {
-    return (
-      <ScreenContainer>
-        <PageIntro title="Conversas" subtitle="Suas conversas com tutores dos pets favoritados." />
-        <View style={styles.loadingWrap}>
-          <LoadingLogo size={160} />
-        </View>
-      </ScreenContainer>
-    );
-  }
-
-  if (conversations.length === 0 && blockedConversations.length === 0) {
-    return (
-      <ScreenContainer scroll>
-        <PageIntro title="Conversas" subtitle="Suas conversas com tutores dos pets favoritados." />
-        <View style={[styles.avisoBox, { backgroundColor: (colors.warning || '#d97706') + '14', borderColor: (colors.warning || '#d97706') + '40' }]}>
-          <Ionicons name="information-circle-outline" size={18} color={colors.warning || '#d97706'} style={styles.avisoIcon} />
-          <Text style={[styles.avisoText, { color: colors.textSecondary }]}>
-            Mantenha o respeito no chat e use este espaço apenas para combinar a adoção dos pets. Adoção no Adopet é voluntária e sem custos.
-          </Text>
-        </View>
-        <EmptyState
-          title="Nenhuma conversa"
-          message="Quando você favoritar um pet e tocar em Conversar, as conversas aparecerão aqui."
-          icon={<Ionicons name="chatbubbles-outline" size={48} color={colors.textSecondary} />}
-        />
-      </ScreenContainer>
-    );
-  }
-
-  const listHeader = (
-    <>
-      <PageIntro title="Conversas" subtitle="Suas conversas com tutores dos pets favoritados." />
-      <Text style={[styles.hint, { color: colors.textSecondary }]}>
-        Toque e segure em uma conversa para apagá-la.
-      </Text>
-      <View style={[styles.avisoBox, { backgroundColor: (colors.warning || '#d97706') + '14', borderColor: (colors.warning || '#d97706') + '40' }]}>
-        <Ionicons name="information-circle-outline" size={18} color={colors.warning || '#d97706'} style={styles.avisoIcon} />
-        <Text style={[styles.avisoText, { color: colors.textSecondary }]}>
-          Mantenha o respeito no chat e use este espaço apenas para combinar a adoção dos pets. Adoção no Adopet é voluntária e sem custos.
-        </Text>
-      </View>
-    </>
-  );
-
   const renderItem = useCallback(
     ({ item: c, section }: { item: ConversationListItem; section: (typeof sections)[0] }) => {
       const isBlocked = section.isBlocked === true;
@@ -271,6 +226,51 @@ export default function ChatsScreen() {
       );
     },
     [colors, sectionExpanded, toggleSection],
+  );
+
+  if (isLoading && conversations.length === 0 && blockedConversations.length === 0) {
+    return (
+      <ScreenContainer>
+        <PageIntro title="Conversas" subtitle="Suas conversas com tutores dos pets favoritados." />
+        <View style={styles.loadingWrap}>
+          <LoadingLogo size={160} />
+        </View>
+      </ScreenContainer>
+    );
+  }
+
+  if (conversations.length === 0 && blockedConversations.length === 0) {
+    return (
+      <ScreenContainer scroll>
+        <PageIntro title="Conversas" subtitle="Suas conversas com tutores dos pets favoritados." />
+        <View style={[styles.avisoBox, { backgroundColor: (colors.warning || '#d97706') + '14', borderColor: (colors.warning || '#d97706') + '40' }]}>
+          <Ionicons name="information-circle-outline" size={18} color={colors.warning || '#d97706'} style={styles.avisoIcon} />
+          <Text style={[styles.avisoText, { color: colors.textSecondary }]}>
+            Mantenha o respeito no chat e use este espaço apenas para combinar a adoção dos pets. Adoção no Adopet é voluntária e sem custos.
+          </Text>
+        </View>
+        <EmptyState
+          title="Nenhuma conversa"
+          message="Quando você favoritar um pet e tocar em Conversar, as conversas aparecerão aqui."
+          icon={<Ionicons name="chatbubbles-outline" size={48} color={colors.textSecondary} />}
+        />
+      </ScreenContainer>
+    );
+  }
+
+  const listHeader = (
+    <>
+      <PageIntro title="Conversas" subtitle="Suas conversas com tutores dos pets favoritados." />
+      <Text style={[styles.hint, { color: colors.textSecondary }]}>
+        Toque e segure em uma conversa para apagá-la.
+      </Text>
+      <View style={[styles.avisoBox, { backgroundColor: (colors.warning || '#d97706') + '14', borderColor: (colors.warning || '#d97706') + '40' }]}>
+        <Ionicons name="information-circle-outline" size={18} color={colors.warning || '#d97706'} style={styles.avisoIcon} />
+        <Text style={[styles.avisoText, { color: colors.textSecondary }]}>
+          Mantenha o respeito no chat e use este espaço apenas para combinar a adoção dos pets. Adoção no Adopet é voluntária e sem custos.
+        </Text>
+      </View>
+    </>
   );
 
   return (

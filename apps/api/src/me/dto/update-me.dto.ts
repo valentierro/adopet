@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MinLength, MaxLength, IsUrl, IsBoolean, Matches, IsIn } from 'class-validator';
+import { IsOptional, IsString, MinLength, MaxLength, IsUrl, IsBoolean, Matches, IsIn, IsDateString } from 'class-validator';
 
 export class UpdateMeDto {
   @ApiPropertyOptional()
@@ -25,6 +25,17 @@ export class UpdateMeDto {
   @IsString()
   @MaxLength(100)
   city?: string;
+
+  @ApiPropertyOptional({ example: '1990-05-15', description: 'Data de nascimento (YYYY-MM-DD). Obrigatório para adoção (18+ anos).' })
+  @IsOptional()
+  @IsDateString({}, { message: 'Informe uma data de nascimento válida (ex: 15/05/1990).' })
+  birthDate?: string;
+
+  @ApiPropertyOptional({ description: 'Número do RG (opcional). Usado para conferência automática no KYC quando o documento enviado for RG.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  rg?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

@@ -9,6 +9,8 @@ export type UpdateMeBody = {
   avatarUrl?: string;
   phone?: string;
   city?: string;
+  /** Data de nascimento (YYYY-MM-DD). Obrigatória para adoção (18+). */
+  birthDate?: string | null;
   bio?: string;
   housingType?: string;
   hasYard?: boolean;
@@ -25,6 +27,8 @@ export type UpdateMeBody = {
   commitsToVetCare?: string;
   walkFrequency?: string;
   monthlyBudgetForPet?: string;
+  /** Data de nascimento em ISO (YYYY-MM-DD). Obrigatória para adoção (18+). */
+  birthDate?: string | null;
 };
 
 export type LookupUsernameResult = { id: string; name: string; username: string } | null;
@@ -81,6 +85,8 @@ export type KycStatusResponse = {
   kycVerifiedAt: string | null;
   kycRejectedAt: string | null;
   kycRejectionReason: string | null;
+  kycExtractionStatus?: string | null;
+  kycDecidedBy?: string | null;
 };
 
 export async function getKycStatus(): Promise<KycStatusResponse> {
@@ -90,11 +96,25 @@ export async function getKycStatus(): Promise<KycStatusResponse> {
 export async function submitKyc(
   selfieWithDocKey: string,
   consentGiven: boolean,
+  documentVersoKey?: string,
 ): Promise<{ kycStatus: string; kycSubmittedAt: string }> {
   return api.post<{ kycStatus: string; kycSubmittedAt: string }>('/me/kyc', {
     selfieWithDocKey,
     consentGiven,
+    ...(documentVersoKey ? { documentVersoKey } : {}),
   });
+}
+
+/** Códigos de motivo de cancelamento da solicitação KYC (em análise). */
+export const KYC_CANCELLATION_REASONS = [
+  { value: 'WRONG_DOCUMENT', label: 'Enviei documento errado' },
+  { value: 'WANT_TO_RESUBMIT', label: 'Quero enviar novamente' },
+  { value: 'NOT_ADOPTING_NOW', label: 'Desisti de adotar no momento' },
+  { value: 'OTHER', label: 'Outro' },
+] as const;
+
+export async function cancelKyc(cancellationReason: string): Promise<{ message: string }> {
+  return api.post<{ message: string }>('/me/kyc/cancel', { cancellationReason });
 }
 
 export type SubmitSatisfactionBody = {

@@ -43,7 +43,7 @@ export const QUESTION_LIBRARY_CATEGORIES = [
 export const QUESTION_LIBRARY: LibraryQuestion[] = [
   // Identificação
   { type: 'TEXT', label: 'Nome completo', required: true, category: 'Identificação' },
-  { type: 'DATE', label: 'Data de nascimento', required: true, placeholder: 'AAAA-MM-DD', category: 'Identificação' },
+  { type: 'DATE', label: 'Data de nascimento', required: true, placeholder: 'DD/MM/AAAA', category: 'Identificação' },
   { type: 'TEXT', label: 'CPF', required: true, placeholder: 'Apenas números', category: 'Identificação' },
   { type: 'TEXT', label: 'RG', required: false, category: 'Identificação' },
   { type: 'TEXT', label: 'Profissão', required: false, category: 'Identificação' },
@@ -342,11 +342,39 @@ export const FORM_TEMPLATES: FormTemplate[] = [
     recommended: true,
     icon: 'speedometer-outline',
     introTitle: 'Formulário com Match Score',
-    introBody: 'Este formulário faz uma pré-avaliação da compatibilidade do interessado com o pet, com base nas perguntas e respostas.\n\nAs questões são alinhadas aos dados do cadastro do pet (moradia, frequência de passeios, ritmo de vida, etc.). O app calcula automaticamente um Match Score (0–100%) que ajuda você a priorizar candidatos mais compatíveis.\n\nO formulário vem com perguntas pré-definidas, mas pode ser alterado: você pode adicionar ou remover perguntas conforme sua necessidade. Cada pergunta tem um peso configurável que influencia o cálculo do Match Score.\n\nIdeal para triagem eficiente e adoções mais assertivas.',
+    introBody: 'Este formulário faz uma pré-avaliação da compatibilidade do interessado com o pet, com base nas perguntas e respostas.\n\nInclui preferências alinhadas ao cadastro do pet: espécie (cachorro/gato), porte, sexo e faixa de idade, além de moradia, frequência de passeios, ritmo de vida e compromissos. O app calcula automaticamente um Match Score (0–100%) que ajuda você a priorizar candidatos mais compatíveis.\n\nO formulário vem com perguntas pré-definidas, mas pode ser alterado: você pode adicionar ou remover perguntas conforme sua necessidade. Cada pergunta tem um peso configurável que influencia o cálculo do Match Score.\n\nIdeal para triagem eficiente e adoções mais assertivas.',
     questions: [
+      // Identificação e documento
       { type: 'TEXT', label: 'Nome completo', required: true },
-      { type: 'TEXT', label: 'Telefone / WhatsApp', required: true },
-      { type: 'TEXT', label: 'E-mail', required: true },
+      { type: 'TEXT', label: 'CPF', required: true, placeholder: 'Apenas números' },
+      { type: 'TEXT', label: 'RG', required: false, placeholder: 'Opcional' },
+      { type: 'DATE', label: 'Data de nascimento', required: true, placeholder: 'DD/MM/AAAA' },
+      // Contato
+      { type: 'TEXT', label: 'Telefone / WhatsApp', required: true, placeholder: '(00) 00000-0000' },
+      { type: 'TEXT', label: 'E-mail', required: true, placeholder: 'seu@email.com' },
+      {
+        type: 'SELECT_SINGLE',
+        label: 'Como nos conheceu?',
+        required: false,
+        options: [
+          { value: 'site', label: 'Site' },
+          { value: 'redes', label: 'Redes sociais' },
+          { value: 'indicacao', label: 'Indicação' },
+          { value: 'evento', label: 'Evento' },
+          { value: 'outro', label: 'Outro' },
+        ],
+      },
+      // Endereço
+      { type: 'TEXTAREA', label: 'Endereço completo', required: true, placeholder: 'Rua, número, complemento' },
+      { type: 'TEXT', label: 'CEP', required: true, placeholder: '00000-000' },
+      { type: 'TEXT', label: 'Cidade', required: true },
+      { type: 'TEXT', label: 'Bairro', required: true },
+      // Preferências alinhadas ao cadastro do pet (Match Score)
+      { type: 'SELECT_SINGLE', label: 'Qual espécie você busca adotar?', required: true, options: [{ value: 'DOG', label: 'Cachorro' }, { value: 'CAT', label: 'Gato' }, { value: 'BOTH', label: 'Tanto faz' }], useForScoring: true, weight: 6, scoringConfig: { DOG: 10, CAT: 10, BOTH: 10 } },
+      { type: 'SELECT_SINGLE', label: 'Preferência de porte do pet', required: false, options: [{ value: 'small', label: 'Pequeno' }, { value: 'medium', label: 'Médio' }, { value: 'large', label: 'Grande' }, { value: 'xlarge', label: 'Muito grande' }, { value: 'BOTH', label: 'Indiferente' }], useForScoring: true, weight: 5, scoringConfig: { small: 10, medium: 10, large: 10, xlarge: 10, BOTH: 10 } },
+      { type: 'SELECT_SINGLE', label: 'Preferência de sexo do pet', required: false, options: [{ value: 'male', label: 'Macho' }, { value: 'female', label: 'Fêmea' }, { value: 'BOTH', label: 'Indiferente' }], useForScoring: true, weight: 4, scoringConfig: { male: 10, female: 10, BOTH: 10 } },
+      { type: 'SELECT_SINGLE', label: 'Faixa de idade preferida do pet', required: false, options: [{ value: 'puppy', label: 'Filhote (até 1 ano)' }, { value: 'young', label: 'Jovem (1 a 3 anos)' }, { value: 'adult', label: 'Adulto (3 a 7 anos)' }, { value: 'senior', label: 'Idoso (7+ anos)' }, { value: 'any', label: 'Indiferente' }], useForScoring: true, weight: 5, scoringConfig: { puppy: 10, young: 10, adult: 10, senior: 10, any: 10 } },
+      // Moradia e compatibilidade (Match Score)
       { type: 'SELECT_SINGLE', label: 'Mora em casa ou apartamento?', required: true, options: [{ value: 'casa', label: 'Casa' }, { value: 'apartamento', label: 'Apartamento' }], useForScoring: true, weight: 7, scoringConfig: { casa: 10, apartamento: 8 } },
       { type: 'SELECT_SINGLE', label: 'Com que frequência você passeia ou planeja passear com o pet?', required: false, options: [{ value: 'DAILY', label: 'Diariamente' }, { value: 'FEW_TIMES_WEEK', label: 'Algumas vezes por semana' }, { value: 'RARELY', label: 'Raramente' }, { value: 'INDIFERENTE', label: 'Indiferente' }], useForScoring: true, weight: 6, scoringConfig: { DAILY: 10, FEW_TIMES_WEEK: 8, RARELY: 5, INDIFERENTE: 7 } },
       { type: 'SELECT_SINGLE', label: 'Qual seu ritmo de vida em relação a atividades físicas?', required: false, options: [{ value: 'LOW', label: 'Calmo' }, { value: 'MEDIUM', label: 'Moderado' }, { value: 'HIGH', label: 'Ativo' }], useForScoring: true, weight: 6, scoringConfig: { LOW: 8, MEDIUM: 10, HIGH: 9 } },
@@ -384,7 +412,7 @@ export const FORM_TEMPLATES: FormTemplate[] = [
     introBody: 'Formulário inspirado em ONGs como Toca do PET, com triagem detalhada.\n\nInclui identificação completa, endereço, moradia, experiência com pets e compromissos. Ideal para instituições que seguem processos rigorosos de triagem.',
     questions: [
       { type: 'TEXT', label: 'Nome completo', required: true },
-      { type: 'DATE', label: 'Data de nascimento', required: true, placeholder: 'AAAA-MM-DD' },
+      { type: 'DATE', label: 'Data de nascimento', required: true, placeholder: 'DD/MM/AAAA' },
       { type: 'TEXT', label: 'CPF', required: true, placeholder: 'Apenas números' },
       { type: 'TEXT', label: 'Profissão', required: false },
       { type: 'TEXTAREA', label: 'Endereço completo', required: true },

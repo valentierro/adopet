@@ -402,6 +402,18 @@ export default function PetEditScreen() {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível remover o anúncio.')),
   });
 
+  const cancelAdoptionMutation = useMutation({
+    mutationFn: () => cancelAdoption(id!),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pet', id] });
+      queryClient.invalidateQueries({ queryKey: ['pets', 'mine'] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'tutor-stats'] });
+      Alert.alert('Processo cancelado', 'O pet voltou a ficar disponível. O adotante indicado foi notificado.');
+    },
+    onError: (e: unknown) =>
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível cancelar. Tente novamente.')),
+  });
+
   const handleRemoveAnnouncement = () => {
     Alert.alert(
       'Remover anúncio?',
@@ -477,18 +489,6 @@ export default function PetEditScreen() {
   const isAdopted = pet.status === 'ADOPTED';
   const adoptionFinalized = (pet as { confirmedByAdopet?: boolean }).confirmedByAdopet === true;
   const canCancelAdoption = isAdopted && !adoptionFinalized;
-
-  const cancelAdoptionMutation = useMutation({
-    mutationFn: () => cancelAdoption(id!),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pet', id] });
-      queryClient.invalidateQueries({ queryKey: ['pets', 'mine'] });
-      queryClient.invalidateQueries({ queryKey: ['me', 'tutor-stats'] });
-      Alert.alert('Processo cancelado', 'O pet voltou a ficar disponível. O adotante indicado foi notificado.');
-    },
-    onError: (e: unknown) =>
-      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível cancelar. Tente novamente.')),
-  });
 
   return (
     <ScreenContainer scroll>

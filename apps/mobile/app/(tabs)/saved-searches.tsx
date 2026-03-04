@@ -7,6 +7,7 @@ import { ScreenContainer, LoadingLogo, Toast, PageIntro } from '../../src/compon
 import { useTheme } from '../../src/hooks/useTheme';
 import { getSavedSearches, createSavedSearch, updateSavedSearch, deleteSavedSearch, type SavedSearchItem } from '../../src/api/saved-search';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
+import { getSpeciesLabel, getSizeLabel } from '../../src/utils/petLabels';
 import { spacing } from '../../src/theme';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -37,8 +38,8 @@ const RADIUS_OPTIONS: { value: number | null; label: string }[] = [
 
 function searchLabel(s: { species?: string | null; size?: string | null; breed?: string | null; radiusKm?: number }): string {
   const parts: string[] = [];
-  if (s.species) parts.push(SPECIES_OPTIONS.find((o) => o.value === s.species)?.label ?? s.species);
-  if (s.size) parts.push(SIZE_OPTIONS.find((o) => o.value === s.size)?.label ?? s.size);
+  if (s.species) parts.push(SPECIES_OPTIONS.find((o) => o.value === s.species)?.label ?? getSpeciesLabel(s.species));
+  if (s.size) parts.push(SIZE_OPTIONS.find((o) => o.value === s.size)?.label ?? getSizeLabel(s.size));
   if (s.breed?.trim()) parts.push(s.breed.trim());
   if (s.radiusKm != null && s.radiusKm > 0) parts.push(`${s.radiusKm} km`);
   return parts.length ? parts.join(' • ') : 'Qualquer pet';

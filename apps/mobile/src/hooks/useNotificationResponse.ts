@@ -27,13 +27,17 @@ export function useNotificationResponse(router: Router) {
           return;
         }
         if (type === 'ADOPTION_FORM_SUBMITTED') {
+          const screen = data.screen;
+          if (screen === 'partnerAdoptionRequests' || typeof adoptionRequestId === 'string') {
+            const q = typeof adoptionRequestId === 'string' && adoptionRequestId
+              ? `?requestId=${encodeURIComponent(adoptionRequestId)}`
+              : '';
+            router.push(`/partner-adoption-requests${q}` as '/partner-adoption-requests');
+            return;
+          }
           const convId = data.conversationId;
           if (typeof convId === 'string' && convId) {
             router.push(`/(tabs)/chat/${convId}`);
-            return;
-          }
-          if (typeof adoptionRequestId === 'string' && adoptionRequestId) {
-            router.push('/partner-adoption-requests');
             return;
           }
         }

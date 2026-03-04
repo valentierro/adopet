@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, EmptyState, LoadingLogo } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { getRecentAdoptions, type RecentAdoptionItem } from '../../src/api/public';
+import { getSpeciesLabel } from '../../src/utils/petLabels';
 import { spacing } from '../../src/theme';
 
 function formatDate(iso: string) {
@@ -38,7 +39,7 @@ function AdoptionRow({
       <View style={rowStyles.body}>
         <Text style={[rowStyles.name, { color: colors.textPrimary }]} numberOfLines={1}>{item.petName}</Text>
         <Text style={[rowStyles.meta, { color: colors.textSecondary }]}>
-          {item.species === 'DOG' ? 'Cachorro' : item.species === 'CAT' ? 'Gato' : item.species}
+          {getSpeciesLabel(item.species)}
           {item.city ? ` • ${item.city}` : ''}
         </Text>
         <Text style={[rowStyles.date, { color: colors.textSecondary }]}>Adotado em {formatDate(item.adoptedAt)}</Text>

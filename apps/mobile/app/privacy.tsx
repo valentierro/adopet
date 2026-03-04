@@ -18,7 +18,7 @@ export default function PrivacyScreen() {
   return (
     <ScreenContainer scroll>
       <Text style={[styles.title, { color: colors.textPrimary }]}>Política de Privacidade</Text>
-      <Text style={[styles.updated, { color: colors.textSecondary }]}>Última atualização: fevereiro de 2025</Text>
+      <Text style={[styles.updated, { color: colors.textSecondary }]}>Última atualização: fevereiro de 2026</Text>
       <Text style={[styles.intro, { color: colors.textSecondary }]}>
         Esta política descreve como o Adopet trata seus dados pessoais, em conformidade com a Lei Geral de Proteção de Dados (LGPD – Lei 13.709/2018). Ao usar o app, você declara ter lido e concordado com estes termos.
       </Text>
@@ -33,7 +33,7 @@ export default function PrivacyScreen() {
       <View style={styles.section}>
         <Text style={[styles.heading, { color: colors.textPrimary }]}>2. Dados que coletamos</Text>
         <Text style={[styles.body, { color: colors.textSecondary }]}>
-          Coletamos: nome, email, telefone (com DDD), cidade, foto de perfil, informações sobre moradia e estilo de vida que você optar por preencher; dados dos pets anunciados (fotos, descrição, etc.); favoritos, conversas e mensagens; preferências de busca e localização quando autorizada; e dados técnicos necessários ao funcionamento do app (ex.: token de notificações).
+          Coletamos: nome, email, telefone (com DDD), cidade, foto de perfil, data de nascimento (obrigatória no cadastro para usuários não parceiros; utilizada para verificar que o adotante tem 18 anos ou mais, conforme boas práticas de adoção responsável); informações sobre moradia e estilo de vida que você optar por preencher; dados dos pets anunciados (fotos, descrição, etc.); favoritos, conversas e mensagens; preferências de busca e localização quando autorizada; e dados técnicos necessários ao funcionamento do app (ex.: token de notificações).
         </Text>
         <Text style={[styles.body, { color: colors.textSecondary }, { marginTop: spacing.sm }]}>
           <Text style={styles.bold}>Verificação de identidade (KYC):</Text> quando você solicita verificação para confirmar adoções, recebemos temporariamente a(s) foto(s) que você envia (selfie com documento). Essas imagens são usadas apenas para análise pela nossa equipe (decisão humana, não automatizada) e são excluídas assim que o processo é finalizado (aprovado ou rejeitado). Não extraímos nem armazenamos dados do documento (ex.: número de CPF ou RG) em banco de dados; não compartilhamos as fotos com terceiros.

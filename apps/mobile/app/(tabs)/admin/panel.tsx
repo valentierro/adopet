@@ -70,6 +70,7 @@ import {
 } from '../../../src/api/admin';
 import { presign } from '../../../src/api/uploads';
 import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
+import { getSpeciesLabel } from '../../../src/utils/petLabels';
 import { spacing } from '../../../src/theme';
 
 const VERIFICATION_TYPE_LABEL: Record<string, string> = {
@@ -1695,7 +1696,7 @@ export default function AdminScreen() {
                       ) : null}
                     </View>
                   </View>
-                  <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>{pet.species} • {pet.age} ano(s)</Text>
+                  <Text style={[styles.cardMeta, { color: colors.textSecondary }]}>{getSpeciesLabel(pet.species)} • {pet.age} ano(s)</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
               </TouchableOpacity>

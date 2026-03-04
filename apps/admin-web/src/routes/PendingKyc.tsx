@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { adminApi, type PendingKycItem, type ApprovedKycItem } from '@/api/admin';
+import { adminApi, KYC_FRAUD_SIGNAL_LABELS, type PendingKycItem, type ApprovedKycItem } from '@/api/admin';
 import { useToast } from '@/context/ToastContext';
 
 type Tab = 'pending' | 'approved';
@@ -211,6 +211,7 @@ export function PendingKyc() {
                       <th className="text-left p-3">E-mail</th>
                       <th className="text-left p-3">Enviado em</th>
                       <th className="text-left p-3">Documento / Selfie</th>
+                      <th className="text-left p-3">Conferência OCR</th>
                       <th className="text-left p-3">Ações</th>
                     </tr>
                   </thead>
@@ -224,7 +225,17 @@ export function PendingKyc() {
                             onChange={() => toggleSelect(u.userId)}
                           />
                         </td>
-                        <td className="p-3 font-medium">{u.name}</td>
+                        <td className="p-3 font-medium">
+                          {u.name}
+                          {u.kycFraudSignal && (
+                            <span
+                              className="ml-2 inline-block rounded bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700"
+                              title={KYC_FRAUD_SIGNAL_LABELS[u.kycFraudSignal] ?? u.kycFraudSignal}
+                            >
+                              ⚠ Fraude
+                            </span>
+                          )}
+                        </td>
                         <td className="p-3">{u.email}</td>
                         <td className="p-3">{new Date(u.kycSubmittedAt).toLocaleString('pt-BR')}</td>
                         <td className="p-3">
@@ -253,6 +264,25 @@ export function PendingKyc() {
                             </span>
                           ) : (
                             '-'
+                          )}
+                        </td>
+                        <td className="p-3 text-sm">
+                          {u.kycExtractionStatus === 'OK' ? (
+                            <span className="text-green-600 font-medium" title="Nome, data, CPF/doc conferem com cadastro">✅ Ok</span>
+                          ) : u.kycExtractionStatus === 'DIVERGENT' || u.kycExtractionStatus === 'NOT_EXTRACTED' ? (
+                            <span className="text-amber-600" title="Validar manualmente">⚠️ Validar</span>
+                          ) : (
+                            <span className="text-gray-500">Pendente</span>
+                          )}
+                          {u.kycFraudSignal && (
+                            <div className="mt-1 text-xs font-medium text-red-600" title={KYC_FRAUD_SIGNAL_LABELS[u.kycFraudSignal] ?? u.kycFraudSignal}>
+                              {KYC_FRAUD_SIGNAL_LABELS[u.kycFraudSignal] ?? u.kycFraudSignal}
+                            </div>
+                          )}
+                          {(u.kycExtractedName != null || u.kycExtractedCpf != null || u.kycExtractedDocNumber != null) && (
+                            <div className="mt-1 text-xs text-gray-500" title={`OCR: Nome ${u.kycExtractedName ?? '—'}, CPF ${u.kycExtractedCpf ?? '—'}, Nº ${u.kycExtractedDocNumber ?? '—'}`}>
+                              OCR: {[u.kycExtractedName, u.kycExtractedCpf, u.kycExtractedDocNumber].filter(Boolean).join(' | ') || '—'}
+                            </div>
                           )}
                         </td>
                         <td className="p-3 flex gap-2">

@@ -48,6 +48,12 @@ function routeForNotification(router: ReturnType<typeof useRouter>, n: InAppNoti
     case 'KYC_REVOKED':
       router.push('/kyc');
       break;
+    case 'KYC_FRAUD_SUSPICIOUS':
+      router.push('/(tabs)/admin/pending-kyc');
+      break;
+    case 'KYC_AUTO_APPROVED':
+      router.push({ pathname: '/(tabs)/admin/pending-kyc', params: { tab: 'approved' } });
+      break;
     case 'VERIFICATION_APPROVED':
     case 'VERIFICATION_REJECTED':
       if (meta.petId) {

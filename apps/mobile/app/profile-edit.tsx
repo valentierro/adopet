@@ -14,6 +14,7 @@ import { presign, confirmAvatarUpload } from '../src/api/uploads';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
 import { configureExpandAnimation } from '../src/utils/layoutAnimation';
 import { formatPhoneInput, formatPhoneDisplay, getPhoneDigits } from '../src/utils/phoneMask';
+import { formatDateInputDDMMAAAA, formatDateToDDMMAAAA, parseDDMMAAAAToISO } from '../src/utils/dateMask';
 import { spacing } from '../src/theme';
 
 const HOUSING_OPTIONS = [
@@ -173,6 +174,7 @@ export default function ProfileEditScreen() {
   const [username, setUsername] = useState('');
   const [phone, setPhone] = useState('');
   const [city, setCity] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [bio, setBio] = useState('');
   const [housingType, setHousingType] = useState<'CASA' | 'APARTAMENTO' | ''>('');
   const [hasYard, setHasYard] = useState<boolean | undefined>(undefined);
@@ -209,6 +211,7 @@ export default function ProfileEditScreen() {
       setUsername((user as { username?: string }).username ?? '');
       setPhone(formatPhoneDisplay(user.phone ?? ''));
       setCity(user.city ?? partnerCity ?? '');
+      setBirthDate(formatDateToDDMMAAAA((user as { birthDate?: string | null }).birthDate ?? ''));
       setBio(user.bio ?? '');
       setHousingType((user.housingType as 'CASA' | 'APARTAMENTO') || '');
       setHasYard(user.hasYard);
@@ -366,6 +369,7 @@ export default function ProfileEditScreen() {
       username: userInput.length >= 2 ? userInput : undefined,
       phone: getPhoneDigits(phone).trim() || undefined,
       city: city.trim() || undefined,
+      birthDate: birthDate.trim() ? (parseDDMMAAAAToISO(birthDate) ?? undefined) : undefined,
       bio: bio.trim() || undefined,
       housingType: housingType || undefined,
       hasYard,
@@ -458,7 +462,7 @@ export default function ProfileEditScreen() {
           colors={colors}
         >
         <Text style={[styles.hint, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
-          Nome, usuário, telefone e cidade.
+          Nome, usuário, telefone, cidade e data de nascimento (obrigatória para adoção; é necessário ter 18 anos ou mais).
         </Text>
         <TextInput
           style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
@@ -496,6 +500,15 @@ export default function ProfileEditScreen() {
           value={city}
           onChangeText={setCity}
           autoCapitalize="words"
+        />
+        <TextInput
+          style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}
+          placeholder="Data de nascimento (DD/MM/AAAA)"
+          placeholderTextColor={colors.textSecondary}
+          value={birthDate}
+          onChangeText={(t) => setBirthDate(formatDateInputDDMMAAAA(t))}
+          keyboardType="number-pad"
+          maxLength={10}
         />
         <TextInput
           style={[styles.input, styles.bioInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.primary + '40' }]}

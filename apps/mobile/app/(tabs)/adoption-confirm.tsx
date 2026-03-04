@@ -7,12 +7,12 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { getPendingAdoptionConfirmations, getMe } from '../../src/api/me';
 import { confirmAdoption, declineAdoption } from '../../src/api/pets';
 import { getFriendlyErrorMessage, isKycRequiredError } from '../../src/utils/errorMessage';
+import { isUserEligibleToAdoptByAge } from '../../src/utils/age';
+import { getSpeciesLabel } from '../../src/utils/petLabels';
 import { trackEvent } from '../../src/analytics';
 import { ScreenContainer, EmptyState, StatusBadge, VerifiedBadge } from '../../src/components';
 import { Ionicons } from '@expo/vector-icons';
 import { spacing } from '../../src/theme';
-
-const speciesLabel: Record<string, string> = { dog: 'Cachorro', cat: 'Gato', DOG: 'Cachorro', CAT: 'Gato' };
 
 /** Checklist obrigatório para o adotante antes de confirmar que realizou a adoção. */
 const ADOPTER_CHECKLIST_ITEMS: { key: string; label: string }[] = [
@@ -38,6 +38,8 @@ export default function AdoptionConfirmScreen() {
   const items = data?.items ?? [];
   const isPartner = me?.isPartner === true;
   const needsKyc = items.length > 0 && me?.kycStatus !== 'VERIFIED' && !isPartner;
+  const ageEligibility = isUserEligibleToAdoptByAge(me);
+  const cannotConfirmByAge = items.length > 0 && !ageEligibility.eligible;
 
   const toggleChecklistItem = (petId: string, key: string) => {
     setChecklistByPet((prev) => ({
@@ -155,6 +157,20 @@ export default function AdoptionConfirmScreen() {
           <Ionicons name="chevron-forward" size={22} color={colors.textSecondary} />
         </TouchableOpacity>
       )}
+      {cannotConfirmByAge && ageEligibility.reason && (
+        <TouchableOpacity
+          style={[styles.kycBanner, { backgroundColor: (colors.warning || '#d97706') + '22', borderColor: (colors.warning || '#d97706') + '60' }]}
+          onPress={() => router.push('/profile-edit')}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="calendar-outline" size={24} color={colors.warning || '#d97706'} />
+          <View style={styles.kycBannerText}>
+            <Text style={[styles.kycBannerTitle, { color: colors.textPrimary }]}>Requisito de idade</Text>
+            <Text style={[styles.kycBannerSub, { color: colors.textSecondary }]}>{ageEligibility.reason}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={22} color={colors.textSecondary} />
+        </TouchableOpacity>
+      )}
       {items.map((item) => (
         <View key={item.petId} style={[styles.card, { backgroundColor: colors.surface }]}>
           <TouchableOpacity
@@ -175,7 +191,7 @@ export default function AdoptionConfirmScreen() {
                 {item.verified === true && <VerifiedBadge variant="pet" size={14} iconBackgroundColor={colors.primary} />}
               </View>
               <Text style={[styles.meta, { color: colors.textSecondary }]}>
-                {speciesLabel[item.species] ?? item.species}
+                {getSpeciesLabel(item.species)}
                 {item.breed ? ` · ${item.breed}` : ''} · {item.age} ano(s)
               </Text>
               <Text style={[styles.tutor, { color: colors.textSecondary }]}>Tutor: {item.tutorName}</Text>
@@ -244,7 +260,8 @@ export default function AdoptionConfirmScreen() {
               disabled={
                 (confirmMutation.isPending && confirmMutation.variables?.petId === item.petId) ||
                 (declineMutation.isPending && declineMutation.variables === item.petId) ||
-                !isChecklistComplete(item.petId)
+                !isChecklistComplete(item.petId) ||
+                cannotConfirmByAge
               }
             >
               {confirmMutation.isPending && confirmMutation.variables?.petId === item.petId ? (

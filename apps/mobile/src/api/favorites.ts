@@ -27,7 +27,7 @@ export type FavoriteItem = {
   };
 };
 
-export type FavoritesPage = { items: FavoriteItem[]; nextCursor: string | null };
+export type FavoritesPage = { items: FavoriteItem[]; nextCursor: string | null; totalCount?: number };
 
 export async function getFavorites(cursor?: string): Promise<FavoritesPage> {
   const params: Record<string, string> = {};

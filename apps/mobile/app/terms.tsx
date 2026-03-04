@@ -9,7 +9,7 @@ export default function TermsScreen() {
   return (
     <ScreenContainer scroll>
       <Text style={[styles.title, { color: colors.textPrimary }]}>Termos de Uso</Text>
-      <Text style={[styles.updated, { color: colors.textSecondary }]}>Última atualização: fevereiro de 2025</Text>
+      <Text style={[styles.updated, { color: colors.textSecondary }]}>Última atualização: fevereiro de 2026</Text>
       <View style={styles.section}>
         <Text style={[styles.heading, { color: colors.textPrimary }]}>1. Aceitação</Text>
         <Text style={[styles.body, { color: colors.textSecondary }]}>
@@ -26,6 +26,9 @@ export default function TermsScreen() {
         <Text style={[styles.heading, { color: colors.textPrimary }]}>3. Uso da plataforma</Text>
         <Text style={[styles.body, { color: colors.textSecondary }]}>
           Você se compromete a publicar apenas informações verdadeiras sobre os pets, a tratar outros usuários com respeito nas conversas e a não usar o app para fins ilegais ou que violem direitos de terceiros. Anúncios com conteúdo inadequado podem ser removidos e a conta suspensa.
+        </Text>
+        <Text style={[styles.body, { color: colors.textSecondary }, { marginTop: spacing.sm }]}>
+          <Text style={styles.bold}>Requisito de idade para adoção:</Text> de acordo com boas práticas de adoção responsável, apenas pessoas com 18 (dezoito) anos ou mais podem adotar um pet pela plataforma. O cadastro e a data de nascimento são utilizados para essa verificação. Menores de idade podem usar o app para navegar, favoritar e conversar, mas não poderão concluir o processo de adoção (preenchimento de formulário ou confirmação da adoção) até atingirem a maioridade.
         </Text>
       </View>
       <View style={styles.section}>
@@ -78,5 +81,8 @@ const styles = StyleSheet.create({
   body: {
     fontSize: 15,
     lineHeight: 22,
+  },
+  bold: {
+    fontWeight: '700',
   },
 });

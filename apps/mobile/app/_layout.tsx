@@ -1,6 +1,19 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { Stack, useRouter } from 'expo-router';
-import { TouchableOpacity, AppState, Alert, Modal, Pressable, Text, Platform, type AppStateStatus } from 'react-native';
+import {
+  TouchableOpacity,
+  AppState,
+  Alert,
+  Modal,
+  Pressable,
+  Text,
+  Platform,
+  Image,
+  Dimensions,
+  StyleSheet,
+  Animated,
+  type AppStateStatus,
+} from 'react-native';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -42,6 +55,9 @@ const stackHeaderOptions = {
 };
 
 const isExpoGo = Constants.appOwnership === 'expo';
+
+const SplashImage = require('../assets/brand/splash/splash_full.png');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN ?? process.env.SENTRY_DSN ?? '';
 const useSentry = !isExpoGo && !!SENTRY_DSN;
 if (useSentry) {
@@ -86,12 +102,28 @@ function RootLayout() {
   const showUpdateModal = !!userId && (forceUpdate || optionalUpdate);
   const modalMaxWidth = useModalMaxWidth();
 
+  // Tela fake de splash (apenas no Expo Go) para visualizar a arte em tela cheia
+  const [showFakeSplash, setShowFakeSplash] = useState(isExpoGo);
+  const fakeSplashOpacity = useRef(new Animated.Value(1)).current;
+
   useEffect(() => {
     const t = setTimeout(() => {
       SplashScreen.hideAsync();
     }, 380);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    if (!isExpoGo || !showFakeSplash) return;
+    const timer = setTimeout(() => {
+      Animated.timing(fakeSplashOpacity, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }).start(() => setShowFakeSplash(false));
+    }, 2200);
+    return () => clearTimeout(timer);
+  }, [isExpoGo, showFakeSplash, fakeSplashOpacity]);
 
   useEffect(() => {
     if (accessToken) sessionExpiredShownRef.current = false;
@@ -178,6 +210,17 @@ function RootLayout() {
     >
       <AppErrorBoundary onGoHome={() => router.replace('/(tabs)')}>
       <AppWithOfflineBanner>
+      {showFakeSplash && (
+        <Modal visible transparent animationType="none" statusBarTranslucent>
+          <Animated.View style={[styles.fakeSplashContainer, { opacity: fakeSplashOpacity }]}>
+            <Image
+              source={SplashImage}
+              style={styles.fakeSplashImage}
+              resizeMode="cover"
+            />
+          </Animated.View>
+        </Modal>
+      )}
       <Stack
         screenOptions={{
           headerShown: true,
@@ -267,6 +310,19 @@ function RootLayout() {
     </PersistQueryClientProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  fakeSplashContainer: {
+    flex: 1,
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    backgroundColor: '#7CB342',
+  },
+  fakeSplashImage: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+  },
+});
 
 export default useSentry
   ? (() => {

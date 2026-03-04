@@ -104,9 +104,27 @@ export type PendingKycItem = {
   email: string;
   phone?: string | null;
   document?: string | null;
+  /** RG no cadastro (opcional). */
+  rg?: string | null;
   kycSubmittedAt: string;
   documentUrl?: string | null;
   selfieUrl?: string | null;
+  documentVersoUrl?: string | null;
+  birthDate?: string | null;
+  kycExtractedBirthDate?: string | null;
+  kycExtractedName?: string | null;
+  kycExtractedCpf?: string | null;
+  kycExtractedDocNumber?: string | null;
+  kycExtractionStatus?: string | null;
+  /** Sinal de possível fraude (CPF_DIVERGENT, RG_DIVERGENT, NAME_DIVERGENT, BIRTH_DATE_OR_AGE_DIVERGENT). */
+  kycFraudSignal?: string | null;
+};
+
+export const KYC_FRAUD_SIGNAL_LABELS: Record<string, string> = {
+  CPF_DIVERGENT: 'Nome bate, documento (CPF) não confere',
+  RG_DIVERGENT: 'Nome/data batem, RG do documento não confere',
+  NAME_DIVERGENT: 'Nome do documento não confere com o cadastro',
+  BIRTH_DATE_OR_AGE_DIVERGENT: 'Data de nascimento ou idade no documento não confere',
 };
 
 /** [Admin] Listar usuários com KYC pendente (verificação de identidade). */
@@ -128,7 +146,20 @@ export type ApprovedKycItem = {
   name: string;
   email: string;
   username?: string | null;
+  phone?: string | null;
+  document?: string | null;
+  rg?: string | null;
+  birthDate?: string | null;
+  kycSubmittedAt: string;
   kycVerifiedAt: string;
+  /** null = aprovado automaticamente; userId do admin = aprovado por decisão humana. */
+  kycDecidedBy?: string | null;
+  kycExtractedBirthDate?: string | null;
+  kycExtractedName?: string | null;
+  kycExtractedCpf?: string | null;
+  kycExtractedDocNumber?: string | null;
+  kycExtractionStatus?: string | null;
+  kycFraudSignal?: string | null;
 };
 
 /** [Admin] Listar usuários com KYC aprovado (sem fotos). q = busca por nome, email ou username. */

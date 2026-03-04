@@ -16,6 +16,8 @@ import type { AuthResponseDto } from './dto/auth-response.dto';
 import { PartnersService } from '../partners/partners.service';
 import { EmailService } from '../email/email.service';
 import { ConfigService } from '@nestjs/config';
+import { UploadsService } from '../uploads/uploads.service';
+import { MeService } from '../me/me.service';
 import { FeatureFlagService } from '../feature-flag/feature-flag.service';
 import { getTempPasswordEmailHtml, getTempPasswordEmailText } from '../email/templates/temp-password.email';
 import { getConfirmResetEmailHtml, getConfirmResetEmailText } from '../email/templates/confirm-reset.email';
@@ -23,6 +25,7 @@ import { getConfirmEmailHtml, getConfirmEmailText } from '../email/templates/con
 import { getTutorWelcomeEmailHtml, getTutorWelcomeEmailText } from '../email/templates/tutor-welcome.email';
 import { getSetPasswordEmailHtml, getSetPasswordEmailText } from '../email/templates/set-password.email';
 import { isValidCpfOrCnpj } from '../common/cpf-cnpj';
+import { isAtLeast18 } from '../common/age';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import type { ChangePasswordDto } from './dto/change-password.dto';
 import * as crypto from 'crypto';
@@ -53,7 +56,15 @@ export class AuthService {
     private readonly emailService: EmailService,
     private readonly config: ConfigService,
     private readonly featureFlagService: FeatureFlagService,
+    private readonly uploadsService: UploadsService,
+    @Inject(forwardRef(() => MeService))
+    private readonly meService: MeService,
   ) {}
+
+  /** Presign para upload de documento KYC durante o cadastro (sem autenticação). Retorna URL e key para enviar no signup. */
+  async presignSignupKyc(filename: string, contentType?: string): Promise<{ uploadUrl: string; key: string }> {
+    return this.uploadsService.presignSignupKyc(filename, contentType);
+  }
 
   /**
    * Verifica se o e-mail está disponível para cadastro (não existe na base).
@@ -111,15 +122,37 @@ export class AuthService {
     const emailLower = dto.email.trim().toLowerCase();
     const phoneNormalized = String(dto.phone).replace(/\D/g, '').slice(-11);
     const documentNormalized = String(dto.document ?? '').replace(/\D/g, '').slice(0, 14);
+    const birthDateParsed = dto.birthDate ? new Date(dto.birthDate) : undefined;
+    if (!birthDateParsed || !isAtLeast18(birthDateParsed)) {
+      throw new BadRequestException(
+        'Para criar uma conta no Adopet é necessário ter 18 anos ou mais, de acordo com boas práticas de adoção responsável.',
+      );
+    }
     const usernameNormalized = dto.username?.trim().toLowerCase().replace(/^@/, '') ?? '';
     if (usernameNormalized.length < 2) {
       throw new BadRequestException('Informe um nome de usuário com pelo menos 2 caracteres (letras minúsculas, números, ponto ou underscore).');
+    }
+    if (dto.selfieWithDocKey && !dto.consentKyc) {
+      throw new BadRequestException('É necessário aceitar o uso das fotos para análise KYC quando enviar o documento no cadastro.');
+    }
+    if (dto.consentKyc && !dto.selfieWithDocKey?.trim()) {
+      throw new BadRequestException('Envie a chave do documento KYC (obtida via presign-signup-kyc) quando marcar consentimento KYC.');
+    }
+    if (dto.selfieWithDocKey?.trim() && !dto.selfieWithDocKey.startsWith('signup-kyc/')) {
+      throw new BadRequestException('Chave de KYC inválida para cadastro. Use o endpoint presign-signup-kyc antes do signup.');
+    }
+    if (dto.documentVersoKey?.trim() && !dto.documentVersoKey.startsWith('signup-kyc/')) {
+      throw new BadRequestException('Chave do verso do documento inválida. Use o endpoint presign-signup-kyc antes do signup.');
     }
     if (documentNormalized.length !== 11 && documentNormalized.length !== 14) {
       throw new BadRequestException('Informe um CPF (11 dígitos) ou CNPJ (14 dígitos).');
     }
     if (!isValidCpfOrCnpj(documentNormalized)) {
       throw new BadRequestException('CPF ou CNPJ inválido. Verifique os dígitos.');
+    }
+    const rgNormalized = dto.rg?.trim();
+    if (!rgNormalized || rgNormalized.length < 4) {
+      throw new BadRequestException('Informe o número do RG. Pessoas com 18 anos ou mais normalmente possuem RG; sem RG, entre em contato com o app.');
     }
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
     const phoneToStore = phoneNormalized.length >= 10 ? phoneNormalized : dto.phone;
@@ -146,29 +179,24 @@ export class AuthService {
         if (existingByDocument) {
           throw new ConflictException('Este CPF/CNPJ já possui uma conta. Só é permitida uma conta por documento.');
         }
+        const userData = {
+          email: emailLower,
+          passwordHash,
+          name: dto.name.trim(),
+          phone: phoneToStore,
+          document: documentNormalized,
+          birthDate: birthDateParsed,
+          username: usernameNormalized,
+          rg: rgNormalized,
+        };
         if (requireVerification) {
           const emailVerificationToken = crypto.randomBytes(32).toString('hex');
           return tx.user.create({
-            data: {
-              email: emailLower,
-              passwordHash,
-              name: dto.name.trim(),
-              phone: phoneToStore,
-              document: documentNormalized,
-              username: usernameNormalized,
-              emailVerificationToken,
-            },
+            data: { ...userData, emailVerificationToken },
           });
         }
         return tx.user.create({
-          data: {
-            email: emailLower,
-            passwordHash,
-            name: dto.name.trim(),
-            phone: phoneToStore,
-            document: documentNormalized,
-            username: usernameNormalized,
-          },
+          data: userData,
         });
       });
     } catch (e: unknown) {
@@ -183,6 +211,19 @@ export class AuthService {
         throw new ConflictException('Dados já cadastrados. Use outro e-mail, documento, nome de usuário ou telefone.');
       }
       throw e;
+    }
+    if (dto.selfieWithDocKey?.trim() && dto.consentKyc) {
+      try {
+        await this.meService.submitKyc(
+          user.id,
+          dto.selfieWithDocKey.trim(),
+          true,
+          dto.documentVersoKey?.trim() || undefined,
+        );
+      } catch (kycErr) {
+        console.warn('[AuthService] KYC at signup failed for user', user.id, kycErr);
+        // Não falha o signup; o usuário pode enviar KYC depois em Perfil
+      }
     }
     if (requireVerification) {
       const emailVerificationToken = (user as { emailVerificationToken?: string }).emailVerificationToken;
@@ -277,7 +318,9 @@ export class AuthService {
       name: dto.name,
       phone: dto.phone,
       document,
+      birthDate: (dto as { birthDate?: string }).birthDate ?? '1990-01-01', // parceiro: opcional no DTO; default 18+
       username: dto.username,
+      rg: (dto as { rg?: string }).rg?.trim() ?? '000000000', // parceiro pode não informar RG; valor placeholder para satisfazer signup
     };
     const signupResult = await this.signup(signupData, { sendTutorWelcome: false });
     let userId: string;

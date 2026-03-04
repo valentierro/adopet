@@ -19,6 +19,7 @@ import { getPreferences, updatePreferences } from '../../src/api/me';
 import { useUpdateCityFromLocation } from '../../src/hooks/useUpdateCityFromLocation';
 import { useResponsiveGridColumns } from '../../src/hooks/useResponsiveGridColumns';
 import { getMatchScoreColor } from '../../src/utils/matchScoreColor';
+import { getSpeciesLabel } from '../../src/utils/petLabels';
 import { getViewedPetIds } from '../../src/utils/viewedPets';
 import { configureExpandAnimation } from '../../src/utils/layoutAnimation';
 import { useAuthStore } from '../../src/stores/authStore';
@@ -1594,8 +1595,7 @@ export default function FeedScreen() {
                   {
                     onSuccess: () => {
                       setAccumulatedItems((prev) => (prev ?? []).filter((p) => p.id !== item.id));
-                      setShowMatchOverlay(true);
-                      setToastMessage('Adicionado aos favoritos!');
+                      // Match overlay e toast já são acionados em swipeMutation.onMutate para LIKE
                     },
                   },
                 );
@@ -1668,7 +1668,7 @@ export default function FeedScreen() {
                     <View style={[styles.gridCardInfo, { backgroundColor: colors.surface }]}>
                       <Text style={[styles.gridCardName, { color: colors.textPrimary }]} numberOfLines={1}>{item.name}</Text>
                       <Text style={[styles.gridCardMeta, { color: colors.textSecondary }]} numberOfLines={1}>
-                        {String(item.species).toUpperCase() === 'DOG' ? 'Cachorro' : String(item.species).toUpperCase() === 'CAT' ? 'Gato' : item.species} • {item.age} ano(s)
+                        {getSpeciesLabel(item.species)} • {item.age} ano(s)
                       </Text>
                       {(item.energyLevel || item.temperament || item.goodWithChildren === 'YES' || item.isDocile || item.isTrained) ? (
                         <Text style={[styles.gridCardMeta, { color: colors.textSecondary, marginTop: 2, fontSize: 11 }]} numberOfLines={1}>

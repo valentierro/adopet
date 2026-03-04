@@ -14,6 +14,14 @@ import { queryClient } from '../queryClient';
 const QUERY_CACHE_KEY = 'ADOPET_QUERY_CACHE';
 const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutos
 
+/** Normaliza RG para envio: só dígitos e até uma letra no final. */
+function normalizeRgForSignup(value: string): string {
+  const s = value.replace(/\s/g, '').toUpperCase();
+  const digits = s.replace(/\D/g, '');
+  const letter = s.match(/([A-Z])$/)?.[1] ?? '';
+  return (digits + letter).slice(0, 20);
+}
+
 export type User = {
   id: string;
   email: string;
@@ -21,6 +29,8 @@ export type User = {
   username?: string;
   avatarUrl?: string;
   phone?: string;
+  /** Data de nascimento (YYYY-MM-DD). Obrigatória para adoção (18+). */
+  birthDate?: string | null;
   createdAt: string;
   city?: string;
   bio?: string;
@@ -81,7 +91,17 @@ type AuthState = {
   setShowLogoutToast: (value: boolean) => void;
   setSessionExpiredModalVisible: (value: boolean) => void;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, name: string, phone: string, username: string) => Promise<void>;
+  signup: (
+    email: string,
+    password: string,
+    name: string,
+    phone: string,
+    document: string,
+    birthDate: string,
+    username: string,
+    kyc?: { selfieWithDocKey: string; consentKyc: boolean; documentVersoKey?: string },
+    rg: string,
+  ) => Promise<void>;
   partnerSignup: (body: partnerApi.PartnerSignupBody) => Promise<void>;
   logout: () => Promise<void>;
   refreshTokens: () => Promise<boolean | 'network'>;
@@ -144,12 +164,37 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  signup: async (email: string, password: string, name: string, phone: string, document: string, username: string) => {
+  signup: async (
+    email: string,
+    password: string,
+    name: string,
+    phone: string,
+    document: string,
+    birthDate: string,
+    username: string,
+    kyc?: { selfieWithDocKey: string; consentKyc: boolean; documentVersoKey?: string },
+    rg: string,
+  ) => {
     set({ isLoading: true, user: null });
     try {
       const usernameNorm = username.trim().toLowerCase().replace(/^@/, '');
       const documentDigits = String(document).replace(/\D/g, '').slice(0, 14);
-      const res = await authApi.signup({ email, password, name, phone, document: documentDigits, username: usernameNorm });
+      const body: authApi.SignupBody = {
+        email,
+        password,
+        name,
+        phone,
+        document: documentDigits,
+        birthDate,
+        username: usernameNorm,
+        rg: normalizeRgForSignup(rg.trim()),
+      };
+      if (kyc?.selfieWithDocKey && kyc?.consentKyc) {
+        body.selfieWithDocKey = kyc.selfieWithDocKey;
+        body.consentKyc = true;
+        if (kyc.documentVersoKey) body.documentVersoKey = kyc.documentVersoKey;
+      }
+      const res = await authApi.signup(body);
       set({ isLoading: false });
       if ('accessToken' in res) {
         try {

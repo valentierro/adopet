@@ -20,12 +20,15 @@ import type { UserSearchItemDto } from './dto/user-search-item.dto';
 import type { AdminUserListItemDto, AdminUserListResponseDto } from './dto/admin-user-list-item.dto';
 import type { PetAvailableItemDto } from './dto/pet-available-item.dto';
 import type { PendingAdoptionByTutorDto } from './dto/pending-adoption-by-tutor.dto';
+import type { PendingKycItemDto } from './dto/pending-kyc-item.dto';
+import type { ApprovedKycItemDto } from './dto/approved-kyc-item.dto';
 import type { TopTutorPfItemDto } from './dto/top-tutor-pf.dto';
 import type {
   PetsReportAggregatesDto,
   UsersReportAggregatesDto,
   AdoptionsReportAggregatesDto,
 } from './dto/reports-aggregates.dto';
+import { isAtLeast18 } from '../common/age';
 
 const SYSTEM_USER_EMAIL_DEFAULT = 'system@adopet.internal';
 const SYSTEM_USER_NAME_DEFAULT = 'Adopet';
@@ -143,18 +146,7 @@ export class AdminService {
   }
 
   /** Lista usuários com KYC pendente (documento + selfie enviados, aguardando análise). */
-  async getPendingKyc(): Promise<
-    Array<{
-      userId: string;
-      name: string;
-      email: string;
-      phone?: string | null;
-      document?: string | null;
-      kycSubmittedAt: string;
-      documentUrl?: string | null;
-      selfieUrl?: string | null;
-    }>
-  > {
+  async getPendingKyc(): Promise<PendingKycItemDto[]> {
     const users = await this.prisma.user.findMany({
       where: { kycStatus: 'PENDING' },
       select: {
@@ -163,9 +155,18 @@ export class AdminService {
         email: true,
         phone: true,
         document: true,
+        rg: true,
+        birthDate: true,
         kycSubmittedAt: true,
         kycDocumentKey: true,
         kycSelfieKey: true,
+        kycDocumentVersoKey: true,
+        kycExtractedBirthDate: true,
+        kycExtractedName: true,
+        kycExtractedCpf: true,
+        kycExtractedDocNumber: true,
+        kycExtractionStatus: true,
+        kycFraudSignal: true,
       },
       orderBy: { kycSubmittedAt: 'asc' },
     });
@@ -175,9 +176,18 @@ export class AdminService {
       email: u.email,
       phone: u.phone ?? null,
       document: u.document ?? null,
+      rg: u.rg ?? null,
       kycSubmittedAt: u.kycSubmittedAt?.toISOString() ?? '',
       documentUrl: this.uploadsService.getPublicUrl(u.kycDocumentKey) ?? null,
       selfieUrl: this.uploadsService.getPublicUrl(u.kycSelfieKey) ?? null,
+      documentVersoUrl: this.uploadsService.getPublicUrl(u.kycDocumentVersoKey) ?? null,
+      birthDate: u.birthDate ? u.birthDate.toISOString().slice(0, 10) : null,
+      kycExtractedBirthDate: u.kycExtractedBirthDate ? u.kycExtractedBirthDate.toISOString().slice(0, 10) : null,
+      kycExtractedName: u.kycExtractedName ?? null,
+      kycExtractedCpf: u.kycExtractedCpf ?? null,
+      kycExtractedDocNumber: u.kycExtractedDocNumber ?? null,
+      kycExtractionStatus: u.kycExtractionStatus ?? null,
+      kycFraudSignal: u.kycFraudSignal ?? null,
     }));
   }
 
@@ -266,10 +276,20 @@ export class AdminService {
     }
     const adopter = await this.prisma.user.findUnique({
       where: { id: resolvedAdopterId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, birthDate: true },
     });
     if (!adopter) {
       throw new BadRequestException('Usuário adotante não encontrado');
+    }
+    if (adopter.birthDate == null) {
+      throw new BadRequestException(
+        'O adotante precisa informar a data de nascimento no perfil. Para adotar é necessário ter 18 anos ou mais.',
+      );
+    }
+    if (!isAtLeast18(adopter.birthDate)) {
+      throw new BadRequestException(
+        'Para adotar um pet é necessário ter 18 anos ou mais, de acordo com boas práticas de adoção. O adotante indicado não atende a esse requisito.',
+      );
     }
     const existing = await this.prisma.adoption.findUnique({
       where: { petId },
@@ -506,16 +526,21 @@ export class AdminService {
     return { message: 'Usuário reativado. Ele poderá fazer login novamente.' };
   }
 
-  /** Aprovar ou rejeitar KYC de um usuário. Decisão humana (admin). Ao aprovar, envia mensagem no chat. Após decisão, apaga as imagens do storage e zera as keys (não retenção; redução de risco jurídico). Registra quem decidiu para auditoria. */
+  /**
+   * Aprovar ou rejeitar KYC de um usuário.
+   * adminUserId: id do admin que decidiu (decisão humana); null = aprovação automática (todos os pontos da extração bateram).
+   * Ao aprovar, envia mensagem no chat. Após decisão, apaga as imagens do storage e zera as keys.
+   * kycDecidedBy = null indica aprovação automática para auditoria.
+   */
   async updateUserKyc(
     userId: string,
     status: 'VERIFIED' | 'REJECTED',
-    adminUserId: string,
+    adminUserId: string | null,
     rejectionReason?: string,
   ): Promise<{ message: string }> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, kycStatus: true, name: true, kycDocumentKey: true, kycSelfieKey: true },
+      select: { id: true, kycStatus: true, name: true, kycDocumentKey: true, kycSelfieKey: true, kycDocumentVersoKey: true },
     });
     if (!user) throw new NotFoundException('Usuário não encontrado.');
     if (user.kycStatus !== 'PENDING') {
@@ -523,12 +548,18 @@ export class AdminService {
         `KYC do usuário não está pendente (status atual: ${user.kycStatus ?? 'nunca enviou'}).`,
       );
     }
-    if (status === 'REJECTED' && !rejectionReason?.trim()) {
-      throw new BadRequestException('Informe o motivo da rejeição para notificar o solicitante.');
+    if (status === 'REJECTED') {
+      if (!rejectionReason?.trim()) {
+        throw new BadRequestException('Informe o motivo da rejeição para notificar o solicitante.');
+      }
+      if (adminUserId == null) {
+        throw new BadRequestException('Rejeição exige decisão de um administrador.');
+      }
     }
     const now = new Date();
     const docKey = user.kycDocumentKey;
     const selfieKey = user.kycSelfieKey;
+    const versoKey = user.kycDocumentVersoKey;
 
     await this.prisma.user.update({
       where: { id: userId },
@@ -543,14 +574,17 @@ export class AdminService {
             }),
         kycDocumentKey: null,
         kycSelfieKey: null,
-        kycDecidedBy: adminUserId,
+        kycDocumentVersoKey: null,
+        kycDecidedBy: adminUserId ?? null,
         kycDecidedAt: now,
+        kycFraudSignal: null,
       },
     });
 
     await Promise.all([
       this.uploadsService.deleteByKey(docKey),
       this.uploadsService.deleteByKey(selfieKey),
+      this.uploadsService.deleteByKey(versoKey),
     ]);
     if (status === 'VERIFIED') {
       const convs = await this.prisma.conversation.findMany({
@@ -595,10 +629,8 @@ export class AdminService {
     };
   }
 
-  /** Lista usuários com KYC aprovado (sem fotos). Busca opcional por nome, email ou username. */
-  async getApprovedKyc(q?: string): Promise<
-    Array<{ userId: string; name: string; email: string; username?: string | null; kycVerifiedAt: string }>
-  > {
+  /** Lista usuários com KYC aprovado (sem fotos). Inclui dados de validação para histórico (bullets, veredito). */
+  async getApprovedKyc(q?: string): Promise<ApprovedKycItemDto[]> {
     const search = q?.trim();
     const where = {
       kycStatus: 'VERIFIED' as const,
@@ -614,16 +646,52 @@ export class AdminService {
     };
     const users = await this.prisma.user.findMany({
       where,
-      select: { id: true, name: true, email: true, username: true, kycVerifiedAt: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        username: true,
+        phone: true,
+        document: true,
+        rg: true,
+        birthDate: true,
+        kycSubmittedAt: true,
+        kycVerifiedAt: true,
+        kycDecidedBy: true,
+        kycExtractedBirthDate: true,
+        kycExtractedName: true,
+        kycExtractedCpf: true,
+        kycExtractedDocNumber: true,
+        kycExtractionStatus: true,
+        kycFraudSignal: true,
+      },
       orderBy: { kycVerifiedAt: 'desc' },
     });
-    return users.map((u) => ({
-      userId: u.id,
-      name: u.name,
-      email: u.email,
-      username: u.username ?? null,
-      kycVerifiedAt: u.kycVerifiedAt?.toISOString() ?? '',
-    }));
+    return users.map((u) => {
+      const isOk = u.kycExtractionStatus === 'OK';
+      // Quando status é OK, extraído pelo OCR deve estar preenchido. Para registros antigos sem valor, usa cadastro (que conferiu).
+      const extractedName = u.kycExtractedName ?? (isOk && u.name ? u.name : null);
+      const extractedDocNumber = u.kycExtractedDocNumber ?? (isOk && u.rg?.trim() ? u.rg : null);
+      return {
+        userId: u.id,
+        name: u.name,
+        email: u.email,
+        username: u.username ?? null,
+        phone: u.phone ?? null,
+        document: u.document ?? null,
+        rg: u.rg ?? null,
+        birthDate: u.birthDate ? u.birthDate.toISOString().slice(0, 10) : null,
+        kycSubmittedAt: u.kycSubmittedAt?.toISOString() ?? '',
+        kycVerifiedAt: u.kycVerifiedAt?.toISOString() ?? '',
+        kycDecidedBy: u.kycDecidedBy ?? null,
+        kycExtractedBirthDate: u.kycExtractedBirthDate ? u.kycExtractedBirthDate.toISOString().slice(0, 10) : null,
+        kycExtractedName: extractedName,
+        kycExtractedCpf: u.kycExtractedCpf ?? null,
+        kycExtractedDocNumber: extractedDocNumber,
+        kycExtractionStatus: u.kycExtractionStatus ?? null,
+        kycFraudSignal: u.kycFraudSignal ?? null,
+      };
+    });
   }
 
   /** Revoga o KYC aprovado de um usuário. Volta ao estado inicial (sem KYC); usuário pode solicitar novamente. Notifica in-app com a justificativa. */

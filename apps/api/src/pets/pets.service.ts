@@ -12,6 +12,7 @@ import { MatchEngineService } from '../match-engine/match-engine.service';
 import { PetViewService } from './pet-view.service';
 import { PetPartnershipService } from '../pet-partnership/pet-partnership.service';
 import { reverseGeocode, forwardGeocode } from '../common/geocoding';
+import { isAtLeast18 } from '../common/age';
 import type { PetResponseDto, SimilarPetItemDto } from './dto/pet-response.dto';
 import type { CreatePetDto } from './dto/create-pet.dto';
 import type { UpdatePetDto } from './dto/update-pet.dto';
@@ -868,7 +869,7 @@ export class PetsService {
   async findMine(
     ownerId: string,
     opts?: { cursor?: string; species?: string; status?: string },
-  ): Promise<{ items: PetResponseDto[]; nextCursor: string | null }> {
+  ): Promise<{ items: PetResponseDto[]; nextCursor: string | null; totalCount?: number }> {
     const cursor = opts?.cursor;
     const where: { ownerId: string; species?: string; status?: string } = { ownerId };
     if (opts?.species && opts.species !== 'BOTH') {
@@ -877,6 +878,7 @@ export class PetsService {
     if (opts?.status) {
       where.status = opts.status;
     }
+    const totalCountPromise = !cursor ? this.prisma.pet.count({ where }) : Promise.resolve(undefined);
     const pets = await this.prisma.pet.findMany({
       where,
       take: this.MINE_PAGE_SIZE + 1,
@@ -915,7 +917,8 @@ export class PetsService {
       return dto;
     });
     const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].id : null;
-    return { items: dtos, nextCursor };
+    const totalCount = await totalCountPromise;
+    return { items: dtos, nextCursor, ...(totalCount !== undefined && { totalCount }) };
   }
 
   async create(ownerId: string, dto: CreatePetDto): Promise<PetResponseDto> {
@@ -1646,6 +1649,20 @@ export class PetsService {
     }
     if (pet.pendingAdopterId !== userId) {
       throw new ForbiddenException('Apenas o adotante indicado pelo tutor pode confirmar esta adoção.');
+    }
+    const adopterUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { birthDate: true },
+    });
+    if (adopterUser?.birthDate == null) {
+      throw new BadRequestException(
+        'Para adotar, informe sua data de nascimento em Perfil > Editar perfil.',
+      );
+    }
+    if (!isAtLeast18(adopterUser.birthDate)) {
+      throw new ForbiddenException(
+        'Para adotar um pet é necessário ter 18 anos ou mais, de acordo com boas práticas de adoção.',
+      );
     }
     const alreadyConfirmed = !!pet.adopterConfirmedAt;
     if (!alreadyConfirmed) {

@@ -25,6 +25,12 @@ export class MeResponseDto {
   @ApiPropertyOptional()
   city?: string;
 
+  @ApiPropertyOptional({ example: '1990-05-15', description: 'Data de nascimento (YYYY-MM-DD). Obrigatório para adoção (18+ anos).' })
+  birthDate?: string | null;
+
+  @ApiPropertyOptional({ description: 'Número do RG (opcional). Usado para conferência automática no KYC quando o documento enviado for RG.' })
+  rg?: string | null;
+
   @ApiPropertyOptional()
   bio?: string;
 

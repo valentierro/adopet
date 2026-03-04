@@ -165,9 +165,25 @@ export type PendingKycItem = {
   email: string;
   phone?: string | null;
   document?: string | null;
+  rg?: string | null;
   kycSubmittedAt: string;
   documentUrl?: string | null;
   selfieUrl?: string | null;
+  documentVersoUrl?: string | null;
+  birthDate?: string | null;
+  kycExtractedBirthDate?: string | null;
+  kycExtractedName?: string | null;
+  kycExtractedCpf?: string | null;
+  kycExtractedDocNumber?: string | null;
+  kycExtractionStatus?: string | null;
+  kycFraudSignal?: string | null;
+};
+
+export const KYC_FRAUD_SIGNAL_LABELS: Record<string, string> = {
+  CPF_DIVERGENT: 'Nome bate, documento (CPF) não confere',
+  RG_DIVERGENT: 'Nome/data batem, RG do documento não confere',
+  NAME_DIVERGENT: 'Nome do documento não confere com o cadastro',
+  BIRTH_DATE_OR_AGE_DIVERGENT: 'Data de nascimento ou idade no documento não confere',
 };
 
 export type ApprovedKycItem = {

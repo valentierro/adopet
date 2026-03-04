@@ -35,6 +35,7 @@ import { getMyPartner, approveOngPet, rejectOngPet } from '../../../src/api/part
 import { getVerificationStatus } from '../../../src/api/verification';
 import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
 import { getMatchScoreColor } from '../../../src/utils/matchScoreColor';
+import { getSpeciesLabel, getSizeLabel, getSexLabel } from '../../../src/utils/petLabels';
 import { addViewedPetId } from '../../../src/utils/viewedPets';
 import { trackEvent } from '../../../src/analytics';
 import { spacing } from '../../../src/theme';
@@ -48,8 +49,6 @@ const REPORT_REASONS: { label: string; value: string }[] = [
   { label: 'Outro', value: 'OTHER' },
 ];
 
-const speciesLabel = { dog: 'Cachorro', cat: 'Gato' };
-const sizeLabel = { small: 'Pequeno', medium: 'Médio', large: 'Grande', xlarge: 'Muito grande' };
 const FEEDING_LABEL: Record<string, string> = { dry: 'Ração seca', wet: 'Ração úmida', mixed: 'Mista', natural: 'Natural', other: 'Outra' };
 const ENERGY_LABEL: Record<string, string> = { LOW: 'Calmo', MEDIUM: 'Moderado', HIGH: 'Agitado' };
 const TEMPERAMENT_LABEL: Record<string, string> = { CALM: 'Tranquilo', PLAYFUL: 'Brincalhão', SHY: 'Tímido', SOCIABLE: 'Sociável', INDEPENDENT: 'Independente' };
@@ -473,8 +472,9 @@ export default function PetDetailsScreen() {
         const hex = getMatchScoreColor(matchScoreData.score);
         return (
           <Modal visible transparent animationType="fade" onRequestClose={() => setShowMatchScoreModal(false)}>
-            <Pressable style={styles.modalOverlay} onPress={() => setShowMatchScoreModal(false)}>
-              <Pressable style={[styles.modalCard, styles.matchScoreModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.matchScoreModalOverlayWrap}>
+              <Pressable style={styles.modalOverlay} onPress={() => setShowMatchScoreModal(false)}>
+                <Pressable style={[styles.modalCard, styles.matchScoreModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
                 <View style={[styles.matchScoreModalHeader, { backgroundColor: hex + '20' }]}>
                   <View style={styles.matchScoreModalHeaderInner}>
                     <Ionicons name="speedometer-outline" size={40} color={hex} style={styles.matchScoreModalHeaderIcon} />
@@ -554,8 +554,9 @@ export default function PetDetailsScreen() {
                 >
                   <Text style={styles.matchScoreModalCloseText}>Fechar</Text>
                 </TouchableOpacity>
+                </Pressable>
               </Pressable>
-            </Pressable>
+            </View>
           </Modal>
         );
       })() : null;
@@ -579,9 +580,9 @@ export default function PetDetailsScreen() {
 
       <Text style={[styles.name, { color: colors.textPrimary }]}>{pet.name}</Text>
       <Text style={[styles.meta, { color: colors.textSecondary }]}>
-        {speciesLabel[String(pet.species).toLowerCase()] ?? pet.species}
-        {pet.breed ? ` • ${pet.breed}` : ''} • {pet.age} ano(s) • {sizeLabel[pet.size] ?? pet.size ?? ''} •{' '}
-        {pet.sex === 'male' ? 'Macho' : 'Fêmea'}
+        {getSpeciesLabel(pet.species)}
+        {pet.breed ? ` • ${pet.breed}` : ''} • {pet.age} ano(s) • {getSizeLabel(pet.size) || '—'} •{' '}
+        {pet.sex === 'male' ? 'Macho' : pet.sex === 'female' ? 'Fêmea' : getSexLabel(pet.sex) || '—'}
       </Text>
       <View style={styles.badges}>
         {pet.verified && (
@@ -959,7 +960,7 @@ export default function PetDetailsScreen() {
                     {similar.name}
                   </Text>
                   <Text style={[styles.similarMeta, { color: colors.textSecondary }]} numberOfLines={1}>
-                    {speciesLabel[String(similar.species).toLowerCase()] ?? similar.species}
+                    {getSpeciesLabel(similar.species)}
                     {similar.breed ? ` • ${similar.breed}` : ''} • {similar.age} ano(s)
                   </Text>
                 </TouchableOpacity>
@@ -1086,18 +1087,85 @@ export default function PetDetailsScreen() {
                 {(pet.owner?.city ?? pet.owner?.bio ?? pet.owner?.housingType ?? pet.owner?.petsAllowedAtHome ?? pet.owner?.dogExperience ?? pet.owner?.catExperience ?? pet.owner?.householdAgreesToAdoption ?? pet.owner?.whyAdopt) && (
                   <View style={[styles.modalTriageSection, { borderTopColor: colors.textSecondary + '30' }]}>
                     <Text style={[styles.modalTriageTitle, { color: colors.textSecondary }]}>Informações para triagem</Text>
-                    {pet.owner?.city ? <Text style={[styles.modalTriageLine, { color: colors.textPrimary }]}>Cidade: {pet.owner.city}</Text> : null}
-                    {pet.owner?.bio ? <Text style={[styles.modalTriageLine, { color: colors.textPrimary }]}>{pet.owner.bio}</Text> : null}
-                    {pet.owner?.housingType ? <Text style={[styles.modalTriageLine, { color: colors.textPrimary }]}>Moradia: {HOUSING_LABEL[pet.owner.housingType] ?? pet.owner.housingType}</Text> : null}
-                    {pet.owner?.hasYard === true ? <Text style={[styles.modalTriageLine, { color: colors.textPrimary }]}>Tem quintal</Text> : pet.owner?.hasYard === false ? <Text style={[styles.modalTriageLine, { color: colors.textPrimary }]}>Sem quintal</Text> : null}
-                    {pet.owner?.hasOtherPets === true ? <Text style={[styles.modalTriageLine, { color: colors.textPrimary }]}>Tem outros pets</Text> : null}
-                    {pet.owner?.hasChildren === true ? <Text style={[styles.modalTriageLine, { color: colors.textPrimary }]}>Tem crianças em casa</Text> : null}
-                    {pet.owner?.timeAtHome ? <Text style={[styles.modalTriageLine, { color: colors.textPrimary }]}>Tempo em casa: {TIME_AT_HOME_LABEL[pet.owner.timeAtHome] ?? pet.owner.timeAtHome}</Text> : null}
-                    {pet.owner?.petsAllowedAtHome ? <Text style={[styles.modalTriageLine, { color: colors.textPrimary }]}>Pets permitidos no local: {PETS_ALLOWED_LABEL[pet.owner.petsAllowedAtHome] ?? pet.owner.petsAllowedAtHome}</Text> : null}
-                    {pet.owner?.dogExperience ? <Text style={[styles.modalTriageLine, { color: colors.textPrimary }]}>Experiência com cachorro: {EXPERIENCE_LABEL[pet.owner.dogExperience] ?? pet.owner.dogExperience}</Text> : null}
-                    {pet.owner?.catExperience ? <Text style={[styles.modalTriageLine, { color: colors.textPrimary }]}>Experiência com gato: {EXPERIENCE_LABEL[pet.owner.catExperience] ?? pet.owner.catExperience}</Text> : null}
-                    {pet.owner?.householdAgreesToAdoption ? <Text style={[styles.modalTriageLine, { color: colors.textPrimary }]}>Concordância em casa: {HOUSEHOLD_AGREES_LABEL[pet.owner.householdAgreesToAdoption] ?? pet.owner.householdAgreesToAdoption}</Text> : null}
-                    {pet.owner?.whyAdopt ? <Text style={[styles.modalTriageLine, { color: colors.textPrimary }]}>Por que quer adotar: {pet.owner.whyAdopt}</Text> : null}
+                    <View style={styles.modalTriageList}>
+                      {pet.owner?.city ? (
+                        <View style={styles.modalTriageRow}>
+                          <Text style={[styles.modalTriageLabel, { color: colors.textSecondary }]}>Cidade</Text>
+                          <Text style={[styles.modalTriageValue, { color: colors.textPrimary }]}>{pet.owner.city}</Text>
+                        </View>
+                      ) : null}
+                      {pet.owner?.bio ? (
+                        <View style={styles.modalTriageRow}>
+                          <Text style={[styles.modalTriageLabel, { color: colors.textSecondary }]}>Sobre</Text>
+                          <Text style={[styles.modalTriageValue, { color: colors.textPrimary }]}>{pet.owner.bio}</Text>
+                        </View>
+                      ) : null}
+                      {pet.owner?.housingType ? (
+                        <View style={styles.modalTriageRow}>
+                          <Text style={[styles.modalTriageLabel, { color: colors.textSecondary }]}>Moradia</Text>
+                          <Text style={[styles.modalTriageValue, { color: colors.textPrimary }]}>{HOUSING_LABEL[pet.owner.housingType] ?? pet.owner.housingType}</Text>
+                        </View>
+                      ) : null}
+                      {pet.owner?.hasYard === true ? (
+                        <View style={styles.modalTriageRow}>
+                          <Text style={[styles.modalTriageLabel, { color: colors.textSecondary }]}>Quintal</Text>
+                          <Text style={[styles.modalTriageValue, { color: colors.textPrimary }]}>Sim</Text>
+                        </View>
+                      ) : pet.owner?.hasYard === false ? (
+                        <View style={styles.modalTriageRow}>
+                          <Text style={[styles.modalTriageLabel, { color: colors.textSecondary }]}>Quintal</Text>
+                          <Text style={[styles.modalTriageValue, { color: colors.textPrimary }]}>Não</Text>
+                        </View>
+                      ) : null}
+                      {pet.owner?.hasOtherPets === true ? (
+                        <View style={styles.modalTriageRow}>
+                          <Text style={[styles.modalTriageLabel, { color: colors.textSecondary }]}>Outros pets</Text>
+                          <Text style={[styles.modalTriageValue, { color: colors.textPrimary }]}>Sim</Text>
+                        </View>
+                      ) : null}
+                      {pet.owner?.hasChildren === true ? (
+                        <View style={styles.modalTriageRow}>
+                          <Text style={[styles.modalTriageLabel, { color: colors.textSecondary }]}>Crianças em casa</Text>
+                          <Text style={[styles.modalTriageValue, { color: colors.textPrimary }]}>Sim</Text>
+                        </View>
+                      ) : null}
+                      {pet.owner?.timeAtHome ? (
+                        <View style={styles.modalTriageRow}>
+                          <Text style={[styles.modalTriageLabel, { color: colors.textSecondary }]}>Tempo em casa</Text>
+                          <Text style={[styles.modalTriageValue, { color: colors.textPrimary }]}>{TIME_AT_HOME_LABEL[pet.owner.timeAtHome] ?? pet.owner.timeAtHome}</Text>
+                        </View>
+                      ) : null}
+                      {pet.owner?.petsAllowedAtHome ? (
+                        <View style={styles.modalTriageRow}>
+                          <Text style={[styles.modalTriageLabel, { color: colors.textSecondary }]}>Pets permitidos no local</Text>
+                          <Text style={[styles.modalTriageValue, { color: colors.textPrimary }]}>{PETS_ALLOWED_LABEL[pet.owner.petsAllowedAtHome] ?? pet.owner.petsAllowedAtHome}</Text>
+                        </View>
+                      ) : null}
+                      {pet.owner?.dogExperience ? (
+                        <View style={styles.modalTriageRow}>
+                          <Text style={[styles.modalTriageLabel, { color: colors.textSecondary }]}>Experiência com cachorro</Text>
+                          <Text style={[styles.modalTriageValue, { color: colors.textPrimary }]}>{EXPERIENCE_LABEL[pet.owner.dogExperience] ?? pet.owner.dogExperience}</Text>
+                        </View>
+                      ) : null}
+                      {pet.owner?.catExperience ? (
+                        <View style={styles.modalTriageRow}>
+                          <Text style={[styles.modalTriageLabel, { color: colors.textSecondary }]}>Experiência com gato</Text>
+                          <Text style={[styles.modalTriageValue, { color: colors.textPrimary }]}>{EXPERIENCE_LABEL[pet.owner.catExperience] ?? pet.owner.catExperience}</Text>
+                        </View>
+                      ) : null}
+                      {pet.owner?.householdAgreesToAdoption ? (
+                        <View style={styles.modalTriageRow}>
+                          <Text style={[styles.modalTriageLabel, { color: colors.textSecondary }]}>Concordância em casa</Text>
+                          <Text style={[styles.modalTriageValue, { color: colors.textPrimary }]}>{HOUSEHOLD_AGREES_LABEL[pet.owner.householdAgreesToAdoption] ?? pet.owner.householdAgreesToAdoption}</Text>
+                        </View>
+                      ) : null}
+                      {pet.owner?.whyAdopt ? (
+                        <View style={styles.modalTriageRow}>
+                          <Text style={[styles.modalTriageLabel, { color: colors.textSecondary }]}>Por que quer adotar</Text>
+                          <Text style={[styles.modalTriageValue, { color: colors.textPrimary }]}>{pet.owner.whyAdopt}</Text>
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
                 )}
                 <View style={styles.modalActions}>
@@ -1106,13 +1174,6 @@ export default function PetDetailsScreen() {
                     onPress={() => {
                       setTutorModalVisible(false);
                       router.push({ pathname: '/tutor-profile', params: { petId: id! } });
-                    }}
-                  />
-                  <PrimaryButton
-                    title={isFavorited ? 'Quero adotar / Chat' : 'Conversar'}
-                    onPress={() => {
-                      setTutorModalVisible(false);
-                      handleConversar();
                     }}
                   />
                   <SecondaryButton title="Fechar" onPress={() => setTutorModalVisible(false)} />
@@ -1645,12 +1706,14 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  matchScoreModalOverlayWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
   modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1825,6 +1888,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginBottom: spacing.sm,
+  },
+  modalTriageList: {
+    width: '100%',
+    gap: spacing.sm,
+  },
+  modalTriageRow: {
+    width: '100%',
+    paddingVertical: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(128,128,128,0.2)',
+  },
+  modalTriageLabel: {
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  modalTriageValue: {
+    fontSize: 14,
+    lineHeight: 20,
   },
   modalTriageLine: {
     fontSize: 14,

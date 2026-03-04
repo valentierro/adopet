@@ -49,6 +49,12 @@ export const IN_APP_NOTIFICATION_TYPES = {
   ONG_PET_PENDING_APPROVAL: 'ONG_PET_PENDING_APPROVAL',
   /** Para admin app: novo anúncio de ONG criado por membro (conhecimento). */
   ONG_PET_NEW_BY_MEMBER: 'ONG_PET_NEW_BY_MEMBER',
+  /** Para admins: KYC com possível fraude (ex.: nome bate, documento diverge). */
+  KYC_FRAUD_SUSPICIOUS: 'KYC_FRAUD_SUSPICIOUS',
+  /** Para admins: KYC aprovado automaticamente (todos os pontos bateram). */
+  KYC_AUTO_APPROVED: 'KYC_AUTO_APPROVED',
+  /** Para admins: usuário cancelou a solicitação de KYC que estava em análise. */
+  KYC_CANCELLED_BY_USER: 'KYC_CANCELLED_BY_USER',
 } as const;
 
 export type InAppNotificationType = (typeof IN_APP_NOTIFICATION_TYPES)[keyof typeof IN_APP_NOTIFICATION_TYPES];

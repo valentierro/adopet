@@ -16,7 +16,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PrimaryButton, LoadingLogo, Toast, MatchScoreBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { getAdoptionRequestForm, submitAdoptionForm } from '../../src/api/adoption-requests';
+import { getMe } from '../../src/api/me';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
+import { isUserEligibleToAdoptByAge } from '../../src/utils/age';
+import { formatDateInputDDMMAAAA, formatDateToDDMMAAAA, parseDDMMAAAAToISO } from '../../src/utils/dateMask';
 import { spacing } from '../../src/theme';
 
 type FormQuestion = {
@@ -47,13 +50,26 @@ export default function AdoptionFormFillScreen() {
     queryFn: () => getAdoptionRequestForm(requestId!),
     enabled: !!requestId,
   });
+  const { data: me } = useQuery({ queryKey: ['me'], queryFn: getMe, enabled: !!formData });
+  const ageEligibility = isUserEligibleToAdoptByAge(me);
 
   const submitMutation = useMutation({
-    mutationFn: () =>
-      submitAdoptionForm(requestId!, {
-        answers: answers as Record<string, unknown>,
+    mutationFn: () => {
+      const sanitized: Record<string, unknown> = {};
+      for (const q of (formData?.template?.questions ?? []) as FormQuestion[]) {
+        const v = answers[q.id];
+        if (q.type === 'DATE' && typeof v === 'string') {
+          const iso = parseDDMMAAAAToISO(v);
+          sanitized[q.id] = iso ?? v;
+        } else {
+          sanitized[q.id] = v;
+        }
+      }
+      return submitAdoptionForm(requestId!, {
+        answers: sanitized,
         consentAt: new Date().toISOString(),
-      }),
+      });
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['adoption-form', requestId] });
       queryClient.invalidateQueries({ queryKey: ['my-adoption-requests'] });
@@ -198,10 +214,12 @@ export default function AdoptionFormFillScreen() {
           <TextInput
             key={q.id}
             style={baseInputStyle}
-            placeholder={q.placeholder ?? 'AAAA-MM-DD'}
+            placeholder={q.placeholder ?? 'DD/MM/AAAA'}
             placeholderTextColor={colors.textSecondary}
-            value={(value as string) ?? ''}
-            onChangeText={(v) => updateAnswer(q.id, v)}
+            value={formatDateToDDMMAAAA(value as string)}
+            onChangeText={(v) => updateAnswer(q.id, formatDateInputDDMMAAAA(v))}
+            keyboardType="number-pad"
+            maxLength={10}
           />
         );
       case 'FILE':
@@ -282,6 +300,17 @@ export default function AdoptionFormFillScreen() {
         <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
           Preencha os campos abaixo. As informações serão enviadas para a ONG analisar sua solicitação de adoção.
         </Text>
+        {!ageEligibility.eligible && ageEligibility.reason && (
+          <TouchableOpacity
+            style={[styles.expiresHint, { backgroundColor: (colors.warning || '#d97706') + '22', borderWidth: 1, borderColor: (colors.warning || '#d97706') + '60' }]}
+            onPress={() => router.push('/profile-edit')}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="calendar-outline" size={20} color={colors.warning || '#d97706'} />
+            <Text style={[styles.expiresText, { color: colors.textPrimary }]}>{ageEligibility.reason}</Text>
+            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+        )}
         {formData.expiresAt && (
           <View style={[styles.expiresHint, { backgroundColor: colors.primary + '12' }]}>
             <Ionicons name="time-outline" size={18} color={colors.primary} />
@@ -315,7 +344,7 @@ export default function AdoptionFormFillScreen() {
         <PrimaryButton
           title={submitMutation.isPending ? 'Enviando...' : 'Enviar formulário'}
           onPress={handleSubmit}
-          disabled={submitMutation.isPending}
+          disabled={submitMutation.isPending || !ageEligibility.eligible}
           style={styles.submitBtn}
         />
       </View>

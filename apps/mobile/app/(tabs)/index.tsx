@@ -20,12 +20,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ScreenContainer, LoadingLogo, VerifiedBadge, PrimaryButton, SecondaryButton, UsuarioVerificadoModal, DashboardSpotlightTour } from '../../src/components';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
+import { ScreenContainer, LoadingLogo, VerifiedBadge, PrimaryButton, SecondaryButton, UsuarioVerificadoModal, DashboardSpotlightTour, Toast } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useClientConfig } from '../../src/hooks/useClientConfig';
 import { useAuthStore } from '../../src/stores/authStore';
-import { getMe, getTutorStats, getMyAdoptions, getPreferences, getPendingAdoptionConfirmations, getMyNotificationsUnreadCount } from '../../src/api/me';
+import { getMe, getTutorStats, getMyAdoptions, getPreferences, getPendingAdoptionConfirmations, getMyNotificationsUnreadCount, cancelKyc, KYC_CANCELLATION_REASONS } from '../../src/api/me';
 import { getAdminStats } from '../../src/api/admin';
 import { getPartnerAnalytics, getMyPartnerOngPetsPendingCount } from '../../src/api/partner';
 import { getMinePets } from '../../src/api/pets';
@@ -34,6 +34,7 @@ import { getConversations } from '../../src/api/conversations';
 import { getPassedPets } from '../../src/api/swipes';
 import { fetchFeed } from '../../src/api/feed';
 import { spacing } from '../../src/theme';
+import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { getOnboardingSeen } from '../../src/storage/onboarding';
 import {
   getCardsOrder,
@@ -155,8 +156,15 @@ function useDashboardData() {
   });
 
   const myPets = minePage?.items ?? [];
+  const myPetsCount =
+    typeof minePage?.totalCount === 'number' ? minePage.totalCount : (minePage?.items?.length ?? 0);
   const myAdoptionsCount = adoptionsData?.items?.length ?? 0;
-  const favoritesCount = Array.isArray(favoritesPage?.items) ? favoritesPage.items.length : 0;
+  const favoritesCount =
+    typeof favoritesPage?.totalCount === 'number'
+      ? favoritesPage.totalCount
+      : Array.isArray(favoritesPage?.items)
+        ? favoritesPage.items.length
+        : 0;
   const unreadTotal = conversations.reduce((s, c) => s + (c.unreadCount ?? 0), 0);
   const passedCount = passedData?.items?.length ?? 0;
   const feedPreviewItems = feedData?.items ?? [];
@@ -184,7 +192,7 @@ function useDashboardData() {
   return {
     user,
     tutorStats,
-    myPetsCount: myPets.length,
+    myPetsCount,
     myAdoptionsCount,
     pendingConfirmations,
     favoritesCount,
@@ -265,8 +273,8 @@ export default function DashboardScreen() {
   const [reorderDraft, setReorderDraft] = useState<string[]>([]);
   const [cardsOrder, setCardsOrderState] = useState<string[]>([]);
   const [cardsOrderLoaded, setCardsOrderLoaded] = useState(false);
-  const FEED_CAROUSEL_THUMB_SIZE = 56;
-  const FEED_CAROUSEL_GAP = 6;
+  const FEED_CAROUSEL_THUMB_SIZE = 72;
+  const FEED_CAROUSEL_GAP = 8;
   const FEED_CAROUSEL_ITEM_WIDTH = FEED_CAROUSEL_THUMB_SIZE + FEED_CAROUSEL_GAP;
   const feedThumbUrls = useMemo(
     () => carouselFeedItems.map((p) => p.photos?.[0]).filter(Boolean) as string[],
@@ -357,11 +365,29 @@ export default function DashboardScreen() {
           : 'paw';
   const roleBadgeColor = roleBadgeLabel === 'Admin' ? '#b45309' : '#15803d';
   const [showKycPendingModal, setShowKycPendingModal] = useState(false);
+  const [showKycCancelForm, setShowKycCancelForm] = useState(false);
+  const [kycCancelReason, setKycCancelReason] = useState<string | null>(null);
+  const [kycCancelToast, setKycCancelToast] = useState<string | null>(null);
 
   const handleRequestVerification = () => {
     setShowVerificationModal(false);
     router.push('/kyc');
   };
+
+  const cancelKycMutation = useMutation({
+    mutationFn: (reason: string) => cancelKyc(reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me'] });
+      queryClient.invalidateQueries({ queryKey: ['me', 'kyc-status'] });
+      setShowKycPendingModal(false);
+      setShowKycCancelForm(false);
+      setKycCancelReason(null);
+      setKycCancelToast('Solicitação de verificação cancelada. Você pode solicitar novamente quando quiser.');
+    },
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível cancelar. Tente novamente.'));
+    },
+  });
 
   useEffect(() => {
     if (user) setUser(user);
@@ -415,7 +441,8 @@ export default function DashboardScreen() {
       id: 'my-pets',
       primaryShortcut: true,
       title: 'Meus anúncios',
-      subtitle: myPetsCount === 0 ? 'Nenhum anúncio' : `${myPetsCount} anúncio${myPetsCount !== 1 ? 's' : ''}`,
+      subtitle:
+        myPetsCount === 0 ? 'Faça seu anúncio!' : `${myPetsCount} anúncio${myPetsCount !== 1 ? 's' : ''}`,
       icon: 'megaphone-outline',
       route: '/my-pets',
       badge: myPetsCount > 0 ? myPetsCount : undefined,
@@ -424,7 +451,12 @@ export default function DashboardScreen() {
       id: 'adopted',
       primaryShortcut: true,
       title: 'Minhas adoções',
-      subtitle: myAdoptionsCount === 0 ? 'Nenhuma adoção' : (myAdoptionsCount === 1 ? '1 adoção' : `${myAdoptionsCount} adoções`),
+      subtitle:
+        myAdoptionsCount === 0
+          ? 'Ache um novo amigo'
+          : myAdoptionsCount === 1
+            ? '1 adoção'
+            : `${myAdoptionsCount} adoções`,
       icon: 'heart-circle',
       route: '/my-adoptions',
       badge: myAdoptionsCount > 0 ? myAdoptionsCount : undefined,
@@ -432,7 +464,10 @@ export default function DashboardScreen() {
     {
       id: 'favorites',
       title: 'Favoritos',
-      subtitle: favoritesCount === 0 ? 'Nenhum favorito' : `${favoritesCount} pet${favoritesCount !== 1 ? 's' : ''}`,
+      subtitle:
+        favoritesCount === 0
+          ? 'Curta os pets que gostar'
+          : `${favoritesCount} pet${favoritesCount !== 1 ? 's' : ''}`,
       icon: 'heart',
       route: '/favorites',
       badge: favoritesCount > 0 ? favoritesCount : undefined,
@@ -447,7 +482,10 @@ export default function DashboardScreen() {
     {
       id: 'passed',
       title: 'Pets que passou',
-      subtitle: passedCount === 0 ? 'Nenhum na lista' : `${passedCount} pet${passedCount !== 1 ? 's' : ''} para rever`,
+      subtitle:
+        passedCount === 0
+          ? 'Deslize e reveja depois'
+          : `${passedCount} pet${passedCount !== 1 ? 's' : ''} para rever`,
       icon: 'arrow-undo',
       route: '/passed-pets',
       badge: passedCount > 0 ? passedCount : undefined,
@@ -604,6 +642,7 @@ export default function DashboardScreen() {
             </View>
           </TouchableOpacity>
         ) : null}
+
         <LinearGradient
           colors={[colors.primary + '22', colors.primary + '08']}
           style={[styles.hero, { borderRadius: 20, overflow: 'hidden' }]}
@@ -718,36 +757,173 @@ export default function DashboardScreen() {
           </View>
         </LinearGradient>
 
-        <View style={styles.homeShortcutsRow}>
+        {/* Card "Descobrir pets" em segundo, logo após o hero */}
+        <View ref={feedCardRef} style={{ marginBottom: spacing.lg }} collapsable={false}>
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => router.push('/feed')}
+          style={styles.cardWrapFeedHero}
+        >
+          <LinearGradient
+            colors={['#d97706', '#b45309']}
+            style={[styles.cardFeedHero, { borderRadius: 16, overflow: 'hidden' }]}
+          >
+            {feedThumbUrls.length > 0 ? (
+              <View style={styles.feedCardContent}>
+                <View style={styles.feedCardTop}>
+                  <View style={[styles.feedCardIconWrapLarge, styles.iconWrapLight]}>
+                    <Ionicons name="paw" size={36} color="#fff" />
+                  </View>
+                  <View style={styles.feedCardText}>
+                    <Text style={[styles.feedCardTitleHero, { color: '#fff' }]} numberOfLines={1}>
+                      Encontre seu próximo amigo
+                    </Text>
+                    {typeof feedTotalCount === 'number' && feedTotalCount > 0 ? (
+                      <Text style={[styles.feedCardNumberHero, { color: 'rgba(255,255,255,0.95)' }]}>
+                        {feedTotalCount} pet{feedTotalCount !== 1 ? 's' : ''} na sua região
+                      </Text>
+                    ) : null}
+                    <Text style={[styles.feedCardActionPhrase, { color: 'rgba(255,255,255,0.9)' }]}>
+                      Toque no card para ver os pets disponíveis
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.feedCardVerPetsButton}
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    router.push('/feed');
+                  }}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.feedCardVerPetsButtonText}>Ver pets</Text>
+                  <Ionicons name="chevron-forward" size={18} color="#b45309" />
+                </TouchableOpacity>
+                <ScrollView
+                  ref={feedCarouselRef}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  decelerationRate="fast"
+                  snapToInterval={FEED_CAROUSEL_ITEM_WIDTH}
+                  snapToAlignment="start"
+                  contentContainerStyle={[
+                    styles.feedCarouselContent,
+                    {
+                      width:
+                        (feedThumbUrls.length * 3) * FEED_CAROUSEL_ITEM_WIDTH -
+                        FEED_CAROUSEL_GAP,
+                    },
+                  ]}
+                  onScroll={(e) => {
+                    feedCarouselOffsetRef.current = e.nativeEvent.contentOffset.x;
+                  }}
+                  scrollEventThrottle={32}
+                  onLayout={() => {
+                    const segmentWidth = FEED_CAROUSEL_ITEM_WIDTH * feedThumbUrls.length;
+                    feedCarouselRef.current?.scrollTo({
+                      x: segmentWidth,
+                      animated: false,
+                    });
+                    feedCarouselOffsetRef.current = segmentWidth;
+                  }}
+                  onMomentumScrollEnd={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+                    const x = e.nativeEvent.contentOffset.x;
+                    const segmentWidth = FEED_CAROUSEL_ITEM_WIDTH * feedThumbUrls.length;
+                    if (x < segmentWidth * 0.5) {
+                      feedCarouselRef.current?.scrollTo({
+                        x: x + segmentWidth,
+                        animated: false,
+                      });
+                    } else if (x > segmentWidth * 2.5) {
+                      feedCarouselRef.current?.scrollTo({
+                        x: x - segmentWidth,
+                        animated: false,
+                      });
+                    }
+                  }}
+                >
+                  {[...feedThumbUrls, ...feedThumbUrls, ...feedThumbUrls].map((uri, i) => (
+                    <Image
+                      key={`${i}`}
+                      source={{ uri }}
+                      style={[
+                        styles.feedThumbLarge,
+                        {
+                          width: FEED_CAROUSEL_THUMB_SIZE,
+                          height: FEED_CAROUSEL_THUMB_SIZE,
+                          marginRight:
+                            i < feedThumbUrls.length * 3 - 1 ? FEED_CAROUSEL_GAP : 0,
+                        },
+                      ]}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+            ) : (
+              <View style={styles.feedCardContent}>
+                <View style={styles.feedCardTop}>
+                  <View style={[styles.feedCardIconWrapLarge, styles.iconWrapLight]}>
+                    <Ionicons name="paw" size={36} color="#fff" />
+                  </View>
+                  <View style={styles.feedCardText}>
+                    <Text style={[styles.feedCardTitleHero, { color: '#fff' }]} numberOfLines={1}>
+                      Encontre seu próximo amigo
+                    </Text>
+                    <Text style={[styles.feedCardSubtitle, { color: 'rgba(255,255,255,0.9)' }]} numberOfLines={1}>
+                      Nenhum pet no momento na sua região
+                    </Text>
+                    <Text style={[styles.feedCardActionPhrase, { color: 'rgba(255,255,255,0.9)' }]}>
+                      Explore no mapa ou volte em breve
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.feedCardMapButton}
+                  onPress={(e) => {
+                    e?.stopPropagation?.();
+                    router.push('/map');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="map" size={18} color="#fff" />
+                  <Text style={styles.feedCardMapButtonText}>Explorar no mapa</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </LinearGradient>
+        </TouchableOpacity>
+        </View>
+
+        <View style={[styles.homeShortcutsRow, styles.homeShortcutsRowCompact]}>
           <TouchableOpacity
             onPress={() => router.push('/(tabs)/marketplace')}
-            style={[styles.homeShortcutCard, { backgroundColor: colors.surface }]}
+            style={[styles.homeShortcutCard, styles.homeShortcutCardCompact, { backgroundColor: colors.surface }]}
             activeOpacity={0.8}
           >
-            <View style={styles.homeShortcutIconWrap}>
-              <Image source={ImgPetshop} style={styles.homeShortcutImg} resizeMode="contain" />
+            <View style={[styles.homeShortcutIconWrap, styles.homeShortcutIconWrapCompact]}>
+              <Image source={ImgPetshop} style={[styles.homeShortcutImg, styles.homeShortcutImgCompact]} resizeMode="contain" />
             </View>
-            <Text style={[styles.homeShortcutLabel, { color: colors.textPrimary }]} numberOfLines={1}>Para seu pet</Text>
+            <Text style={[styles.homeShortcutLabel, styles.homeShortcutLabelCompact, { color: colors.textPrimary }]} numberOfLines={1}>Para seu pet</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => router.push({ pathname: '/(tabs)/feed', params: { trending: '1' } })}
-            style={[styles.homeShortcutCard, { backgroundColor: colors.surface }]}
+            style={[styles.homeShortcutCard, styles.homeShortcutCardCompact, { backgroundColor: colors.surface }]}
             activeOpacity={0.8}
           >
-            <View style={styles.homeShortcutIconWrap}>
-              <Image source={ImgOnfire} style={styles.homeShortcutImg} resizeMode="contain" />
+            <View style={[styles.homeShortcutIconWrap, styles.homeShortcutIconWrapCompact]}>
+              <Image source={ImgOnfire} style={[styles.homeShortcutImg, styles.homeShortcutImgCompact]} resizeMode="contain" />
             </View>
-            <Text style={[styles.homeShortcutLabel, { color: colors.textPrimary }]} numberOfLines={1}>Pets em alta</Text>
+            <Text style={[styles.homeShortcutLabel, styles.homeShortcutLabelCompact, { color: colors.textPrimary }]} numberOfLines={1}>Pets em alta</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => router.push('/recent-adoptions')}
-            style={[styles.homeShortcutCard, { backgroundColor: colors.surface }]}
+            style={[styles.homeShortcutCard, styles.homeShortcutCardCompact, { backgroundColor: colors.surface }]}
             activeOpacity={0.8}
           >
-            <View style={styles.homeShortcutIconWrap}>
-              <Image source={ImgUltimasDoacoes} style={styles.homeShortcutImg} resizeMode="contain" />
+            <View style={[styles.homeShortcutIconWrap, styles.homeShortcutIconWrapCompact]}>
+              <Image source={ImgUltimasDoacoes} style={[styles.homeShortcutImg, styles.homeShortcutImgCompact]} resizeMode="contain" />
             </View>
-            <Text style={[styles.homeShortcutLabel, { color: colors.textPrimary }]} numberOfLines={1}>Últimas adoções</Text>
+            <Text style={[styles.homeShortcutLabel, styles.homeShortcutLabelCompact, { color: colors.textPrimary }]} numberOfLines={1}>Últimas adoções</Text>
           </TouchableOpacity>
         </View>
 
@@ -892,9 +1068,11 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.grid}>
-          {orderedCardsToShow.map((card) => {
+          {orderedCardsToShow
+            .filter((card) => card.id !== 'feed')
+            .map((card) => {
             const isFull = card.fullWidth;
-            const isFeedCard = card.id === 'feed';
+            const isFeedCard = false;
             const feedCarouselData = isFeedCard && feedThumbUrls.length > 0 ? [...feedThumbUrls, ...feedThumbUrls, ...feedThumbUrls] : [];
             const feedCarouselSegmentWidth = feedThumbUrls.length > 0 ? FEED_CAROUSEL_ITEM_WIDTH * feedThumbUrls.length : 0;
             const content = isFeedCard && feedThumbUrls.length > 0 ? (
@@ -1436,30 +1614,106 @@ export default function DashboardScreen() {
         visible={showKycPendingModal}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowKycPendingModal(false)}
+        onRequestClose={() => {
+          setShowKycPendingModal(false);
+          setShowKycCancelForm(false);
+          setKycCancelReason(null);
+        }}
       >
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowKycPendingModal(false)} />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => {
+              setShowKycPendingModal(false);
+              setShowKycCancelForm(false);
+              setKycCancelReason(null);
+            }}
+          />
           <Pressable
             style={[styles.verificationModalCard, { backgroundColor: colors.surface }]}
             onPress={(e) => e.stopPropagation()}
           >
-            <View style={styles.verificationModalHeader}>
-              <View style={[styles.verificationModalIconWrap, { backgroundColor: (colors.warning || '#d97706') + '22' }]}>
-                <Ionicons name="time" size={32} color={colors.warning || '#d97706'} />
-              </View>
-              <Text style={[styles.verificationModalTitle, { color: colors.textPrimary }]}>Verificação em análise</Text>
-            </View>
-            <Text style={[styles.verificationModalP, { color: colors.textSecondary }]}>
-              Sua verificação de identidade está sendo analisada pela equipe Adopet. O resultado pode levar até 48 horas.
-            </Text>
-            <Text style={[styles.verificationModalP, { color: colors.textSecondary }]}>
-              Assim que for aprovada, você poderá concluir o processo de adoção no app e os tutores poderão marcar você como adotante.
-            </Text>
-            <SecondaryButton title="Fechar" onPress={() => setShowKycPendingModal(false)} />
+            {showKycCancelForm ? (
+              <>
+                <View style={styles.verificationModalHeader}>
+                  <View style={[styles.verificationModalIconWrap, { backgroundColor: (colors.warning || '#d97706') + '22' }]}>
+                    <Ionicons name="close-circle-outline" size={32} color={colors.warning || '#d97706'} />
+                  </View>
+                  <Text style={[styles.verificationModalTitle, { color: colors.textPrimary }]}>Cancelar solicitação de verificação</Text>
+                </View>
+                <View style={styles.kycCancelWarningWrap}>
+                  <Ionicons name="warning-outline" size={22} color={colors.warning || '#d97706'} style={styles.kycCancelWarningIcon} />
+                  <Text style={[styles.verificationModalP, { color: colors.textPrimary, fontWeight: '600', marginTop: 0 }]}>
+                    Só é possível concluir adoções com o KYC finalizado. Ao cancelar, você poderá solicitar a verificação novamente quando quiser.
+                  </Text>
+                </View>
+                <Text style={[styles.verificationModalP, { color: colors.textSecondary, marginBottom: spacing.xs }]}>Por que está cancelando?</Text>
+                <View style={styles.kycCancelOptionsWrap}>
+                  {KYC_CANCELLATION_REASONS.map((opt) => (
+                    <TouchableOpacity
+                      key={opt.value}
+                      style={[
+                        styles.kycCancelOptionRow,
+                        { borderColor: kycCancelReason === opt.value ? colors.primary : colors.textSecondary + '60' },
+                        kycCancelReason === opt.value && { backgroundColor: colors.primary + '18' },
+                      ]}
+                      onPress={() => setKycCancelReason(opt.value)}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons
+                        name={kycCancelReason === opt.value ? 'radio-button-on' : 'radio-button-off'}
+                        size={20}
+                        color={kycCancelReason === opt.value ? colors.primary : colors.textSecondary}
+                      />
+                      <Text style={[styles.kycCancelOptionLabel, { color: colors.textPrimary }]}>{opt.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.kycCancelModalActions}>
+                  <SecondaryButton
+                    title="Manter solicitação"
+                    onPress={() => {
+                      setShowKycCancelForm(false);
+                      setKycCancelReason(null);
+                    }}
+                  />
+                  <PrimaryButton
+                    title={cancelKycMutation.isPending ? 'Cancelando...' : 'Confirmar cancelamento'}
+                    onPress={() => kycCancelReason && cancelKycMutation.mutate(kycCancelReason)}
+                    loading={cancelKycMutation.isPending}
+                    disabled={!kycCancelReason}
+                  />
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.verificationModalHeader}>
+                  <View style={[styles.verificationModalIconWrap, { backgroundColor: (colors.warning || '#d97706') + '22' }]}>
+                    <Ionicons name="time" size={32} color={colors.warning || '#d97706'} />
+                  </View>
+                  <Text style={[styles.verificationModalTitle, { color: colors.textPrimary }]}>Verificação em análise</Text>
+                </View>
+                <Text style={[styles.verificationModalP, { color: colors.textSecondary }]}>
+                  Sua verificação de identidade está sendo analisada pela equipe Adopet. O resultado pode levar até 48 horas.
+                </Text>
+                <Text style={[styles.verificationModalP, { color: colors.textSecondary }]}>
+                  Assim que for aprovada, você poderá concluir o processo de adoção no app e os tutores poderão marcar você como adotante.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setShowKycCancelForm(true)}
+                  style={[styles.kycCancelLinkBtn, { borderColor: colors.textSecondary }]}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.kycCancelLinkText, { color: colors.textSecondary }]}>Cancelar solicitação</Text>
+                </TouchableOpacity>
+                <SecondaryButton title="Fechar" onPress={() => setShowKycPendingModal(false)} />
+              </>
+            )}
           </Pressable>
         </View>
       </Modal>
+
+      <Toast message={kycCancelToast} onHide={() => setKycCancelToast(null)} />
     </View>
   );
 }
@@ -1488,14 +1742,14 @@ const styles = StyleSheet.create({
   },
   confirmBannerButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   hero: {
-    marginBottom: spacing.xl,
-    paddingVertical: spacing.lg,
+    marginBottom: spacing.lg,
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
   },
   heroInner: {},
-  heroNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, minHeight: 32 },
+  heroNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, minHeight: 28 },
   heroNameWrap: { flex: 1, minWidth: 0, marginRight: spacing.sm },
-  heroStatusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6, width: '100%' },
+  heroStatusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, width: '100%' },
   heroStatusLeft: { flexDirection: 'row', alignItems: 'center' },
   verificationChip: {
     flexDirection: 'row',
@@ -1507,27 +1761,27 @@ const styles = StyleSheet.create({
   },
   verificationChipText: { fontSize: 12, fontWeight: '600' },
   heroLogoBlock: { alignItems: 'flex-end' },
-  heroLogo: { height: 26, width: 90 },
+  heroLogo: { height: 24, width: 82 },
   roleBadgeWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 12,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 10,
   },
-  roleBadgeText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
-  hello: { fontSize: 14, marginBottom: 2 },
-  name: { fontSize: 22, fontWeight: '700', letterSpacing: 0.3, flexShrink: 1, minWidth: 0 },
-  heroTagline: { fontSize: 13, marginTop: 4 },
-  heroHint: { fontSize: 13, fontWeight: '600', marginTop: 6 },
+  roleBadgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
+  hello: { fontSize: 13, marginBottom: 1 },
+  name: { fontSize: 19, fontWeight: '700', letterSpacing: 0.3, flexShrink: 1, minWidth: 0 },
+  heroTagline: { fontSize: 12, marginTop: 2 },
+  heroHint: { fontSize: 12, fontWeight: '600', marginTop: 4 },
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: 12,
+    marginTop: spacing.sm,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 10,
   },
   stat: { flex: 1, alignItems: 'center' },
   statTitleWrap: { flex: 1.2, minWidth: 0, flexShrink: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
@@ -1535,16 +1789,16 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 10,
-    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 2,
     maxWidth: '100%',
   },
   statTitleIcon: { marginBottom: 0 },
-  statValue: { fontSize: 18, fontWeight: '800' },
-  statLabel: { fontSize: 11, marginTop: 2 },
-  statTitle: { fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  statValue: { fontSize: 16, fontWeight: '800' },
+  statLabel: { fontSize: 10, marginTop: 1 },
+  statTitle: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
   statDivider: { width: 1, height: 24, opacity: 0.3, marginHorizontal: spacing.xs },
   statInfoBtn: { padding: spacing.xs, marginLeft: spacing.xs },
   modalOverlay: {
@@ -1722,6 +1976,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
     paddingHorizontal: 2,
   },
+  homeShortcutsRowCompact: {
+    marginBottom: spacing.md,
+  },
   homeShortcutCard: {
     flex: 1,
     alignItems: 'center',
@@ -1737,6 +1994,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     elevation: 2,
   },
+  homeShortcutCardCompact: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: 12,
+    minHeight: 44,
+  },
   homeShortcutIconWrap: {
     width: 52,
     height: 52,
@@ -1744,14 +2007,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: spacing.sm,
   },
+  homeShortcutIconWrapCompact: {
+    width: 36,
+    height: 36,
+    marginBottom: spacing.xs,
+  },
   homeShortcutImg: {
     width: 52,
     height: 52,
+  },
+  homeShortcutImgCompact: {
+    width: 36,
+    height: 36,
   },
   homeShortcutLabel: {
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  homeShortcutLabelCompact: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   homeShortcutBadge: {
     position: 'absolute',
@@ -2036,4 +2312,32 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   verificationModalCta: { marginBottom: 0 },
+  kycCancelWarningWrap: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  kycCancelWarningIcon: { marginTop: 2 },
+  kycCancelOptionsWrap: { marginBottom: spacing.md, gap: spacing.xs },
+  kycCancelOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderRadius: 10,
+  },
+  kycCancelOptionLabel: { fontSize: 14, flex: 1 },
+  kycCancelModalActions: { gap: spacing.sm },
+  kycCancelLinkBtn: {
+    alignSelf: 'stretch',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.sm,
+    alignItems: 'center',
+  },
+  kycCancelLinkText: { fontSize: 15, fontWeight: '600' },
 });

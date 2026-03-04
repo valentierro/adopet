@@ -52,6 +52,9 @@ describe('Auth DTOs transform (valores tipo produção)', () => {
         password: 'SenhaSegura123',
         name: 'Maria Silva',
         phone: '11987654321',
+        document: '12345678901',
+        rg: '123456789',
+        birthDate: '1990-05-15',
         username: 'maria.silva',
       };
       const dto = plainToClass(SignupDto, plain, { enableImplicitConversion: true });
@@ -67,6 +70,9 @@ describe('Auth DTOs transform (valores tipo produção)', () => {
         password: 'Senha123',
         name: 'João',
         phone: '123456789',
+        document: '12345678901',
+        rg: '123456789',
+        birthDate: '1990-05-15',
         username: 'joao',
       };
       const dto = plainToClass(SignupDto, plain, { enableImplicitConversion: true });

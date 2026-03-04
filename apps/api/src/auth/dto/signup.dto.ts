@@ -1,11 +1,20 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, MinLength, MaxLength, Matches } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength, MaxLength, Matches, IsDateString, IsBoolean } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 /** Telefone: apenas dígitos, 10 ou 11 caracteres (DDD + número). Ex: 11987654321 */
 const PHONE_REGEX = /^[0-9]{10,11}$/;
 /** CPF (11 dígitos) ou CNPJ (14 dígitos), apenas números */
 const DOCUMENT_REGEX = /^([0-9]{11}|[0-9]{14})$/;
+
+/** Normaliza RG para armazenamento: só dígitos e até uma letra no final (ex.: 123456789X). Máx 20 caracteres. */
+function normalizeRgForStorage(value: string): string {
+  const s = String(value ?? '').replace(/\s/g, '').toUpperCase();
+  const digits = s.replace(/\D/g, '');
+  const trailingLetter = s.match(/([A-Z])$/)?.[1] ?? '';
+  const out = digits + trailingLetter;
+  return out.slice(0, 20) || '';
+}
 /** Mín. 6 caracteres, pelo menos uma letra e um número */
 const PASSWORD_REGEX = /^(?=.*[A-Za-z])(?=.*\d).{6,}$/;
 /** Nome de usuário: min 2, max 30, apenas a-z 0-9 . _ */
@@ -41,6 +50,21 @@ export class SignupDto {
   @Matches(DOCUMENT_REGEX, { message: 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos)' })
   document: string;
 
+  @ApiProperty({
+    example: '123456789',
+    description: 'Número do RG (obrigatório). Pessoas com 18 anos ou mais normalmente possuem RG; será usado na validação automática do KYC. Sem RG, entre em contato com o app.',
+  })
+  @IsNotEmpty({ message: 'Informe o número do RG.' })
+  @IsString()
+  @MinLength(4, { message: 'Informe um número de RG válido (mínimo 4 caracteres).' })
+  @MaxLength(30)
+  @Transform(({ value }) => (typeof value === 'string' ? normalizeRgForStorage(value) : value))
+  rg: string;
+
+  @ApiProperty({ example: '1990-05-15', description: 'Data de nascimento (YYYY-MM-DD)' })
+  @IsDateString({}, { message: 'Informe uma data de nascimento válida (ex: 15/05/1990)' })
+  birthDate: string;
+
   @ApiProperty({ example: 'maria.silva', description: 'Nome de usuário único (@nome) para ser encontrado ao indicar adotante' })
   @IsNotEmpty({ message: 'Informe um nome de usuário' })
   @IsString()
@@ -49,4 +73,32 @@ export class SignupDto {
   @Matches(USERNAME_REGEX, { message: 'Use apenas letras minúsculas, números, ponto e underscore' })
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase().replace(/^@/, '') : value))
   username: string;
+
+  @ApiProperty({
+    required: false,
+    description: 'Chave do documento KYC enviado via presign-signup-kyc (obrigatório se consentKyc for true)',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  selfieWithDocKey?: string;
+
+  @ApiProperty({
+    required: false,
+    description: 'Chave do verso do documento (RG) enviada via presign-signup-kyc. Opcional; use quando for RG para conferência automática da data de nascimento.',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  documentVersoKey?: string;
+
+  @ApiProperty({
+    required: false,
+    description: 'Consentimento para uso das fotos apenas para análise KYC (obrigatório se selfieWithDocKey for enviado)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  consentKyc?: boolean;
 }

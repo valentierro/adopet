@@ -47,6 +47,14 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string): strin
   if (error == null) return fallback;
   const msg = error instanceof Error ? error.message : String(error);
 
+  // Mensagens da API sobre requisito de idade (18+) ou data de nascimento — exibir tal qual
+  if (/^API\s+(400|403)/i.test(msg)) {
+    const bodyMsg = getApiErrorBodyMessage(error);
+    if (bodyMsg && (/adotar|18\s*anos|data\s*de\s*nascimento|nascimento\s*em\s*Perfil|criar uma conta/i.test(bodyMsg))) {
+      return bodyMsg;
+    }
+  }
+
   // Erro no formato "API 401: body" ou "API 500: ..." — nunca mostrar cru
   if (/^API\s+\d{3}/i.test(msg)) {
     const body = msg.replace(/^API\s+\d{3}\s*:\s*/i, '').trim();

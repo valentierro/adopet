@@ -10,9 +10,10 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { PetPartnershipModule } from '../pet-partnership/pet-partnership.module';
 import { PetsModule } from '../pets/pets.module';
 import { SatisfactionModule } from '../satisfaction/satisfaction.module';
+import { KycExtractionModule } from '../kyc-extraction/kyc-extraction.module';
 
 @Module({
-  imports: [PrismaModule, forwardRef(() => VerificationModule), forwardRef(() => PartnersModule), PaymentsModule, NotificationsModule, PetPartnershipModule, forwardRef(() => PetsModule), SatisfactionModule],
+  imports: [PrismaModule, forwardRef(() => VerificationModule), forwardRef(() => PartnersModule), PaymentsModule, NotificationsModule, PetPartnershipModule, forwardRef(() => PetsModule), SatisfactionModule, KycExtractionModule],
   controllers: [MeController],
   providers: [MeService, TutorStatsService],
   exports: [MeService, TutorStatsService],

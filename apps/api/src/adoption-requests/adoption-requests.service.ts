@@ -4,8 +4,9 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
-import PDFDocument from 'pdfkit';
+import * as PDFDocumentModule from 'pdfkit';
 import { PrismaService } from '../prisma/prisma.service';
+import { isAtLeast18 } from '../common/age';
 import { PetPartnershipService } from '../pet-partnership/pet-partnership.service';
 import { InAppNotificationsService } from '../notifications/in-app-notifications.service';
 import { IN_APP_NOTIFICATION_TYPES } from '../notifications/in-app-notifications.service';
@@ -28,6 +29,94 @@ const ADOPTION_REQUEST_STATUS = {
   ADOPTION_CONFIRMED: 'ADOPTION_CONFIRMED',
   CANCELLED: 'CANCELLED',
 } as const;
+
+/** Fallback para exibir valores em português no PDF quando a pergunta não tem options. */
+const ANSWER_DISPLAY_FALLBACK: Record<string, string> = {
+  true: 'Sim',
+  false: 'Não',
+  DAILY: 'Diariamente',
+  FEW_TIMES_WEEK: 'Algumas vezes por semana',
+  RARELY: 'Raramente',
+  INDIFERENTE: 'Indiferente / Depende do pet',
+  LOW: 'Calmo',
+  MEDIUM: 'Moderado',
+  HIGH: 'Ativo',
+  DOG: 'Cachorro',
+  CAT: 'Gato',
+  BOTH: 'Tanto faz / Indiferente',
+  small: 'Pequeno',
+  medium: 'Médio',
+  large: 'Grande',
+  xlarge: 'Extra grande / Muito grande',
+  male: 'Macho',
+  female: 'Fêmea',
+  puppy: 'Filhote (até 1 ano)',
+  young: 'Jovem (1 a 3 anos)',
+  adult: 'Adulto (3 a 7 anos)',
+  senior: 'Idoso (7+ anos)',
+  any: 'Indiferente',
+  YES: 'Sim',
+  NO: 'Não',
+  UNKNOWN: 'Não sei',
+  nao_tem: 'Não tenho outros pets',
+  site: 'Site',
+  redes: 'Redes sociais',
+  indicacao: 'Indicação',
+  evento: 'Evento',
+  outro: 'Outro',
+  casa: 'Casa',
+  apartamento: 'Apartamento',
+  propria: 'Própria',
+  alugada: 'Alugada',
+  parentes: 'Com parentes/amigos',
+  sim_total: 'Sim, totalmente telado',
+  providenciar: 'Ainda não, mas providenciarei em até 7 dias',
+  nao: 'Não',
+  nao_se_aplica: 'Não se aplica',
+  dry: 'Ração seca',
+  wet: 'Ração úmida',
+  mixed: 'Mista',
+  natural: 'Natural',
+  other: 'Outra',
+  nao_sei: 'Ainda não sei',
+  filhote: 'Filhote (0–1 ano)',
+  idoso: 'Idoso (7+ anos)',
+  indiferente: 'Indiferente',
+};
+
+type SnapshotQuestionPdf = {
+  id: string;
+  label: string;
+  type?: string;
+  options?: Array<{ value: string; label: string }>;
+};
+
+function formatAnswerForPdf(question: SnapshotQuestionPdf, value: unknown): string {
+  if (value == null || value === '') return '—';
+  const str = (v: unknown) =>
+    v === true || v === 'true' ? 'Sim' : v === false || v === 'false' ? 'Não' : String(v);
+  if (question.type === 'CHECKBOX') return str(value);
+  if (question.type === 'SELECT_SINGLE') {
+    const key = String(value).trim();
+    const label = question.options?.find((o) => o.value === key)?.label;
+    if (label) return label;
+    return ANSWER_DISPLAY_FALLBACK[key] ?? key;
+  }
+  if (question.type === 'SELECT_MULTIPLE' && Array.isArray(value)) {
+    const labels = (value as string[]).map((v) => {
+      const label = question.options?.find((o) => o.value === String(v))?.label;
+      return label ?? ANSWER_DISPLAY_FALLBACK[String(v)] ?? String(v);
+    });
+    return labels.filter(Boolean).length > 0 ? labels.join(', ') : '—';
+  }
+  if (Array.isArray(value)) {
+    return (value as string[])
+      .map((v) => ANSWER_DISPLAY_FALLBACK[String(v)] ?? String(v))
+      .join(', ');
+  }
+  const key = String(value).trim();
+  return ANSWER_DISPLAY_FALLBACK[key] ?? key;
+}
 
 export type AdoptionRequestWithDetails = {
   id: string;
@@ -210,11 +299,22 @@ export class AdoptionRequestsService {
       include: {
         template: { include: { questions: true } },
         pet: { select: { id: true, name: true } },
-        adopter: { select: { id: true, name: true } },
+        adopter: { select: { id: true, name: true, birthDate: true } },
       },
     });
     if (!request) throw new NotFoundException('Solicitação não encontrada');
     if (request.adopterId !== userId) throw new ForbiddenException('Você não é o adotante desta solicitação.');
+    const adopterBirthDate = (request.adopter as { birthDate?: Date | null }).birthDate ?? null;
+    if (adopterBirthDate == null) {
+      throw new BadRequestException(
+        'Para adotar, informe sua data de nascimento em Perfil > Editar perfil.',
+      );
+    }
+    if (!isAtLeast18(adopterBirthDate)) {
+      throw new ForbiddenException(
+        'Para adotar um pet é necessário ter 18 anos ou mais, de acordo com boas práticas de adoção.',
+      );
+    }
     if (request.status !== ADOPTION_REQUEST_STATUS.FORM_SENT) {
       throw new BadRequestException('Formulário já foi enviado ou solicitação não está aguardando preenchimento.');
     }
@@ -299,6 +399,8 @@ export class AdoptionRequestsService {
         `${(request.adopter as { name: string }).name} preencheu o formulário de adoção de ${(request.pet as { name: string }).name}.`,
         { adoptionRequestId: requestId },
         {
+          type: IN_APP_NOTIFICATION_TYPES.ADOPTION_FORM_SUBMITTED,
+          screen: 'partnerAdoptionRequests',
           adoptionRequestId: requestId,
           conversationId: request.conversationId,
         } as Record<string, string>,
@@ -490,7 +592,13 @@ export class AdoptionRequestsService {
     const request = await this.prisma.adoptionRequest.findUnique({
       where: { id: requestId },
       include: {
-        pet: { select: { id: true, name: true } },
+        pet: {
+          select: {
+            id: true,
+            name: true,
+            partner: { select: { name: true, logoUrl: true } },
+          },
+        },
         adopter: { select: { id: true, name: true } },
         submission: true,
       },
@@ -502,65 +610,123 @@ export class AdoptionRequestsService {
     }
 
     const submission = request.submission;
-    const pet = request.pet as { name: string };
+    const pet = request.pet as { name: string; partner?: { name: string; logoUrl: string | null } | null };
     const adopter = request.adopter as { name: string };
+    const partner = pet?.partner ?? null;
+    let logoBuffer: Buffer | null = null;
+    if (partner?.logoUrl) {
+      try {
+        const res = await fetch(partner.logoUrl);
+        if (res.ok) logoBuffer = Buffer.from(await res.arrayBuffer());
+      } catch {
+        // ignora falha ao carregar logo
+      }
+    }
+
     const snapshot = submission.templateSnapshot as {
       name?: string;
-      questions?: Array<{ id: string; label: string }>;
+      questions?: SnapshotQuestionPdf[];
     } | null;
     const answers = (submission.answers as Record<string, unknown>) ?? {};
     const formName = snapshot?.name ?? 'Formulário de adoção';
     const questions = snapshot?.questions ?? [];
-    const breakdown = Array.isArray(submission.matchScoreBreakdown)
-      ? (submission.matchScoreBreakdown as Array<{ label: string; answerDisplay: string; points: number; maxPoints: number; status: string }>)
-      : [];
-    const matchScore = submission.matchScore ?? null;
+    const PDFDocumentConstructor =
+      (PDFDocumentModule as { default?: new (opts?: object) => PDFKit.PDFDocument }).default ?? (PDFDocumentModule as new (opts?: object) => PDFKit.PDFDocument);
+    const PAGE_WIDTH = 595;
+    const PAGE_HEIGHT = 842;
+    const MARGIN = 50;
+    const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
+    const colors = {
+      primary: '#7c3aed',
+      primaryLight: '#ede9fe',
+      headerBg: '#f8fafc',
+      border: '#e2e8f0',
+      text: '#1e293b',
+      textMuted: '#64748b',
+      success: '#059669',
+      successBg: '#d1fae5',
+      warning: '#d97706',
+      rowAlt: '#f8fafc',
+    };
 
     return new Promise<Buffer>((resolve, reject) => {
-      const doc = new PDFDocument({ margin: 50 });
+      const doc: PDFKit.PDFDocument = new PDFDocumentConstructor({ margin: MARGIN, size: 'A4' });
       const buffers: Buffer[] = [];
       doc.on('data', buffers.push.bind(buffers));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
       doc.on('error', reject);
 
-      doc.fontSize(20).text('Formulário de adoção preenchido', { align: 'center' });
-      doc.moveDown(0.5);
-      doc.fontSize(11).fillColor('#333');
-      doc.text(`Pet: ${pet.name}`, { continued: false });
-      doc.text(`Adotante: ${adopter.name}`);
-      doc.text(`Formulário: ${formName}`);
-      doc.text(`Data do envio: ${new Date(submission.submittedAt).toLocaleString('pt-BR')}`);
-      doc.moveDown(1);
+      const moveDown = (n: number) => doc.moveDown(n);
 
-      if (matchScore != null) {
-        doc.fontSize(14).fillColor('#000').text(`Match Score: ${Math.round(matchScore)}%`);
-        doc.moveDown(0.5);
-      }
-
-      if (breakdown.length > 0) {
-        doc.fontSize(12).text('Detalhamento do Score');
-        doc.moveDown(0.3);
-        doc.fontSize(10);
-        for (const b of breakdown) {
-          doc.text(`${b.label}: ${b.answerDisplay} (${b.points}/${b.maxPoints})`);
+      // —— Header com logo e nome da ONG ——
+      doc.save();
+      doc.fillColor(colors.headerBg).rect(0, 0, PAGE_WIDTH, 100).fill();
+      doc.restore();
+      doc.save();
+      doc.fillColor(colors.primary).rect(0, 98, PAGE_WIDTH, 4).fill();
+      doc.restore();
+      doc.y = 22;
+      doc.x = MARGIN;
+      const logoSize = 44;
+      if (logoBuffer) {
+        try {
+          doc.image(logoBuffer, MARGIN, 22, { width: logoSize, height: logoSize, fit: [logoSize, logoSize] });
+        } catch {
+          // fallback sem imagem
         }
-        doc.moveDown(1);
+        doc.x = MARGIN + logoSize + 16;
+        doc.y = 28;
+      }
+      doc.fontSize(10).fillColor(colors.textMuted);
+      doc.text(partner?.name ?? 'Parceiro Adopet', { continued: false });
+      doc.fontSize(18).fillColor(colors.text).text('Formulário de adoção preenchido', { continued: false });
+      doc.y = 102;
+      doc.x = MARGIN;
+      moveDown(0.6);
+
+      // —— Bloco Informações ——
+      const infoY = doc.y;
+      doc.save();
+      doc.fillColor(colors.primaryLight).roundedRect(MARGIN, infoY, CONTENT_WIDTH, 72, 6).fill();
+      doc.restore();
+      doc.fillColor(colors.text).fontSize(11);
+      doc.x = MARGIN + 14;
+      doc.y = infoY + 12;
+      doc.text(`Pet: ${pet.name}`, { continued: false });
+      doc.text(`Adotante: ${adopter.name}`, { continued: false });
+      doc.text(`Formulário: ${formName}`, { continued: false });
+      doc.text(`Data do envio: ${new Date(submission.submittedAt).toLocaleString('pt-BR')}`, { continued: false });
+      doc.y = infoY + 72 + 14;
+      doc.x = MARGIN;
+      moveDown(0.5);
+
+      // —— Respostas do formulário ——
+      doc.fontSize(12).fillColor(colors.primary).text('Respostas do formulário', { continued: false });
+      moveDown(0.5);
+      doc.fontSize(10).fillColor(colors.text);
+      for (let i = 0; i < questions.length; i++) {
+        const q = questions[i];
+        const val = answers[q.id];
+        const display = formatAnswerForPdf(q, val);
+        const rowY = doc.y;
+        if (i % 2 === 1) {
+          doc.save();
+          doc.fillColor(colors.rowAlt).rect(MARGIN, rowY - 2, CONTENT_WIDTH, 36).fill();
+          doc.restore();
+        }
+        doc.fillColor(colors.textMuted).fontSize(9).x = MARGIN + 8;
+        doc.text(q.label, { continued: false, width: CONTENT_WIDTH - 16 });
+        doc.fillColor(colors.text).fontSize(10);
+        doc.text(display, { continued: false, width: CONTENT_WIDTH - 16 });
+        doc.x = MARGIN;
+        moveDown(0.5);
       }
 
-      doc.fontSize(12).text('Respostas do formulário');
-      doc.moveDown(0.5);
-      doc.fontSize(10);
-      for (const q of questions) {
-        const val = answers[q.id];
-        const display =
-          val == null
-            ? '—'
-            : Array.isArray(val)
-              ? val.join(', ')
-              : String(val);
-        doc.text(`${q.label}:`, { continued: true });
-        doc.text(` ${display}`);
-      }
+      // —— Rodapé ——
+      doc.fontSize(8).fillColor(colors.textMuted);
+      doc.y = PAGE_HEIGHT - 36;
+      doc.x = MARGIN;
+      doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')} · Adopet`, { align: 'center', width: CONTENT_WIDTH });
 
       doc.end();
     });

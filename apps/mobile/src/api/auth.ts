@@ -15,8 +15,23 @@ export type SignupBody = {
   phone: string;
   /** CPF (11 dígitos) ou CNPJ (14 dígitos) */
   document: string;
+  /** Número do RG (obrigatório). Usado na validação automática do KYC. */
+  rg: string;
+  /** Data de nascimento em ISO (AAAA-MM-DD) */
+  birthDate: string;
   username: string;
+  /** Chave do documento KYC (obtida via presignSignupKyc + upload). Enviar no cadastro para status "em avaliação" já ao logar. */
+  selfieWithDocKey?: string;
+  /** Chave do verso do documento (RG). Opcional; use para conferência automática da data de nascimento. */
+  documentVersoKey?: string;
+  /** Consentimento KYC (obrigatório se selfieWithDocKey for enviado). */
+  consentKyc?: boolean;
 };
+
+/** Obter URL para upload de documento KYC antes do signup (sem login). Retorna uploadUrl e key; enviar key no signup como selfieWithDocKey. */
+export async function presignSignupKyc(filename: string, contentType?: string): Promise<{ uploadUrl: string; key: string }> {
+  return api.post<{ uploadUrl: string; key: string }>('/auth/presign-signup-kyc', { filename, contentType }, { skipAuth: true });
+}
 
 export type LoginBody = {
   email: string;

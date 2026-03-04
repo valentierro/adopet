@@ -15,15 +15,13 @@ import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../hooks/useTheme';
 import { getMatchScoreColor } from '../utils/matchScoreColor';
+import { getSpeciesLabel, getSizeLabel } from '../utils/petLabels';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { VerifiedBadge } from './VerifiedBadge';
 import type { Pet } from '@adopet/shared';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-const speciesLabel: Record<string, string> = { dog: 'Cachorro', cat: 'Gato' };
-const sizeLabel: Record<string, string> = { small: 'P', medium: 'M', large: 'G', xlarge: 'GG' };
 
 type Props = {
   pet: Pet;
@@ -257,8 +255,8 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
             </View>
           ) : null}
           <Text style={styles.meta}>
-            {speciesLabel[String(pet.species).toLowerCase()] ?? pet.species}
-            {pet.breed?.trim() ? ` • ${pet.breed.trim()}` : ''} • {pet.age} ano(s) • {sizeLabel[pet.size] ?? pet.size}
+            {getSpeciesLabel(pet.species)}
+            {pet.breed?.trim() ? ` • ${pet.breed.trim()}` : ''} • {pet.age} ano(s) • {getSizeLabel(pet.size) || '—'}
           </Text>
           {(pet.energyLevel || pet.temperament || pet.goodWithChildren === 'YES' || pet.isDocile || pet.isTrained) && (
             <Text style={styles.triageMeta}>
