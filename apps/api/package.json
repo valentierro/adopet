@@ -5,7 +5,7 @@
   "scripts": {
     "build": "prisma generate --schema=./prisma/schema.prisma && nest build && cp -r api/prisma-generated dist/api/ && cp -r api/prisma-generated src/prisma-generated && cp app-version.json dist/",
     "postinstall": "prisma generate --schema=./prisma/schema.prisma",
-    "dev": "prisma generate --schema=./prisma/schema.prisma && nest build && cp -r api/prisma-generated dist/api/ && nest start --watch",
+    "dev": "NODE_ENV=development prisma generate --schema=./prisma/schema.prisma && nest build && cp -r api/prisma-generated dist/api/ && nest start --watch",
     "start": "nest start",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
     "test": "jest",
@@ -27,6 +27,7 @@
     "db:backfill-pet-partner-id": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-pet-partner-id.ts",
     "db:backfill-partner-logo": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-partner-logo.ts",
     "db:diagnose-marketplace": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/diagnose-marketplace.ts",
+    "db:create-admin-user": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/create-admin-user.ts",
     "db:delete-users-by-prefix": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/delete-users-by-email-prefix.ts",
     "db:delete-own-pet-favorites": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/delete-own-pet-favorites.ts",
     "stripe:create-coupons": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/create-stripe-coupons.ts"

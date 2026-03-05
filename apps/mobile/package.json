@@ -1,6 +1,6 @@
 {
   "name": "mobile",
-  "version": "1.1.11",
+  "version": "1.1.12",
   "private": true,
   "main": "index.js",
   "expo": {
@@ -25,6 +25,7 @@
     "ios": "expo run:ios",
     "build": "expo export",
     "build:android": "eas build --platform android --profile production",
+    "build:android:preview": "eas build --platform android --profile preview",
     "build:ios": "eas build --platform ios --profile production",
     "lint": "expo lint",
     "test": "jest",

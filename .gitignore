@@ -15,6 +15,8 @@ _deploy_adminadopet/
 .env
 .env.local
 .env.*.local
+.env.development
+.env.production
 
 # IDE
 .idea/

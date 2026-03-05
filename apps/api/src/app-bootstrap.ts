@@ -10,6 +10,14 @@ import { StructuredLogger, patchConsoleToStructuredLogger } from './logger/struc
 
 validateRequiredEnv();
 
+// Confirma qual base está em uso no runtime (Prisma usa process.env.DATABASE_URL)
+try {
+  const u = new URL(process.env.DATABASE_URL || '');
+  console.log(`[Adopet API] Runtime DATABASE_URL host=${u.hostname} (NODE_ENV=${process.env.NODE_ENV || 'development'})`);
+} catch {
+  // ignore
+}
+
 const structuredLogger = new StructuredLogger();
 StructuredLogger.setInstance(structuredLogger);
 patchConsoleToStructuredLogger();

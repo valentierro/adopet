@@ -43,7 +43,11 @@ import { FeatureFlagModule } from './feature-flag/feature-flag.module';
   ],
   imports: [
     SentryModule.forRoot(),
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({
+      isGlobal: true,
+      // Base: .env (comum). Depois .env.development ou .env.production sobrescreve (DATABASE_URL, JWT, S3, Stripe).
+      envFilePath: ['.env', `.env.${process.env.NODE_ENV || 'development'}`],
+    }),
     FeatureFlagModule,
     ThrottlerModule.forRoot({
       throttlers: [{ ttl: 60_000, limit: 100 }], // 100 requests per minute per IP
