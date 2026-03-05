@@ -630,8 +630,8 @@ export class AdoptionRequestsService {
     const answers = (submission.answers as Record<string, unknown>) ?? {};
     const formName = snapshot?.name ?? 'Formulário de adoção';
     const questions = snapshot?.questions ?? [];
-    const PDFDocumentConstructor =
-      (PDFDocumentModule as { default?: new (opts?: object) => PDFKit.PDFDocument }).default ?? (PDFDocumentModule as new (opts?: object) => PDFKit.PDFDocument);
+    const PDFDocumentConstructor: new (opts?: object) => PDFKit.PDFDocument =
+      (PDFDocumentModule as unknown as { default?: new (opts?: object) => PDFKit.PDFDocument }).default ?? (PDFDocumentModule as unknown as new (opts?: object) => PDFKit.PDFDocument);
     const PAGE_WIDTH = 595;
     const PAGE_HEIGHT = 842;
     const MARGIN = 50;
