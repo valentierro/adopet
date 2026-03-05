@@ -4,7 +4,8 @@ const baseExpo = {
   name: 'Adopet',
   slug: 'adopet',
   version: '1.1.11',
-  orientation: 'portrait',
+  // default = permite rotação (recomendado pelo Play para Android 16+ e telas grandes).
+  orientation: 'default',
   icon: './assets/brand/icon/app_icon_light.png',
   userInterfaceStyle: 'automatic',
   scheme: 'adopet',
@@ -27,6 +28,9 @@ const baseExpo = {
   },
   android: {
     supportsTablet: true,
+    // Edge-to-edge no Android 15+ (reduz uso de APIs descontinuadas: statusBarColor/navigationBarColor).
+    edgeToEdgeEnabled: true,
+    androidNavigationBar: { enforceContrast: true },
     adaptiveIcon: {
       foregroundImage: './assets/brand/icon/app_icon_light.png',
       backgroundColor: '#FFFFFF',

@@ -1,5 +1,5 @@
-import { useCallback, useState, useEffect, useMemo } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, RefreshControl, Modal, Pressable, useWindowDimensions, FlatList } from 'react-native';
+import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, RefreshControl, Modal, Pressable, useWindowDimensions, FlatList, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
@@ -45,7 +45,18 @@ export default function PassedPetsScreen() {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [matchModalPetId, setMatchModalPetId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [favoriteLoadingPetId, setFavoriteLoadingPetId] = useState<string | null>(null);
+  const [undoLoadingPetId, setUndoLoadingPetId] = useState<string | null>(null);
+  const toastDedupeRef = useRef<{ message: string; at: number } | null>(null);
   const { viewMode, setViewMode } = useListViewMode('passedPetsViewMode', { persist: false });
+
+  const showToast = useCallback((message: string) => {
+    const now = Date.now();
+    const last = toastDedupeRef.current;
+    if (last && last.message === message && now - last.at < 2500) return;
+    toastDedupeRef.current = { message, at: now };
+    setToastMessage(message);
+  }, []);
 
   const gridContentWidth = screenWidth - insets.left - insets.right - 2 * gridScreenPadding;
   const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - gap * (numColumns - 1) - gridCellSafety) / numColumns : 0;
@@ -77,13 +88,14 @@ export default function PassedPetsScreen() {
   const undoMutation = useMutation({
     mutationFn: undoPass,
     onSuccess: () => {
-      setToastMessage('Pet movido de volta ao feed!');
+      showToast('Pet movido de volta ao feed!');
       queryClient.invalidateQueries({ queryKey: ['swipes', 'passed'] });
       queryClient.invalidateQueries({ queryKey: ['feed'] });
     },
     onError: (e: unknown) => {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível desfazer.'));
     },
+    onSettled: () => setUndoLoadingPetId(null),
   });
 
   const addToFavoritesMutation = useMutation({
@@ -92,7 +104,7 @@ export default function PassedPetsScreen() {
       await undoPass(petId);
     },
     onSuccess: () => {
-      setToastMessage('Adicionado aos favoritos!');
+      showToast('Adicionado aos favoritos!');
       queryClient.invalidateQueries({ queryKey: ['swipes', 'passed'] });
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
       queryClient.invalidateQueries({ queryKey: ['feed'] });
@@ -100,6 +112,7 @@ export default function PassedPetsScreen() {
     onError: (e: unknown) => {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível adicionar aos favoritos.'));
     },
+    onSettled: () => setFavoriteLoadingPetId(null),
   });
 
   const allItems = data?.items ?? [];
@@ -291,22 +304,34 @@ export default function PassedPetsScreen() {
                       <StatusBadge label={`${pet.distanceKm.toFixed(1)} km`} variant="neutral" />
                     )}
                   </View>
-                  <View style={styles.gridActionsRow}>
+                  <View style={[styles.gridActionsRow, (favoriteLoadingPetId === pet.id || undoLoadingPetId === pet.id) && { opacity: 0.7 }]}>
                     <TouchableOpacity
                       style={[styles.gridFavBtn, { backgroundColor: colors.primary + '30', borderColor: colors.primary }]}
-                      onPress={(e) => { e?.stopPropagation?.(); addToFavoritesMutation.mutate(pet.id); }}
-                      disabled={addToFavoritesMutation.isPending}
+                      onPress={(e) => { e?.stopPropagation?.(); setFavoriteLoadingPetId(pet.id); addToFavoritesMutation.mutate(pet.id); }}
+                      disabled={favoriteLoadingPetId !== null || undoLoadingPetId !== null}
                     >
-                      <Ionicons name="heart" size={14} color={colors.primary} />
-                      <Text style={[styles.gridFavBtnText, { color: colors.primary }]}>Favoritar</Text>
+                      {favoriteLoadingPetId === pet.id ? (
+                        <ActivityIndicator size="small" color={colors.primary} style={styles.btnSpinner} />
+                      ) : (
+                        <Ionicons name="heart" size={14} color={colors.primary} />
+                      )}
+                      <Text style={[styles.gridFavBtnText, { color: colors.primary }]}>
+                        {favoriteLoadingPetId === pet.id ? '...' : 'Favoritar'}
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.gridUndoBtn, { backgroundColor: colors.primary }]}
-                      onPress={(e) => { e?.stopPropagation?.(); undoMutation.mutate(pet.id); }}
-                      disabled={undoMutation.isPending}
+                      onPress={(e) => { e?.stopPropagation?.(); setUndoLoadingPetId(pet.id); undoMutation.mutate(pet.id); }}
+                      disabled={favoriteLoadingPetId !== null || undoLoadingPetId !== null}
                     >
-                      <Ionicons name="arrow-undo" size={14} color="#fff" />
-                      <Text style={styles.gridUndoBtnText}>Mover para feed</Text>
+                      {undoLoadingPetId === pet.id ? (
+                        <ActivityIndicator size="small" color="#fff" style={styles.btnSpinner} />
+                      ) : (
+                        <Ionicons name="arrow-undo" size={14} color="#fff" />
+                      )}
+                      <Text style={styles.gridUndoBtnText}>
+                        {undoLoadingPetId === pet.id ? '...' : 'Mover para feed'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -376,22 +401,34 @@ export default function PassedPetsScreen() {
                       <StatusBadge label={`${pet.distanceKm.toFixed(1)} km`} variant="neutral" />
                     )}
                   </View>
-                  <View style={styles.listActionsRow}>
+                  <View style={[styles.listActionsRow, (favoriteLoadingPetId === pet.id || undoLoadingPetId === pet.id) && { opacity: 0.7 }]}>
                     <TouchableOpacity
                       style={[styles.favBtn, { backgroundColor: colors.primary + '25', borderColor: colors.primary }]}
-                      onPress={() => addToFavoritesMutation.mutate(pet.id)}
-                      disabled={addToFavoritesMutation.isPending}
+                      onPress={() => { setFavoriteLoadingPetId(pet.id); addToFavoritesMutation.mutate(pet.id); }}
+                      disabled={favoriteLoadingPetId !== null || undoLoadingPetId !== null}
                     >
-                      <Ionicons name="heart" size={18} color={colors.primary} />
-                      <Text style={[styles.favBtnText, { color: colors.primary }]}>Adicionar aos favoritos</Text>
+                      {favoriteLoadingPetId === pet.id ? (
+                        <ActivityIndicator size="small" color={colors.primary} style={styles.btnSpinner} />
+                      ) : (
+                        <Ionicons name="heart" size={18} color={colors.primary} />
+                      )}
+                      <Text style={[styles.favBtnText, { color: colors.primary }]}>
+                        {favoriteLoadingPetId === pet.id ? 'Adicionando...' : 'Adicionar aos favoritos'}
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.undoBtn, { backgroundColor: colors.primary }]}
-                      onPress={() => undoMutation.mutate(pet.id)}
-                      disabled={undoMutation.isPending}
+                      onPress={() => { setUndoLoadingPetId(pet.id); undoMutation.mutate(pet.id); }}
+                      disabled={favoriteLoadingPetId !== null || undoLoadingPetId !== null}
                     >
-                      <Ionicons name="arrow-undo" size={18} color="#fff" />
-                      <Text style={styles.undoBtnText}>Mover para o feed</Text>
+                      {undoLoadingPetId === pet.id ? (
+                        <ActivityIndicator size="small" color="#fff" style={styles.btnSpinner} />
+                      ) : (
+                        <Ionicons name="arrow-undo" size={18} color="#fff" />
+                      )}
+                      <Text style={styles.undoBtnText}>
+                        {undoLoadingPetId === pet.id ? 'Movendo...' : 'Mover para o feed'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                   <TouchableOpacity
@@ -544,6 +581,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   favBtnText: { fontSize: 14, fontWeight: '600' },
+  btnSpinner: { marginRight: 4 },
   undoBtn: {
     flexDirection: 'row',
     alignItems: 'center',

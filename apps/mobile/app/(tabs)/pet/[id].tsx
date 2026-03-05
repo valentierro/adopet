@@ -398,6 +398,7 @@ export default function PetDetailsScreen() {
   const [matchSectionExpanded, setMatchSectionExpanded] = useState(true);
   const [mismatchSectionExpanded, setMismatchSectionExpanded] = useState(true);
   const [neutralSectionExpanded, setNeutralSectionExpanded] = useState(false);
+  const [conversarLoading, setConversarLoading] = useState(false);
 
   const handleConversar = async () => {
     if (!profileComplete) {
@@ -408,6 +409,7 @@ export default function PetDetailsScreen() {
       Alert.alert('Favoritar primeiro', 'Adicione aos favoritos para poder conversar com o tutor.');
       return;
     }
+    setConversarLoading(true);
     try {
       const { id: convId } = await createConversation(id!);
       trackEvent({ name: 'open_chat', properties: { petId: id!, conversationId: convId } });
@@ -416,6 +418,8 @@ export default function PetDetailsScreen() {
       router.push(`/chat/${convId}`);
     } catch (e: unknown) {
       Alert.alert('Conversar', getFriendlyErrorMessage(e, 'Não foi possível abrir a conversa. Tente novamente.'));
+    } finally {
+      setConversarLoading(false);
     }
   };
 
@@ -1279,7 +1283,12 @@ export default function PetDetailsScreen() {
                 ) : isFavorited ? (
           <>
             <CtaPulse>
-              <PrimaryButton title="Quero adotar / Chat" onPress={handleConversar} />
+              <PrimaryButton
+                title="Quero adotar / Chat"
+                onPress={handleConversar}
+                loading={conversarLoading}
+                disabled={conversarLoading}
+              />
             </CtaPulse>
             <SecondaryButton
               title={removeFavMutation.isPending ? 'Removendo...' : 'Remover dos favoritos'}

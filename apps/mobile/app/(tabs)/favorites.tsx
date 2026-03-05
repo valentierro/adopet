@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, useWindowDimensions, FlatList, RefreshControl, Modal, Pressable, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, useWindowDimensions, FlatList, RefreshControl, Modal, Pressable, Animated, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
@@ -83,6 +83,7 @@ type FavoriteRowProps = {
   onPressPet: (petId: string) => void;
   onChat: (item: FavoriteItem) => void;
   onRemove: (petId: string) => void;
+  isChatLoading?: boolean;
   gridCellWidth?: number;
   gridIndex?: number;
   viewedPetIds?: Set<string>;
@@ -95,6 +96,7 @@ const FavoriteRow = React.memo(function FavoriteRow({
   onPressPet,
   onChat,
   onRemove,
+  isChatLoading = false,
   gridCellWidth = 0,
   gridIndex = 0,
   viewedPetIds = new Set(),
@@ -152,10 +154,15 @@ const FavoriteRow = React.memo(function FavoriteRow({
           )}
           <View style={styles.gridCardActions}>
             <TouchableOpacity
-              style={[styles.gridMiniBtn, { backgroundColor: colors.primary }]}
+              style={[styles.gridMiniBtn, { backgroundColor: colors.primary, opacity: isChatLoading ? 0.7 : 1 }]}
               onPress={(e) => { e?.stopPropagation?.(); onChat(item); }}
+              disabled={isChatLoading}
             >
-              <Ionicons name="chatbubble-outline" size={16} color="#fff" />
+              {isChatLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="chatbubble-outline" size={16} color="#fff" />
+              )}
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.gridMiniBtn, { borderColor: colors.textSecondary, borderWidth: 1 }]}
@@ -189,13 +196,13 @@ const FavoriteRow = React.memo(function FavoriteRow({
         )}
       </View>
       <View style={styles.actions}>
-        <TouchableOpacity
-          style={[styles.chatBtn, { backgroundColor: colors.primary }]}
+        <PrimaryButton
+          title="Quero adotar / Chat"
           onPress={() => onChat(item)}
-        >
-          <Ionicons name="chatbubble-outline" size={18} color="#fff" />
-          <Text style={styles.chatBtnText}>Quero adotar / Chat</Text>
-        </TouchableOpacity>
+          loading={isChatLoading}
+          disabled={isChatLoading}
+          style={styles.chatBtn}
+        />
         <TouchableOpacity
           style={[styles.removeBtn, { borderColor: colors.textSecondary }]}
           onPress={() => {
@@ -302,6 +309,7 @@ export default function FavoritesScreen() {
   });
 
   const [showCompleteProfileModal, setShowCompleteProfileModal] = useState(false);
+  const [chatLoadingPetId, setChatLoadingPetId] = useState<string | null>(null);
 
   const startChat = useCallback(
     async (item: FavoriteItem) => {
@@ -309,6 +317,7 @@ export default function FavoritesScreen() {
         setShowCompleteProfileModal(true);
         return;
       }
+      setChatLoadingPetId(item.petId);
       try {
         const { id } = await createConversation(item.petId);
         queryClient.invalidateQueries({ queryKey: ['conversations'] });
@@ -319,6 +328,8 @@ export default function FavoritesScreen() {
           'Conversar',
           getFriendlyErrorMessage(e, 'Adicione o pet aos favoritos para iniciar a conversa.'),
         );
+      } finally {
+        setChatLoadingPetId(null);
       }
     },
     [router, queryClient, profileComplete],
@@ -343,12 +354,13 @@ export default function FavoritesScreen() {
         onPressPet={handlePressPet}
         onChat={startChat}
         onRemove={handleRemove}
+        isChatLoading={chatLoadingPetId === item.petId}
         gridCellWidth={gridCellWidth}
         gridIndex={index}
         viewedPetIds={viewedPetIds}
       />
     ),
-    [viewMode, colors, handlePressPet, startChat, handleRemove, gridCellWidth, viewedPetIds],
+    [viewMode, colors, handlePressPet, startChat, handleRemove, chatLoadingPetId, gridCellWidth, viewedPetIds],
   );
 
   const rawItemCount = items.length;
