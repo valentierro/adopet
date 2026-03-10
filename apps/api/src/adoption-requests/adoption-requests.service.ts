@@ -631,7 +631,8 @@ export class AdoptionRequestsService {
     const formName = snapshot?.name ?? 'Formulário de adoção';
     const questions = snapshot?.questions ?? [];
     const PDFDocumentConstructor: new (opts?: object) => PDFKit.PDFDocument =
-      (PDFDocumentModule as unknown as { default?: new (opts?: object) => PDFKit.PDFDocument }).default ?? (PDFDocumentModule as unknown as new (opts?: object) => PDFKit.PDFDocument);
+      (PDFDocumentModule as unknown as { default?: new (opts?: object) => PDFKit.PDFDocument }).default ??
+      (PDFDocumentModule as any);
     const PAGE_WIDTH = 595;
     const PAGE_HEIGHT = 842;
     const MARGIN = 50;
