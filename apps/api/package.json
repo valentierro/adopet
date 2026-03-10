@@ -29,6 +29,7 @@
     "db:backfill-partner-logo": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-partner-logo.ts",
     "db:diagnose-marketplace": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/diagnose-marketplace.ts",
     "db:create-admin-user": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/create-admin-user.ts",
+    "db:reset-user-password": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/reset-user-password.ts",
     "db:delete-users-by-prefix": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/delete-users-by-email-prefix.ts",
     "db:delete-own-pet-favorites": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/delete-own-pet-favorites.ts",
     "stripe:create-coupons": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/create-stripe-coupons.ts"

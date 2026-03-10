@@ -3,17 +3,34 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://adopet-api-git-development-erick-santos-projects-33a225f0.vercel.app"
+      }
     },
     "development_simulator": {
       "developmentClient": true,
       "distribution": "internal",
-      "ios": { "simulator": true }
+      "ios": { "simulator": true },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://adopet-api-git-development-erick-santos-projects-33a225f0.vercel.app"
+      }
     },
     "preview": {
       "distribution": "internal",
       "ios": { "simulator": false },
-      "android": { "buildType": "apk" }
+      "android": { "buildType": "apk" },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://adopet-api-git-development-erick-santos-projects-33a225f0.vercel.app"
+      }
+    },
+    "play-internal": {
+      "distribution": "store",
+      "ios": { "simulator": false },
+      "android": { "buildType": "app-bundle" },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://adopet-api-git-development-erick-santos-projects-33a225f0.vercel.app"
+      }
     },
     "production": {
       "distribution": "store",

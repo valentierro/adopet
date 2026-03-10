@@ -93,6 +93,8 @@ function CtaPulse({ children }: { children: React.ReactNode }) {
   return <Animated.View style={{ transform: [{ scale }] }}>{children}</Animated.View>;
 }
 
+const GALLERY_HEIGHT = 280;
+
 function PetPhotoGallery({
   photos,
   onPhotoPress,
@@ -108,13 +110,14 @@ function PetPhotoGallery({
     const i = Math.round(e.nativeEvent.contentOffset.x / width);
     setIndex(Math.min(i, photos.length - 1));
   };
+  const imageSize = { width, height: GALLERY_HEIGHT };
   const slide = (uri: string) => (
     <TouchableOpacity
-      style={[styles.imageSlide, { width }]}
+      style={[styles.imageSlide, imageSize]}
       onPress={() => onPhotoPress?.(uri)}
       activeOpacity={1}
     >
-      <Image source={{ uri }} style={styles.image} contentFit="cover" />
+      <Image source={{ uri }} style={[styles.image, imageSize]} contentFit="cover" />
     </TouchableOpacity>
   );
   const badgeOverlay = verified ? (
@@ -126,8 +129,8 @@ function PetPhotoGallery({
   if (photos.length === 1) {
     return (
       <View style={styles.imageWrap}>
-        <TouchableOpacity onPress={() => onPhotoPress?.(photos[0])} activeOpacity={1}>
-          <Image source={{ uri: photos[0] }} style={styles.image} contentFit="cover" />
+        <TouchableOpacity style={styles.imageSlide} onPress={() => onPhotoPress?.(photos[0])} activeOpacity={1}>
+          <Image source={{ uri: photos[0] }} style={[styles.image, imageSize]} contentFit="cover" />
         </TouchableOpacity>
         {badgeOverlay}
       </View>
@@ -1441,9 +1444,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     position: 'relative',
   },
-  galleryList: { height: 280 },
+  galleryList: { height: GALLERY_HEIGHT },
   imageSlide: {
-    height: 280,
+    height: GALLERY_HEIGHT,
     overflow: 'hidden',
   },
   image: {
