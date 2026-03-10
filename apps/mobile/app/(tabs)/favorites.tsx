@@ -10,6 +10,7 @@ import { ScreenContainer, PetCard, EmptyState, LoadingLogo, PageIntro, StatusBad
 import { useTheme } from '../../src/hooks/useTheme';
 import { useListViewMode } from '../../src/hooks/useListViewMode';
 import { useResponsiveGridColumns } from '../../src/hooks/useResponsiveGridColumns';
+import { useToastWithDedupe } from '../../src/hooks/useToastWithDedupe';
 import { getMe } from '../../src/api/me';
 import {
   getFavorites,
@@ -295,11 +296,11 @@ export default function FavoritesScreen() {
     }, [refetch, userId]),
   );
 
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
   const removeMutation = useMutation({
     mutationFn: removeFavorite,
     onSuccess: () => {
-      setToastMessage('Removido dos favoritos');
+      showToast('Removido dos favoritos');
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
       queryClient.refetchQueries({ queryKey: ['favorites'] });
     },

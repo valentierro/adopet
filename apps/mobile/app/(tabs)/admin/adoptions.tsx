@@ -16,6 +16,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, Toast, LoadingLogo } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../../src/hooks/useToastWithDedupe';
 import {
   getAdminPendingAdoptionsByTutor,
   getAdminAdoptions,
@@ -54,7 +55,7 @@ export default function AdminAdoptionsScreen() {
   const [selectedAdoption, setSelectedAdoption] = useState<AdoptionItem | null>(null);
   const [confirmingAdoptionPetId, setConfirmingAdoptionPetId] = useState<string | null>(null);
   const [rejectingAdoptionPetId, setRejectingAdoptionPetId] = useState<string | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
   const [confirmAdoptionPendingItem, setConfirmAdoptionPendingItem] = useState<PendingAdoptionByTutorItem | null>(null);
   const [confirmAdoptionSelectedAdopterId, setConfirmAdoptionSelectedAdopterId] = useState<string | null>(null);
   const [showMassConfirmAdoptionModal, setShowMassConfirmAdoptionModal] = useState(false);
@@ -160,7 +161,7 @@ export default function AdminAdoptionsScreen() {
       setConfirmAdoptionSearchQuery('');
       setConfirmAdoptionSearchResults([]);
       setConfirmAdoptionSelectedAdopterId(null);
-      setToastMessage('Adoção registrada. O pet foi marcado como adotado.');
+      showToast('Adoção registrada. O pet foi marcado como adotado.');
     },
     onError: (e: unknown) =>
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível registrar a adoção.')),
@@ -177,7 +178,7 @@ export default function AdminAdoptionsScreen() {
         s.delete(petId);
         return s;
       });
-      setToastMessage('Adoção confirmada pelo Adopet.');
+      showToast('Adoção confirmada pelo Adopet.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível confirmar.')),
     onSettled: () => setConfirmingAdoptionPetId(null),
@@ -194,7 +195,7 @@ export default function AdminAdoptionsScreen() {
         s.delete(petId);
         return s;
       });
-      setToastMessage('Adoção rejeitada pelo Adopet.');
+      showToast('Adoção rejeitada pelo Adopet.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível rejeitar.')),
     onSettled: () => setRejectingAdoptionPetId(null),
@@ -207,7 +208,7 @@ export default function AdminAdoptionsScreen() {
     onSuccess: (_, petIds) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'adoptions'] });
       setSelectedPendingAdoptionPetIds(new Set());
-      setToastMessage(`${petIds.length} adoção(ões) confirmada(s) pelo Adopet.`);
+      showToast(`${petIds.length} adoção(ões) confirmada(s) pelo Adopet.`);
     },
     onError: (e: unknown) =>
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível confirmar em massa.')),
@@ -220,7 +221,7 @@ export default function AdminAdoptionsScreen() {
     onSuccess: (_, petIds) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'adoptions'] });
       setSelectedPendingAdoptionPetIds(new Set());
-      setToastMessage(`${petIds.length} adoção(ões) rejeitada(s) pelo Adopet.`);
+      showToast(`${petIds.length} adoção(ões) rejeitada(s) pelo Adopet.`);
     },
     onError: (e: unknown) =>
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível rejeitar em massa.')),
@@ -258,7 +259,7 @@ export default function AdminAdoptionsScreen() {
               queryClient.invalidateQueries({ queryKey: ['admin', 'pending-adoptions-by-tutor'] });
               queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
               queryClient.invalidateQueries({ queryKey: ['feed'] });
-              setToastMessage('Rejeitado. O tutor verá o badge em Meus anúncios.');
+              showToast('Rejeitado. O tutor verá o badge em Meus anúncios.');
             } catch (e: unknown) {
               Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível rejeitar.'));
             } finally {
@@ -299,7 +300,7 @@ export default function AdminAdoptionsScreen() {
             queryClient.invalidateQueries({ queryKey: ['feed'] });
             setSelectedPendingAdoptionPetIds(new Set());
             setMassRejecting(false);
-            setToastMessage(
+            showToast(
               errorMessage
                 ? `${done} rejeitado(s). ${errorMessage}`
                 : petIds.length === 1
@@ -341,9 +342,9 @@ export default function AdminAdoptionsScreen() {
       setMassConfirmSearchQuery('');
       setMassConfirmSearchResults([]);
       if (errorMessage) {
-        setToastMessage(`${done} confirmada(s). ${errorMessage}`);
+        showToast(`${done} confirmada(s). ${errorMessage}`);
       } else {
-        setToastMessage(
+        showToast(
           petIds.length === 1 ? 'Adoção registrada.' : `${petIds.length} adoções registradas.`,
         );
       }

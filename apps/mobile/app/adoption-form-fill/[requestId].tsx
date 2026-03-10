@@ -15,6 +15,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PrimaryButton, LoadingLogo, Toast, MatchScoreBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../src/hooks/useToastWithDedupe';
 import { getAdoptionRequestForm, submitAdoptionForm } from '../../src/api/adoption-requests';
 import { getMe } from '../../src/api/me';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
@@ -38,7 +39,7 @@ export default function AdoptionFormFillScreen() {
   const { colors } = useTheme();
   const [answers, setAnswers] = useState<Record<string, string | string[] | boolean>>({});
   const [consent, setConsent] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submittedResult, setSubmittedResult] = useState<{
     matchScore?: number | null;
@@ -86,7 +87,7 @@ export default function AdoptionFormFillScreen() {
       setSubmitSuccess(true);
     },
     onError: (e: unknown) => {
-      setToastMessage(getFriendlyErrorMessage(e, 'Não foi possível enviar. Tente novamente.'));
+      showToast(getFriendlyErrorMessage(e, 'Não foi possível enviar. Tente novamente.'));
     },
   });
 
@@ -110,11 +111,11 @@ export default function AdoptionFormFillScreen() {
       (q) => q.required && (answers[q.id] === undefined || answers[q.id] === '' || (Array.isArray(answers[q.id]) && (answers[q.id] as string[]).length === 0)),
     );
     if (missing.length > 0) {
-      setToastMessage('Preencha todos os campos obrigatórios.');
+      showToast('Preencha todos os campos obrigatórios.');
       return;
     }
     if (!consent) {
-      setToastMessage('Aceite o uso dos dados para continuar.');
+      showToast('Aceite o uso dos dados para continuar.');
       return;
     }
     submitMutation.mutate();

@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { ScreenContainer, PrimaryButton, Toast } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
+import { useToastWithDedupe } from '../src/hooks/useToastWithDedupe';
 import { useAuthStore } from '../src/stores/authStore';
 import { partnerSignup as partnerSignupApi, createPartnerCheckoutSession, registerAsPartner } from '../src/api/partner';
 import { postPartnershipRequest } from '../src/api/partnership';
@@ -125,7 +126,7 @@ export default function SolicitarParceriaScreen() {
   const [instituicao, setInstituicao] = useState('');
   const [mensagem, setMensagem] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   /** Modal "Conta criada" para parceiro comercial: redirecionar para login antes do Stripe */
   const [showPartnerCreatedModal, setShowPartnerCreatedModal] = useState(false);
@@ -253,7 +254,7 @@ export default function SolicitarParceriaScreen() {
     } catch (e) {
       setSubmitting(false);
       const msg = e instanceof Error ? e.message : 'Não foi possível enviar. Tente novamente.';
-      setToastMessage(getFriendlyErrorMessage(msg) || 'Não foi possível enviar. Tente novamente.');
+      showToast(getFriendlyErrorMessage(msg) || 'Não foi possível enviar. Tente novamente.');
       Alert.alert('Erro', getFriendlyErrorMessage(msg) || 'Não foi possível enviar a solicitação. Tente novamente ou envie para ' + EMAIL_PARCEIROS);
     }
   };

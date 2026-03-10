@@ -24,6 +24,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { ScreenContainer, LoadingLogo, VerifiedBadge, PrimaryButton, SecondaryButton, UsuarioVerificadoModal, DashboardSpotlightTour, Toast } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useClientConfig } from '../../src/hooks/useClientConfig';
+import { useToastWithDedupe } from '../../src/hooks/useToastWithDedupe';
 import { useAuthStore } from '../../src/stores/authStore';
 import { getMe, getTutorStats, getMyAdoptions, getPreferences, getPendingAdoptionConfirmations, getMyNotificationsUnreadCount, cancelKyc, KYC_CANCELLATION_REASONS } from '../../src/api/me';
 import { getAdminStats } from '../../src/api/admin';
@@ -305,10 +306,11 @@ export default function DashboardScreen() {
     enabled: isNonOngPartnerEarly,
     staleTime: 60_000,
   });
+  const isOngAdmin = !!(user?.partner?.type === 'ONG');
   const { data: ongPetsPendingCount = 0 } = useQuery({
     queryKey: ['me', 'partner', 'ong-pets', 'pending-count'],
     queryFn: getMyPartnerOngPetsPendingCount,
-    enabled: !!(user?.partner?.type === 'ONG'),
+    enabled: isOngAdmin,
     staleTime: 60_000,
   });
 
@@ -367,7 +369,7 @@ export default function DashboardScreen() {
   const [showKycPendingModal, setShowKycPendingModal] = useState(false);
   const [showKycCancelForm, setShowKycCancelForm] = useState(false);
   const [kycCancelReason, setKycCancelReason] = useState<string | null>(null);
-  const [kycCancelToast, setKycCancelToast] = useState<string | null>(null);
+  const { toastMessage: kycCancelToast, setToastMessage: setKycCancelToast, showToast } = useToastWithDedupe();
 
   const handleRequestVerification = () => {
     setShowVerificationModal(false);
@@ -382,7 +384,7 @@ export default function DashboardScreen() {
       setShowKycPendingModal(false);
       setShowKycCancelForm(false);
       setKycCancelReason(null);
-      setKycCancelToast('Solicitação de verificação cancelada. Você pode solicitar novamente quando quiser.');
+      showToast('Solicitação de verificação cancelada. Você pode solicitar novamente quando quiser.');
     },
     onError: (e: unknown) => {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível cancelar. Tente novamente.'));
@@ -395,7 +397,6 @@ export default function DashboardScreen() {
 
   const isPartnerOrMember =
     !!(user?.partner || (user?.partnerMemberships && user.partnerMemberships.length > 0));
-  const isOngAdmin = !!(user?.partner?.type === 'ONG');
   const isOngUser =
     !!(user?.partner?.type === 'ONG' || (user?.partnerMemberships && user.partnerMemberships.length > 0));
   const profileKey: ProfileKey = isAdmin ? 'admin' : isPartnerOrMember || isOngUser ? 'partner' : 'user';

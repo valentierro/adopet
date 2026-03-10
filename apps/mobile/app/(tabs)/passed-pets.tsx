@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useState, useEffect, useMemo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, RefreshControl, Modal, Pressable, useWindowDimensions, FlatList, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
@@ -11,6 +11,7 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { useAuthStore } from '../../src/stores/authStore';
 import { useListViewMode } from '../../src/hooks/useListViewMode';
 import { useResponsiveGridColumns } from '../../src/hooks/useResponsiveGridColumns';
+import { useToastWithDedupe } from '../../src/hooks/useToastWithDedupe';
 import { getPassedPets, undoPass } from '../../src/api/swipes';
 import { addFavorite } from '../../src/api/favorites';
 import { getMatchScore } from '../../src/api/pets';
@@ -44,19 +45,10 @@ export default function PassedPetsScreen() {
   const [speciesFilter, setSpeciesFilter] = useState<'BOTH' | 'DOG' | 'CAT'>('BOTH');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [matchModalPetId, setMatchModalPetId] = useState<string | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
   const [favoriteLoadingPetId, setFavoriteLoadingPetId] = useState<string | null>(null);
   const [undoLoadingPetId, setUndoLoadingPetId] = useState<string | null>(null);
-  const toastDedupeRef = useRef<{ message: string; at: number } | null>(null);
   const { viewMode, setViewMode } = useListViewMode('passedPetsViewMode', { persist: false });
-
-  const showToast = useCallback((message: string) => {
-    const now = Date.now();
-    const last = toastDedupeRef.current;
-    if (last && last.message === message && now - last.at < 2500) return;
-    toastDedupeRef.current = { message, at: now };
-    setToastMessage(message);
-  }, []);
 
   const gridContentWidth = screenWidth - insets.left - insets.right - 2 * gridScreenPadding;
   const gridCellWidth = gridContentWidth > 0 ? (gridContentWidth - gap * (numColumns - 1) - gridCellSafety) / numColumns : 0;

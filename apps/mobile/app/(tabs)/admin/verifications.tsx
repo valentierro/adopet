@@ -14,6 +14,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, Toast, LoadingLogo } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../../src/hooks/useToastWithDedupe';
 import {
   getPendingVerifications,
   getApprovedVerifications,
@@ -40,7 +41,7 @@ export default function AdminVerificationsScreen() {
   const [verificationApprovedTypeFilter, setVerificationApprovedTypeFilter] = useState<
     'ALL' | 'USER_VERIFIED' | 'PET_VERIFIED'
   >('ALL');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
 
   const { data: pending = [], isLoading: loadingVerifications, refetch, isRefetching } = useQuery({
     queryKey: ['admin', 'verifications'],
@@ -60,7 +61,7 @@ export default function AdminVerificationsScreen() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
       queryClient.invalidateQueries({ queryKey: ['verification-status'] });
       queryClient.invalidateQueries({ queryKey: ['me'] });
-      setToastMessage(v.status === 'APPROVED' ? 'Verificação aprovada.' : 'Verificação rejeitada.');
+      showToast(v.status === 'APPROVED' ? 'Verificação aprovada.' : 'Verificação rejeitada.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível atualizar.')),
   });
@@ -72,7 +73,7 @@ export default function AdminVerificationsScreen() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
       queryClient.invalidateQueries({ queryKey: ['verification-status'] });
       queryClient.invalidateQueries({ queryKey: ['me'] });
-      setToastMessage('Verificação revogada.');
+      showToast('Verificação revogada.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível revogar.')),
   });
@@ -105,7 +106,7 @@ export default function AdminVerificationsScreen() {
             queryClient.invalidateQueries({ queryKey: ['admin', 'verifications'] });
             queryClient.invalidateQueries({ queryKey: ['admin', 'verifications-approved'] });
             queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
-            setToastMessage(
+            showToast(
               status === 'APPROVED' ? `${ids.length} aprovada(s).` : `${ids.length} rejeitada(s).`
             );
           },

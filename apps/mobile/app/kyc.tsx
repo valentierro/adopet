@@ -19,6 +19,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PrimaryButton, LoadingLogo, Toast } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
+import { useToastWithDedupe } from '../src/hooks/useToastWithDedupe';
 import { getKycStatus, submitKyc, cancelKyc, KYC_CANCELLATION_REASONS } from '../src/api/me';
 import { presign } from '../src/api/uploads';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
@@ -47,7 +48,7 @@ export default function KycScreen() {
   const [showWhyModal, setShowWhyModal] = useState(false);
   const [showCancelKycModal, setShowCancelKycModal] = useState(false);
   const [cancelKycReason, setCancelKycReason] = useState<string | null>(null);
-  const [cancelSuccessToast, setCancelSuccessToast] = useState<string | null>(null);
+  const { toastMessage: cancelSuccessToast, setToastMessage: setCancelSuccessToast, showToast } = useToastWithDedupe();
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
   const [analysisPhase, setAnalysisPhase] = useState<'analyzing' | 'success' | 'manual' | 'pending'>('analyzing');
   const [progressPercent, setProgressPercent] = useState(0);
@@ -144,7 +145,7 @@ export default function KycScreen() {
       queryClient.invalidateQueries({ queryKey: ['me', 'kyc-status'] });
       setShowCancelKycModal(false);
       setCancelKycReason(null);
-      setCancelSuccessToast('Solicitação de verificação cancelada. Você pode solicitar novamente quando quiser.');
+      showToast('Solicitação de verificação cancelada. Você pode solicitar novamente quando quiser.');
     },
     onError: (e: unknown) => {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível cancelar. Tente novamente.'));

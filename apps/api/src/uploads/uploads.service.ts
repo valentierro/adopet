@@ -154,6 +154,32 @@ export class UploadsService {
   }
 
   /**
+   * Retorna buffer e content-type de um objeto no S3. Usado pelo GET serve para exibir fotos no app.
+   */
+  async getObjectWithType(key: string | null | undefined): Promise<{ buffer: Buffer; contentType: string } | null> {
+    const k = key?.trim();
+    if (!k) return null;
+    try {
+      const cmd = new GetObjectCommand({ Bucket: this.bucket, Key: k });
+      const response = await this.s3.send(cmd);
+      const body = response.Body as { on?(e: string, fn: (...args: unknown[]) => void): void; once?(e: string, fn: (...args: unknown[]) => void): void } | undefined;
+      if (!body?.on) return null;
+      const chunks: Buffer[] = [];
+      await new Promise<void>((resolve, reject) => {
+        body.on!('data', (chunk: Buffer) => chunks.push(chunk));
+        body.once!('end', () => resolve());
+        body.once!('error', reject);
+      });
+      const buffer = Buffer.concat(chunks);
+      const contentType = (response.ContentType as string) || 'application/octet-stream';
+      return { buffer, contentType };
+    } catch (err) {
+      if ((err as { name?: string }).name === 'NoSuchKey') return null;
+      throw err;
+    }
+  }
+
+  /**
    * Baixa o objeto do S3 e retorna o corpo como Buffer. Usado para processamento server-side (ex.: OCR no documento KYC).
    * Retorna null se a chave for vazia ou o objeto não existir.
    */

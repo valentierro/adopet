@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, Switch, RefreshControl } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ScreenContainer, Toast } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../../src/hooks/useToastWithDedupe';
 import { getFeatureFlags, updateFeatureFlag, type FeatureFlagItem } from '../../../src/api/admin';
 import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
 import { spacing } from '../../../src/theme';
@@ -11,7 +12,7 @@ import { Alert } from 'react-native';
 export default function AdminFeatureFlagsScreen() {
   const { colors } = useTheme();
   const queryClient = useQueryClient();
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
 
   const { data: featureFlagsList = [], refetch, isRefetching } = useQuery({
     queryKey: ['admin', 'feature-flags'],
@@ -23,7 +24,7 @@ export default function AdminFeatureFlagsScreen() {
       updateFeatureFlag(id, { enabled }),
     onSuccess: (_, { key, enabled }) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'feature-flags'] });
-      setToastMessage(`Feature "${key}" ${enabled ? 'habilitada' : 'desabilitada'}.`);
+      showToast(`Feature "${key}" ${enabled ? 'habilitada' : 'desabilitada'}.`);
     },
     onError: (e: unknown) =>
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível atualizar a flag.')),

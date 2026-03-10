@@ -57,6 +57,18 @@ export default function ProfileScreen() {
     }, [userId, router]),
   );
 
+  const queryClient = useQueryClient();
+  const { data: user, isLoading, refetch: refetchMe } = useQuery({
+    queryKey: ['me'],
+    queryFn: getMe,
+    staleTime: 60_000,
+  });
+  useEffect(() => {
+    if (user) setUser(user);
+  }, [user, setUser]);
+  const profileComplete = !!(user?.avatarUrl && user?.phone);
+  const showCompleteProfileBanner = !profileComplete && !!user;
+
   const hapticThen = useCallback((fn: () => void) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     fn();
@@ -82,16 +94,6 @@ export default function ProfileScreen() {
   const [menuLegalExpanded, setMenuLegalExpanded] = useState(false);
   const [menuApoioExpanded, setMenuApoioExpanded] = useState(false);
   const [menuAdminExpanded, setMenuAdminExpanded] = useState(false);
-
-  const queryClient = useQueryClient();
-  const { data: user, isLoading, refetch: refetchMe } = useQuery({
-    queryKey: ['me'],
-    queryFn: getMe,
-    staleTime: 60_000,
-  });
-  useEffect(() => {
-    if (user) setUser(user);
-  }, [user, setUser]);
 
   useFocusEffect(
     useCallback(() => {
@@ -176,8 +178,6 @@ export default function ProfileScreen() {
           : 'Solicitação não aprovada. Você pode solicitar novamente após ajustes.'
         : null;
 
-  const profileComplete = !!(user?.avatarUrl && user?.phone);
-  const showCompleteProfileBanner = !profileComplete && !!user;
   const [infoAdocaoExpanded, setInfoAdocaoExpanded] = useState(false);
   const [preferenciasBuscaExpanded, setPreferenciasBuscaExpanded] = useState(false);
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   View,
@@ -20,6 +20,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PageIntro, Toast } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
+import { useToastWithDedupe } from '../src/hooks/useToastWithDedupe';
 import {
   getMyNotifications,
   getMyNotificationsUnreadCount,
@@ -111,7 +112,7 @@ export default function NotificationsScreen() {
   const [expandedSections, setExpandedSections] = useState<Set<SectionKey>>(
     () => new Set(['hoje', 'semanaPassada', 'mesPassado']),
   );
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
   const [prefsSaveSuccess, setPrefsSaveSuccess] = useState(false);
   const [prefsSectionExpanded, setPrefsSectionExpanded] = useState(false);
   const [notifyNewPets, setNotifyNewPets] = useState(true);
@@ -138,7 +139,7 @@ export default function NotificationsScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['me', 'preferences'] });
       queryClient.invalidateQueries({ queryKey: ['feed'] });
-      setToastMessage('Preferências de notificações atualizadas.');
+      showToast('Preferências de notificações atualizadas.');
       setPrefsSaveSuccess(true);
       setTimeout(() => setPrefsSaveSuccess(false), 1600);
     },
@@ -212,7 +213,7 @@ export default function NotificationsScreen() {
     mutationFn: markAllNotificationsAsRead,
     onSuccess: () => {
       runListExitAnimation();
-      setToastMessage('Todas marcadas como lidas.');
+      showToast('Todas marcadas como lidas.');
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications-unread-count'] });
     },
@@ -231,7 +232,7 @@ export default function NotificationsScreen() {
         return next;
       });
       setSelectionMode(false);
-      setToastMessage('Notificação arquivada.');
+      showToast('Notificação arquivada.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível arquivar.')),
   });
@@ -245,7 +246,7 @@ export default function NotificationsScreen() {
       setSelectedIds(new Set());
       setSelectionMode(false);
       const n = data.archived;
-      setToastMessage(n === 1 ? 'Notificação arquivada.' : `${n} notificações arquivadas.`);
+      showToast(n === 1 ? 'Notificação arquivada.' : `${n} notificações arquivadas.`);
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível arquivar.')),
   });
@@ -262,7 +263,7 @@ export default function NotificationsScreen() {
         return next;
       });
       setSelectionMode(false);
-      setToastMessage('Notificação excluída.');
+      showToast('Notificação excluída.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível excluir.')),
   });
@@ -276,7 +277,7 @@ export default function NotificationsScreen() {
       setSelectedIds(new Set());
       setSelectionMode(false);
       const n = data.deleted;
-      setToastMessage(n === 1 ? 'Notificação excluída.' : `${n} notificações excluídas.`);
+      showToast(n === 1 ? 'Notificação excluída.' : `${n} notificações excluídas.`);
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível excluir.')),
   });

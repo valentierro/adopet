@@ -15,6 +15,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, Toast, LoadingLogo } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../../src/hooks/useToastWithDedupe';
 import { getReports, resolveReport, banUser, type ReportItem } from '../../../src/api/admin';
 import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
 import { spacing } from '../../../src/theme';
@@ -44,7 +45,7 @@ export default function AdminReportsScreen() {
   const [resolveReportBanUser, setResolveReportBanUser] = useState(false);
   const [banUserModal, setBanUserModal] = useState<{ userId: string; userName?: string } | null>(null);
   const [banUserReason, setBanUserReason] = useState('');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
 
   const { data: reports = [], isLoading: loadingReports, refetch, isRefetching } = useQuery({
     queryKey: ['admin', 'reports'],
@@ -68,7 +69,7 @@ export default function AdminReportsScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'reports'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
-      setToastMessage('Denúncia marcada como resolvida.');
+      showToast('Denúncia marcada como resolvida.');
       setResolveReportModal(null);
       setResolveReportFeedback('');
       setResolveReportBanUser(false);
@@ -83,7 +84,7 @@ export default function AdminReportsScreen() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users-list'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'reports'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
-      setToastMessage('Usuário banido. A conta foi desativada.');
+      showToast('Usuário banido. A conta foi desativada.');
       setBanUserModal(null);
       setBanUserReason('');
     },
@@ -136,7 +137,7 @@ export default function AdminReportsScreen() {
           setSelectedReportIds(new Set());
           queryClient.invalidateQueries({ queryKey: ['admin', 'reports'] });
           queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
-          setToastMessage(`${ids.length} denúncia(s) resolvida(s).`);
+          showToast(`${ids.length} denúncia(s) resolvida(s).`);
         },
       },
     ]);

@@ -17,6 +17,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, Toast, LoadingLogo } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../../src/hooks/useToastWithDedupe';
 import {
   getAdminPartners,
   getAdminPartnerRecommendations,
@@ -66,7 +67,7 @@ export default function AdminPartnersScreen() {
   const [rejectPartnershipRequestModal, setRejectPartnershipRequestModal] =
     useState<PartnershipRequestItem | null>(null);
   const [rejectPartnershipRequestReason, setRejectPartnershipRequestReason] = useState('');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
 
   const { data: partnersList = [], refetch: refetchPartners, isRefetching: refetchingPartners } = useQuery({
     queryKey: ['admin', 'partners'],
@@ -103,7 +104,7 @@ export default function AdminPartnersScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
-      setToastMessage('Parceiro aprovado.');
+      showToast('Parceiro aprovado.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível aprovar.')),
   });
@@ -114,7 +115,7 @@ export default function AdminPartnersScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
-      setToastMessage('Parceiro rejeitado.');
+      showToast('Parceiro rejeitado.');
       setRejectPartnerModal(null);
       setRejectPartnerReason('');
     },
@@ -126,7 +127,7 @@ export default function AdminPartnersScreen() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
-      setToastMessage(`${data.updated} parceiro(s) aprovado(s).`);
+      showToast(`${data.updated} parceiro(s) aprovado(s).`);
       setSelectedPartnerIds([]);
     },
     onError: (e: unknown) =>
@@ -139,7 +140,7 @@ export default function AdminPartnersScreen() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
-      setToastMessage(`${data.updated} parceiro(s) rejeitado(s).`);
+      showToast(`${data.updated} parceiro(s) rejeitado(s).`);
       setSelectedPartnerIds([]);
       setShowBulkRejectModal(false);
       setBulkRejectReason('');
@@ -154,7 +155,7 @@ export default function AdminPartnersScreen() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partnership-requests'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
-      setToastMessage('Solicitação aprovada. Parceiro criado na lista.');
+      showToast('Solicitação aprovada. Parceiro criado na lista.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível aprovar.')),
   });
@@ -164,7 +165,7 @@ export default function AdminPartnersScreen() {
       rejectPartnershipRequest(id, rejectionReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partnership-requests'] });
-      setToastMessage('Solicitação rejeitada.');
+      showToast('Solicitação rejeitada.');
       setRejectPartnershipRequestModal(null);
       setRejectPartnershipRequestReason('');
     },
@@ -176,7 +177,7 @@ export default function AdminPartnersScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
-      setToastMessage('Parceiro atualizado.');
+      showToast('Parceiro atualizado.');
       setEditingPartner(null);
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível salvar.')),
@@ -187,7 +188,7 @@ export default function AdminPartnersScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
-      setToastMessage(
+      showToast(
         'Parceria encerrada. Se era pago, a assinatura foi cancelada ao final do período já pago (parceiro some do app quando o período terminar).',
       );
       setEditingPartner(null);
@@ -201,7 +202,7 @@ export default function AdminPartnersScreen() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       const msg = data?.message ?? 'E-mail de confirmação reenviado com sucesso.';
-      setToastMessage(msg);
+      showToast(msg);
       Alert.alert('Sucesso', msg);
     },
     onError: (e: unknown) =>

@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, LoadingLogo, PartnerPanelLayout, Toast } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
+import { useToastWithDedupe } from '../src/hooks/useToastWithDedupe';
 import { listAdoptionFormTemplates, deactivateAdoptionFormTemplate, type AdoptionFormTemplateWithQuestions } from '../src/api/adoption-forms';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
 import { FORM_TEMPLATES } from '../src/constants/adoption-form-library';
@@ -14,7 +15,7 @@ export default function PartnerAdoptionFormsScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { colors } = useTheme();
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
   const [newFormModalVisible, setNewFormModalVisible] = useState(false);
 
   const { data: templates = [], isLoading } = useQuery({
@@ -26,7 +27,7 @@ export default function PartnerAdoptionFormsScreen() {
     mutationFn: deactivateAdoptionFormTemplate,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'adoption-forms'] });
-      setToastMessage(data.message);
+      showToast(data.message);
     },
     onError: (e: unknown) =>
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível excluir o formulário.')),

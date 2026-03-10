@@ -14,6 +14,8 @@ export function Toast({ message, onHide, duration = 2000, variant }: Props) {
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-40)).current;
   const scale = useRef(new Animated.Value(0.9)).current;
+  const onHideRef = useRef(onHide);
+  onHideRef.current = onHide;
   const visible = !!message;
 
   useEffect(() => {
@@ -30,10 +32,13 @@ export function Toast({ message, onHide, duration = 2000, variant }: Props) {
       Animated.parallel([
         Animated.timing(opacity, { toValue: 0, duration: 180, useNativeDriver: true }),
         Animated.timing(translateY, { toValue: -24, duration: 180, useNativeDriver: true }),
-      ]).start(() => { if (typeof onHide === 'function') onHide(); });
+      ]).start(() => {
+        const fn = onHideRef.current;
+        if (typeof fn === 'function') fn();
+      });
     }, duration);
     return () => clearTimeout(t);
-  }, [message, duration, onHide, opacity, translateY, scale]);
+  }, [message, duration, opacity, translateY, scale]);
 
   if (!visible) return null;
 

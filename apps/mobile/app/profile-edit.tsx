@@ -8,6 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PrimaryButton, LoadingLogo, ProfileMenuFooter, Toast, CircularProgress, PageIntro } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
+import { useToastWithDedupe } from '../src/hooks/useToastWithDedupe';
 import { getMe, updateMe, getPreferences, updatePreferences } from '../src/api/me';
 import { useAuthStore } from '../src/stores/authStore';
 import { presign, confirmAvatarUpload } from '../src/api/uploads';
@@ -240,12 +241,12 @@ export default function ProfileEditScreen() {
     }
   }, [prefs]);
 
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
   const updateMutation = useMutation({
     mutationFn: (body: Parameters<typeof updateMe>[0]) => updateMe(body),
     onSuccess: () => {
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setToastMessage('Perfil atualizado!');
+      showToast('Perfil atualizado!');
       setSaveSuccess(true);
       queryClient.invalidateQueries({ queryKey: ['me'] });
       setTimeout(() => router.back(), 1400);
@@ -296,7 +297,7 @@ export default function ProfileEditScreen() {
       }
     },
     onSuccess: () => {
-      setToastMessage('Foto atualizada!');
+      showToast('Foto atualizada!');
       queryClient.invalidateQueries({ queryKey: ['me'] });
     },
     onError: (e: unknown) => {

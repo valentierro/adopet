@@ -22,6 +22,7 @@ import { useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../../src/hooks/useToastWithDedupe';
 import { useAuthStore } from '../../../src/stores/authStore';
 import { getMessages, sendMessage, type SendMessagePayload } from '../../../src/api/messages';
 import { getConversation, postConversationTyping } from '../../../src/api/conversations';
@@ -148,7 +149,7 @@ export default function ChatRoomScreen() {
   const [text, setText] = useState('');
   const [fullScreenImageUri, setFullScreenImageUri] = useState<string | null>(null);
   const [savingPhoto, setSavingPhoto] = useState(false);
-  const [reminderToast, setReminderToast] = useState<string | null>(null);
+  const { toastMessage: reminderToast, setToastMessage: setReminderToast, showToast: showReminderToast } = useToastWithDedupe();
   const [showMatchScoreModal, setShowMatchScoreModal] = useState(false);
   const [matchSectionExpanded, setMatchSectionExpanded] = useState(true);
   const [mismatchSectionExpanded, setMismatchSectionExpanded] = useState(true);
@@ -223,7 +224,7 @@ export default function ChatRoomScreen() {
     const key = CHAT_REMINDER_KEY_PREFIX + id;
     AsyncStorage.getItem(key).then((seen) => {
       if (seen) return;
-      setReminderToast('Lembrete: adoção no Adopet é voluntária e sem custos.');
+      showReminderToast('Lembrete: adoção no Adopet é voluntária e sem custos.');
       AsyncStorage.setItem(key, '1');
     });
   }, [id, data?.pages]);
@@ -423,7 +424,7 @@ export default function ChatRoomScreen() {
         ['FORM_SUBMITTED', 'APPROVED', 'ADOPTION_PROPOSED', 'ADOPTION_CONFIRMED'].includes(r.status),
     )?.submission?.matchScore;
   const [showFormTemplatePicker, setShowFormTemplatePicker] = useState(false);
-  const [formSendToast, setFormSendToast] = useState<string | null>(null);
+  const { toastMessage: formSendToast, setToastMessage: setFormSendToast, showToast: showFormSendToast } = useToastWithDedupe();
   const formSendInProgressRef = useRef(false);
   const [showKycInfoBeforeFormModal, setShowKycInfoBeforeFormModal] = useState(false);
   const [pendingFormSendTemplateId, setPendingFormSendTemplateId] = useState<string | undefined>(undefined);
@@ -432,7 +433,7 @@ export default function ChatRoomScreen() {
       sendAdoptionForm({ conversationId: id!, ...(templateId && { templateId }) }),
     onSuccess: () => {
       setShowFormTemplatePicker(false);
-      setFormSendToast('Formulário enviado! O interessado receberá no chat.');
+      showFormSendToast('Formulário enviado! O interessado receberá no chat.');
       queryClient.invalidateQueries({ queryKey: ['messages', id] });
       queryClient.invalidateQueries({ queryKey: ['conversations'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'adoption-requests'] });

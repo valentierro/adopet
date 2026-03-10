@@ -19,6 +19,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, Toast } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../../src/hooks/useToastWithDedupe';
 import {
   getPendingKyc,
   getApprovedKyc,
@@ -139,7 +140,7 @@ export default function PendingKycScreen() {
   useEffect(() => {
     if (params.tab === 'approved') setTab('approved');
   }, [params.tab]);
-  const [toast, setToast] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
   const [rejectReason, setRejectReason] = useState('');
   const [rejectingUserId, setRejectingUserId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -171,11 +172,11 @@ export default function PendingKycScreen() {
       setRejectingUserId(null);
       setRejectReason('');
       setSelectedIds(new Set());
-      setToast(status === 'VERIFIED' ? 'KYC aprovado.' : 'KYC rejeitado.');
+      showToast(status === 'VERIFIED' ? 'KYC aprovado.' : 'KYC rejeitado.');
     },
     onError: (err) => {
       setRejectingUserId(null);
-      setToast(getFriendlyErrorMessage(err, 'Erro ao atualizar KYC.'));
+      showToast(getFriendlyErrorMessage(err, 'Erro ao atualizar KYC.'));
     },
   });
 
@@ -189,10 +190,10 @@ export default function PendingKycScreen() {
       setShowBulkReject(false);
       setBulkRejectReason('');
       const errMsg = data.errors?.length ? ` ${data.errors.length} erro(s).` : '';
-      setToast(status === 'VERIFIED' ? `${data.processed} aprovado(s).${errMsg}` : `${data.processed} rejeitado(s).${errMsg}`);
+      showToast(status === 'VERIFIED' ? `${data.processed} aprovado(s).${errMsg}` : `${data.processed} rejeitado(s).${errMsg}`);
     },
     onError: (err) => {
-      setToast(getFriendlyErrorMessage(err, 'Erro na ação em massa.'));
+      showToast(getFriendlyErrorMessage(err, 'Erro na ação em massa.'));
     },
   });
 
@@ -203,10 +204,10 @@ export default function PendingKycScreen() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
       setRevokeUserId(null);
       setRevokeReason('');
-      setToast('KYC revogado. O usuário foi notificado.');
+      showToast('KYC revogado. O usuário foi notificado.');
     },
     onError: (err) => {
-      setToast(getFriendlyErrorMessage(err, 'Erro ao revogar.'));
+      showToast(getFriendlyErrorMessage(err, 'Erro ao revogar.'));
     },
   });
 
@@ -233,7 +234,7 @@ export default function PendingKycScreen() {
 
   const confirmReject = (userId: string) => {
     if (!rejectReason?.trim()) {
-      setToast('Informe o motivo da rejeição.');
+      showToast('Informe o motivo da rejeição.');
       return;
     }
     updateKyc.mutate({ userId, status: 'REJECTED', reason: rejectReason.trim() });
@@ -262,7 +263,7 @@ export default function PendingKycScreen() {
   const confirmBulkReject = () => {
     const reason = bulkRejectReason?.trim();
     if (!reason) {
-      setToast('Informe o motivo da rejeição.');
+      showToast('Informe o motivo da rejeição.');
       return;
     }
     bulkKyc.mutate({ userIds: Array.from(selectedIds), status: 'REJECTED', reason });
@@ -276,7 +277,7 @@ export default function PendingKycScreen() {
   const confirmRevoke = () => {
     const reason = revokeReason?.trim();
     if (!revokeUserId || !reason) {
-      setToast('Informe a justificativa da revogação.');
+      showToast('Informe a justificativa da revogação.');
       return;
     }
     revokeKyc.mutate({ userId: revokeUserId, reason });
@@ -791,7 +792,7 @@ export default function PendingKycScreen() {
         </Pressable>
       </Modal>
 
-      <Toast message={toast} onHide={() => setToast(null)} />
+      <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
     </ScreenContainer>
   );
 }

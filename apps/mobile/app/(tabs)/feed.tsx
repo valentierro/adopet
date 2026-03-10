@@ -18,6 +18,7 @@ import { trackEvent } from '../../src/analytics';
 import { getPreferences, updatePreferences } from '../../src/api/me';
 import { useUpdateCityFromLocation } from '../../src/hooks/useUpdateCityFromLocation';
 import { useResponsiveGridColumns } from '../../src/hooks/useResponsiveGridColumns';
+import { useToastWithDedupe } from '../../src/hooks/useToastWithDedupe';
 import { getMatchScoreColor } from '../../src/utils/matchScoreColor';
 import { getSpeciesLabel } from '../../src/utils/petLabels';
 import { getViewedPetIds } from '../../src/utils/viewedPets';
@@ -140,7 +141,7 @@ export default function FeedScreen() {
   /** Lista única do feed (ordem da API). Usada no swipe e no grid. */
   const [accumulatedItems, setAccumulatedItems] = useState<FeedResponse['items'] | null>(null);
   const [showMatchOverlay, setShowMatchOverlay] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
   const likedPetIdRef = useRef<string | null>(null);
   const matchOverlayShownForRef = useRef<string | null>(null);
   const lastLikedPetRef = useRef<FeedItem | null>(null);
@@ -505,7 +506,7 @@ export default function FeedScreen() {
         if (matchOverlayShownForRef.current !== petId) {
           matchOverlayShownForRef.current = petId;
           setShowMatchOverlay(true);
-          setToastMessage('Adicionado aos favoritos!');
+          showToast('Adicionado aos favoritos!');
         }
       }
     },
@@ -691,7 +692,7 @@ export default function FeedScreen() {
             onSignup={handleOnboardingSignup}
             onExplore={handleOnboardingExplore}
             onTrackEvent={trackEvent}
-            onShowToast={setToastMessage}
+            onShowToast={showToast}
           />
         )}
         {isGuest && !showOnboardingSlidesSheet && (
@@ -831,7 +832,7 @@ export default function FeedScreen() {
           onSignup={handleOnboardingSignup}
           onExplore={handleOnboardingExplore}
           onTrackEvent={trackEvent}
-          onShowToast={setToastMessage}
+          onShowToast={showToast}
         />
       )}
       {isGuest && !showOnboardingSlidesSheet && (
@@ -2019,7 +2020,7 @@ export default function FeedScreen() {
           onSignup={handleOnboardingSignup}
           onExplore={handleOnboardingExplore}
           onTrackEvent={trackEvent}
-          onShowToast={setToastMessage}
+          onShowToast={showToast}
         />
       )}
       {isGuest && !showOnboardingSlidesSheet && (

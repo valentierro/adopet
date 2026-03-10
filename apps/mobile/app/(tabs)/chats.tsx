@@ -7,6 +7,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ScreenContainer, EmptyState, LoadingLogo, PageIntro, Toast } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../src/hooks/useToastWithDedupe';
 import { getConversations, getBlockedConversations, deleteConversation } from '../../src/api/conversations';
 import { unblockUser } from '../../src/api/blocks';
 import type { ConversationListItem } from '../../src/api/conversations';
@@ -62,9 +63,9 @@ export default function ChatsScreen() {
               try {
                 await deleteConversation(conversationId);
                 await queryClient.invalidateQueries({ queryKey: ['conversations'] });
-                setToastMessage('Conversa apagada.');
+                showToast('Conversa apagada.');
               } catch {
-                setToastMessage('Não foi possível apagar a conversa.');
+                showToast('Não foi possível apagar a conversa.');
               }
             },
           },
@@ -101,9 +102,9 @@ export default function ChatsScreen() {
               await unblockUser(otherUserId);
               queryClient.invalidateQueries({ queryKey: ['conversations'] });
               queryClient.invalidateQueries({ queryKey: ['conversations', 'blocked'] });
-              setToastMessage(`${userName} foi desbloqueado(a).`);
+              showToast(`${userName} foi desbloqueado(a).`);
             } catch {
-              setToastMessage('Não foi possível desbloquear.');
+              showToast('Não foi possível desbloquear.');
             }
           },
         },

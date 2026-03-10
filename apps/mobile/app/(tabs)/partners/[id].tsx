@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { ScreenContainer, LoadingLogo, PageIntro, Toast } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../../src/hooks/useToastWithDedupe';
 import { getPartnerById, getPartnerCouponsPublic, getPartnerServicesPublic, recordPartnerView, recordPartnerCouponCopy, recordPartnerMarketplaceVisit, type PartnerCouponPublic, type PartnerServicePublic } from '../../../src/api/partners';
 import { spacing } from '../../../src/theme';
 
@@ -138,7 +139,7 @@ export default function PartnerDetailScreen() {
     enabled: !!id && !!partner,
     staleTime: 2 * 60_000,
   });
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
 
   useEffect(() => {
     if (partner?.name) {
@@ -406,7 +407,7 @@ export default function PartnerDetailScreen() {
               partnerId={partner.id}
               c={c}
               colors={colors}
-              onCopied={() => setToastMessage('Cupom copiado!')}
+              onCopied={() => showToast('Cupom copiado!')}
               highlighted={highlightCouponId === c.id}
             />
           ))}

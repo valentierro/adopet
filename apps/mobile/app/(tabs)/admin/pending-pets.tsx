@@ -14,6 +14,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, Toast, LoadingLogo } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../../src/hooks/useToastWithDedupe';
 import { getPendingPets, setPetPublication } from '../../../src/api/admin';
 import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
 import { getSpeciesLabel } from '../../../src/utils/petLabels';
@@ -35,7 +36,7 @@ export default function AdminPendingPetsScreen() {
   const [selectedPetIds, setSelectedPetIds] = useState<Set<string>>(new Set());
   const [batchPublicationStatus, setBatchPublicationStatus] = useState<'APPROVED' | 'REJECTED' | null>(null);
   const [pendingPetSpeciesFilter, setPendingPetSpeciesFilter] = useState<'ALL' | 'dog' | 'cat'>('ALL');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
 
   const { data: pendingPets = [], isLoading: loadingPets, refetch, isRefetching } = useQuery({
     queryKey: ['admin', 'pending-pets'],
@@ -49,7 +50,7 @@ export default function AdminPendingPetsScreen() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'pending-pets'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
       queryClient.invalidateQueries({ queryKey: ['feed'] });
-      setToastMessage(v.status === 'APPROVED' ? 'Anúncio aprovado.' : 'Anúncio rejeitado.');
+      showToast(v.status === 'APPROVED' ? 'Anúncio aprovado.' : 'Anúncio rejeitado.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível atualizar.')),
   });
@@ -99,7 +100,7 @@ export default function AdminPendingPetsScreen() {
               queryClient.invalidateQueries({ queryKey: ['admin', 'pending-pets'] });
               queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
               queryClient.invalidateQueries({ queryKey: ['feed'] });
-              setToastMessage(
+              showToast(
                 status === 'APPROVED' ? `${ids.length} anúncio(s) aprovado(s).` : `${ids.length} anúncio(s) rejeitado(s).`
               );
             } catch (e: unknown) {

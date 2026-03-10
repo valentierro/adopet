@@ -23,6 +23,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PageIntro, Toast, LoadingLogo } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../../src/hooks/useToastWithDedupe';
 import {
   getPendingPets,
   setPetPublication,
@@ -270,7 +271,7 @@ export default function AdminScreen() {
   const [selectedAdoption, setSelectedAdoption] = useState<AdoptionItem | null>(null);
   const [confirmingAdoptionPetId, setConfirmingAdoptionPetId] = useState<string | null>(null);
   const [rejectingAdoptionPetId, setRejectingAdoptionPetId] = useState<string | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
   const [resolveReportModal, setResolveReportModal] = useState<{ reportId: string } | null>(null);
   const [resolveReportFeedback, setResolveReportFeedback] = useState('');
   const [confirmAdoptionPendingItem, setConfirmAdoptionPendingItem] = useState<PendingAdoptionByTutorItem | null>(null);
@@ -367,7 +368,7 @@ export default function AdminScreen() {
       setConfirmAdoptionSearchQuery('');
       setConfirmAdoptionSearchResults([]);
       setConfirmAdoptionSelectedAdopterId(null);
-      setToastMessage('Adoção registrada. O pet foi marcado como adotado.');
+      showToast('Adoção registrada. O pet foi marcado como adotado.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível registrar a adoção.')),
   });
@@ -379,7 +380,7 @@ export default function AdminScreen() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'adoptions'] });
       setSelectedAdoption((prev) => (prev && prev.petId === petId ? { ...prev, confirmedByAdopet: true } : prev));
       setSelectedPendingAdoptionPetIds((prev) => { const s = new Set(prev); s.delete(petId); return s; });
-      setToastMessage('Adoção confirmada pelo Adopet.');
+      showToast('Adoção confirmada pelo Adopet.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível confirmar.')),
     onSettled: () => setConfirmingAdoptionPetId(null),
@@ -392,7 +393,7 @@ export default function AdminScreen() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'adoptions'] });
       setSelectedAdoption((prev) => (prev && prev.petId === petId ? null : prev));
       setSelectedPendingAdoptionPetIds((prev) => { const s = new Set(prev); s.delete(petId); return s; });
-      setToastMessage('Adoção rejeitada pelo Adopet.');
+      showToast('Adoção rejeitada pelo Adopet.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível rejeitar.')),
     onSettled: () => setRejectingAdoptionPetId(null),
@@ -406,7 +407,7 @@ export default function AdminScreen() {
     onSuccess: (_, petIds) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'adoptions'] });
       setSelectedPendingAdoptionPetIds(new Set());
-      setToastMessage(`${petIds.length} adoção(ões) confirmada(s) pelo Adopet.`);
+      showToast(`${petIds.length} adoção(ões) confirmada(s) pelo Adopet.`);
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível confirmar em massa.')),
   });
@@ -418,7 +419,7 @@ export default function AdminScreen() {
     onSuccess: (_, petIds) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'adoptions'] });
       setSelectedPendingAdoptionPetIds(new Set());
-      setToastMessage(`${petIds.length} adoção(ões) rejeitada(s) pelo Adopet.`);
+      showToast(`${petIds.length} adoção(ões) rejeitada(s) pelo Adopet.`);
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível rejeitar em massa.')),
   });
@@ -429,7 +430,7 @@ export default function AdminScreen() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'pending-pets'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
       queryClient.invalidateQueries({ queryKey: ['feed'] });
-      setToastMessage(v.status === 'APPROVED' ? 'Anúncio aprovado.' : 'Anúncio rejeitado.');
+      showToast(v.status === 'APPROVED' ? 'Anúncio aprovado.' : 'Anúncio rejeitado.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível atualizar.')),
   });
@@ -442,7 +443,7 @@ export default function AdminScreen() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
       queryClient.invalidateQueries({ queryKey: ['verification-status'] });
       queryClient.invalidateQueries({ queryKey: ['me'] });
-      setToastMessage(v.status === 'APPROVED' ? 'Verificação aprovada.' : 'Verificação rejeitada.');
+      showToast(v.status === 'APPROVED' ? 'Verificação aprovada.' : 'Verificação rejeitada.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível atualizar.')),
   });
@@ -454,7 +455,7 @@ export default function AdminScreen() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
       queryClient.invalidateQueries({ queryKey: ['verification-status'] });
       queryClient.invalidateQueries({ queryKey: ['me'] });
-      setToastMessage('Verificação revogada.');
+      showToast('Verificação revogada.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível revogar.')),
   });
@@ -465,7 +466,7 @@ export default function AdminScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'reports'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
-      setToastMessage('Denúncia marcada como resolvida.');
+      showToast('Denúncia marcada como resolvida.');
       setResolveReportModal(null);
       setResolveReportFeedback('');
     },
@@ -479,7 +480,7 @@ export default function AdminScreen() {
       queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
       setShowCreatePartnerModal(false);
       setCreatePartnerForm({ type: 'ONG', name: '', city: '', description: '', website: '', email: '', phone: '', active: true, approve: false, isPaidPartner: false });
-      setToastMessage(v.approve ? 'Parceiro criado e aprovado.' : 'Parceiro criado. Aprove para aparecer no app.');
+      showToast(v.approve ? 'Parceiro criado e aprovado.' : 'Parceiro criado. Aprove para aparecer no app.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível criar parceiro.')),
   });
@@ -528,7 +529,7 @@ export default function AdminScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
-      setToastMessage('Parceiro aprovado.');
+      showToast('Parceiro aprovado.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível aprovar.')),
   });
@@ -539,7 +540,7 @@ export default function AdminScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
-      setToastMessage('Parceiro rejeitado.');
+      showToast('Parceiro rejeitado.');
       setRejectPartnerModal(null);
       setRejectPartnerReason('');
     },
@@ -551,7 +552,7 @@ export default function AdminScreen() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
-      setToastMessage(`${data.updated} parceiro(s) aprovado(s).`);
+      showToast(`${data.updated} parceiro(s) aprovado(s).`);
       setSelectedPartnerIds([]);
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível aprovar em massa.')),
@@ -563,7 +564,7 @@ export default function AdminScreen() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
-      setToastMessage(`${data.updated} parceiro(s) rejeitado(s).`);
+      showToast(`${data.updated} parceiro(s) rejeitado(s).`);
       setSelectedPartnerIds([]);
       setShowBulkRejectModal(false);
       setBulkRejectReason('');
@@ -577,7 +578,7 @@ export default function AdminScreen() {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partnership-requests'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
-      setToastMessage('Solicitação aprovada. Parceiro criado na lista.');
+      showToast('Solicitação aprovada. Parceiro criado na lista.');
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível aprovar.')),
   });
@@ -587,7 +588,7 @@ export default function AdminScreen() {
       rejectPartnershipRequest(id, rejectionReason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partnership-requests'] });
-      setToastMessage('Solicitação rejeitada.');
+      showToast('Solicitação rejeitada.');
       setRejectPartnershipRequestModal(null);
       setRejectPartnershipRequestReason('');
     },
@@ -599,7 +600,7 @@ export default function AdminScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       queryClient.invalidateQueries({ queryKey: ['partners', 'ONG'] });
-      setToastMessage('Parceiro atualizado.');
+      showToast('Parceiro atualizado.');
       setEditingPartner(null);
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível salvar.')),
@@ -610,7 +611,7 @@ export default function AdminScreen() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'partners'] });
       const msg = data?.message ?? 'E-mail de confirmação reenviado com sucesso.';
-      setToastMessage(msg);
+      showToast(msg);
       Alert.alert('Sucesso', msg);
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível reenviar o e-mail.')),
@@ -621,7 +622,7 @@ export default function AdminScreen() {
       updateFeatureFlag(id, { enabled }),
     onSuccess: (_, { key, enabled }) => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'feature-flags'] });
-      setToastMessage(`Feature "${key}" ${enabled ? 'habilitada' : 'desabilitada'}.`);
+      showToast(`Feature "${key}" ${enabled ? 'habilitada' : 'desabilitada'}.`);
     },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível atualizar a flag.')),
   });
@@ -711,7 +712,7 @@ export default function AdminScreen() {
               queryClient.invalidateQueries({ queryKey: ['admin', 'pending-adoptions-by-tutor'] });
               queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
               queryClient.invalidateQueries({ queryKey: ['feed'] });
-              setToastMessage('Rejeitado. O tutor verá o badge em Meus anúncios.');
+              showToast('Rejeitado. O tutor verá o badge em Meus anúncios.');
             } catch (e: unknown) {
               Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível rejeitar.'));
             } finally {
@@ -752,7 +753,7 @@ export default function AdminScreen() {
             queryClient.invalidateQueries({ queryKey: ['feed'] });
             setSelectedPendingAdoptionPetIds(new Set());
             setMassRejecting(false);
-            setToastMessage(
+            showToast(
               errorMessage
                 ? `${done} rejeitado(s). ${errorMessage}`
                 : petIds.length === 1
@@ -794,9 +795,9 @@ export default function AdminScreen() {
       setMassConfirmSearchQuery('');
       setMassConfirmSearchResults([]);
       if (errorMessage) {
-        setToastMessage(`${done} confirmada(s). ${errorMessage}`);
+        showToast(`${done} confirmada(s). ${errorMessage}`);
       } else {
-        setToastMessage(petIds.length === 1 ? 'Adoção registrada.' : `${petIds.length} adoções registradas.`);
+        showToast(petIds.length === 1 ? 'Adoção registrada.' : `${petIds.length} adoções registradas.`);
       }
     } finally {
       setMassConfirmSubmitting(false);
@@ -835,7 +836,7 @@ export default function AdminScreen() {
               queryClient.invalidateQueries({ queryKey: ['admin', 'pending-pets'] });
               queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
               queryClient.invalidateQueries({ queryKey: ['feed'] });
-              setToastMessage(status === 'APPROVED' ? `${ids.length} anúncio(s) aprovado(s).` : `${ids.length} anúncio(s) rejeitado(s).`);
+              showToast(status === 'APPROVED' ? `${ids.length} anúncio(s) aprovado(s).` : `${ids.length} anúncio(s) rejeitado(s).`);
             } catch (e: unknown) {
               Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível atualizar alguns anúncios.'));
             } finally {

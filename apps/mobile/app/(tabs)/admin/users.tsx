@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, Toast, LoadingLogo } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../../src/hooks/useToastWithDedupe';
 import { getAdminUsersList, banUser, unbanUser, type AdminUserListItem } from '../../../src/api/admin';
 import { getFriendlyErrorMessage } from '../../../src/utils/errorMessage';
 import { spacing } from '../../../src/theme';
@@ -25,7 +26,7 @@ export default function AdminUsersScreen() {
   const [banUserModal, setBanUserModal] = useState<{ userId: string; userName?: string } | null>(null);
   const [banUserReason, setBanUserReason] = useState('');
   const [unbanUserModal, setUnbanUserModal] = useState<{ userId: string; userName?: string } | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
 
   const usersSearchTerm = (usersSearch ?? '').trim();
   const usersSearchMinLength = usersSearchTerm.length >= 2;
@@ -43,7 +44,7 @@ export default function AdminUsersScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users-list'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
-      setToastMessage('Usuário banido. A conta foi desativada.');
+      showToast('Usuário banido. A conta foi desativada.');
       setBanUserModal(null);
       setBanUserReason('');
     },
@@ -56,7 +57,7 @@ export default function AdminUsersScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'users-list'] });
       queryClient.invalidateQueries({ queryKey: ['admin', 'stats'] });
-      setToastMessage('Usuário reativado.');
+      showToast('Usuário reativado.');
       setUnbanUserModal(null);
     },
     onError: (e: unknown) =>

@@ -15,6 +15,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer, PrimaryButton, SecondaryButton, Toast } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
+import { useToastWithDedupe } from '../src/hooks/useToastWithDedupe';
 import { submitSatisfactionSurvey } from '../src/api/me';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
 import { spacing } from '../src/theme';
@@ -40,7 +41,7 @@ export default function SurveyScreen() {
   });
   const [comment, setComment] = useState('');
   const [summaryModalVisible, setSummaryModalVisible] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
 
   const updateScore = useCallback((key: string, value: number) => {
     setScores((prev) => ({ ...prev, [key]: value }));
@@ -63,11 +64,12 @@ export default function SurveyScreen() {
       setSummaryModalVisible(false);
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'adoptions'] });
-      setToastMessage('Obrigado! Sua avaliação foi enviada e nos ajuda a melhorar o app.');
-      router.back();
+      showToast('Obrigado! Sua avaliação foi enviada e nos ajuda a melhorar o app.');
+      // Mostrar o toast antes de voltar para o usuário ver o feedback
+      setTimeout(() => router.back(), 2200);
     },
     onError: (e: unknown) => {
-      setToastMessage(getFriendlyErrorMessage(e, 'Não foi possível enviar. Tente novamente.'));
+      showToast(getFriendlyErrorMessage(e, 'Não foi possível enviar. Tente novamente.'));
     },
   });
 

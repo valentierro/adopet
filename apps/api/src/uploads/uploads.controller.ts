@@ -1,5 +1,6 @@
-import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, Query, UseGuards, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { StreamableFile } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { UploadsService } from './uploads.service';
@@ -12,11 +13,20 @@ import { PresignResponseDto } from './dto/presign-response.dto';
 @ApiTags('uploads')
 @ApiBearerAuth()
 @Controller('uploads')
-@UseGuards(JwtAuthGuard)
 export class UploadsController {
   constructor(private readonly uploadsService: UploadsService) {}
 
+  @Get('serve')
+  @ApiOperation({ summary: 'Servir arquivo do storage por key (público)' })
+  async serve(@Query('key') key: string) {
+    if (!key?.trim()) throw new NotFoundException();
+    const result = await this.uploadsService.getObjectWithType(key);
+    if (!result) throw new NotFoundException();
+    return new StreamableFile(result.buffer, { type: result.contentType });
+  }
+
   @Post('presign')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Obter URL assinada para upload' })
   async presign(
     @CurrentUser() user: { id: string },
@@ -26,6 +36,7 @@ export class UploadsController {
   }
 
   @Post('confirm')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Confirmar upload e associar mídia ao pet' })
   async confirm(
     @CurrentUser() user: { id: string },
@@ -35,6 +46,7 @@ export class UploadsController {
   }
 
   @Post('confirm-avatar')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Confirmar upload de avatar e atualizar perfil' })
   async confirmAvatar(
     @CurrentUser() user: { id: string },
@@ -44,6 +56,7 @@ export class UploadsController {
   }
 
   @Post('confirm-partner-logo')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Confirmar upload de logo do estabelecimento parceiro' })
   async confirmPartnerLogo(
     @CurrentUser() user: { id: string },

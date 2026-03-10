@@ -125,7 +125,7 @@ export const FeedCard = React.memo(function FeedCard({ pet, onPress, onLike, onP
             scrollEnabled={wrapInTouchable}
             showsHorizontalScrollIndicator={false}
             onMomentumScrollEnd={onScroll}
-            keyExtractor={(uri, i) => `${i}-${uri.slice(-20)}`}
+            keyExtractor={(uri, i) => `gallery-${i}-${uri}`}
             renderItem={({ item, index }) => (
               <View style={[styles.slide, { width: SCREEN_WIDTH, height: h }]}>
                 <Animated.View

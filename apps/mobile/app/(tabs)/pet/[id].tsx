@@ -23,6 +23,7 @@ import { Image } from 'expo-image';
 import { ScreenContainer, PrimaryButton, SecondaryButton, StatusBadge, LoadingLogo, VerifiedBadge, TutorLevelBadge, MatchScoreBadge, Toast } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
 import { useAuthStore } from '../../../src/stores/authStore';
+import { BASE_URL } from '../../../src/api/client';
 import { getPetById } from '../../../src/api/pet';
 import { getSimilarPets, getMatchScore, recordPetView } from '../../../src/api/pets';
 import { addFavorite, removeFavorite, getFavorites } from '../../../src/api/favorites';
@@ -48,6 +49,21 @@ const REPORT_REASONS: { label: string; value: string }[] = [
   { label: 'Informação falsa', value: 'MISLEADING' },
   { label: 'Outro', value: 'OTHER' },
 ];
+
+const PLACEHOLDER_PHOTO = 'https://picsum.photos/seed/pet/400/400';
+
+/** Converte URL relativa (ex.: key do S3) em URL absoluta do endpoint serve. Nunca lança. */
+function resolvePhotoUrl(url: string | null | undefined): string {
+  const s = typeof url === 'string' ? url.trim() : '';
+  if (!s) return PLACEHOLDER_PHOTO;
+  if (s.startsWith('http://') || s.startsWith('https://')) return s;
+  try {
+    const base = BASE_URL.replace(/\/v1\/?$/, '');
+    return `${base}/v1/uploads/serve?key=${encodeURIComponent(s.replace(/^\/+/, ''))}`;
+  } catch {
+    return PLACEHOLDER_PHOTO;
+  }
+}
 
 const FEEDING_LABEL: Record<string, string> = { dry: 'Ração seca', wet: 'Ração úmida', mixed: 'Mista', natural: 'Natural', other: 'Outra' };
 const ENERGY_LABEL: Record<string, string> = { LOW: 'Calmo', MEDIUM: 'Moderado', HIGH: 'Agitado' };
@@ -126,7 +142,7 @@ function PetPhotoGallery({
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScroll}
         style={styles.galleryList}
-        keyExtractor={(uri, i) => `${i}-${uri.slice(-20)}`}
+        keyExtractor={(uri, i) => `gallery-${i}-${uri}`}
         renderItem={({ item }) => slide(item)}
       />
       <View style={styles.dots}>
@@ -460,7 +476,7 @@ export default function PetDetailsScreen() {
     );
   }
 
-  const photos = pet.photos?.length ? pet.photos : ['https://picsum.photos/seed/pet/400/400'];
+  const photos = (pet.photos?.length ? pet.photos : [PLACEHOLDER_PHOTO]).map(resolvePhotoUrl);
 
   const matchScoreModalContent = showMatchScoreModal && matchScoreData && matchScoreData.score != null ? (() => {
         const criteria = matchScoreData.criteria ?? [];
@@ -946,7 +962,7 @@ export default function PetDetailsScreen() {
                 >
                   <View style={styles.similarThumbWrap}>
                     <Image
-                      source={{ uri: photo ?? 'https://picsum.photos/seed/pet/200/200' }}
+                      source={{ uri: resolvePhotoUrl(photo) }}
                       style={styles.similarThumb}
                     />
                     {userId && typeof item.matchScore === 'number' && (

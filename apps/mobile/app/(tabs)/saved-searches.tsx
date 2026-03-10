@@ -5,6 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { ScreenContainer, LoadingLogo, Toast, PageIntro } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../src/hooks/useToastWithDedupe';
 import { getSavedSearches, createSavedSearch, updateSavedSearch, deleteSavedSearch, type SavedSearchItem } from '../../src/api/saved-search';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { getSpeciesLabel, getSizeLabel } from '../../src/utils/petLabels';
@@ -53,7 +54,7 @@ export default function SavedSearchesScreen() {
   const [breed, setBreed] = useState('');
   const [radiusKm, setRadiusKm] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
 
   const { data: list = [], isLoading, refetch } = useQuery({
     queryKey: ['saved-searches'],
@@ -99,7 +100,7 @@ export default function SavedSearchesScreen() {
   const deleteMutation = useMutation({
     mutationFn: deleteSavedSearch,
     onSuccess: (_data, deletedId) => {
-      setToastMessage('Busca removida');
+      showToast('Busca removida');
       queryClient.invalidateQueries({ queryKey: ['saved-searches'] });
       if (editingId === deletedId) {
         setEditingId(null);
