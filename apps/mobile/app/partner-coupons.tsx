@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
-import { View, Text, TouchableOpacity, FlatList, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, FlatList, StyleSheet, Alert, Modal, Pressable, ActivityIndicator } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, LoadingLogo, PartnerPanelLayout } from '../src/components';
+import { ScreenContainer, LoadingLogo, PartnerPanelLayout, Toast } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
+import { useToastWithDedupe } from '../src/hooks/useToastWithDedupe';
 import { getMyPartnerCoupons, deletePartnerCoupon, type PartnerCoupon } from '../src/api/partner';
 import { getFriendlyErrorMessage } from '../src/utils/errorMessage';
 import { spacing } from '../src/theme';
@@ -113,36 +114,44 @@ export default function PartnerCouponsScreen() {
     queryFn: getMyPartnerCoupons,
   });
 
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<PartnerCoupon | null>(null);
+  const [batchDeleteConfirmVisible, setBatchDeleteConfirmVisible] = useState(false);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+
   const deleteMutation = useMutation({
     mutationFn: deletePartnerCoupon,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'coupons'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'coupons'] });
+      setDeleteConfirmItem(null);
+      showToast('Cupom excluído');
+    },
     onError: (e: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível excluir o cupom.')),
   });
 
-  const confirmDelete = (item: PartnerCoupon) => {
-    Alert.alert('Excluir cupom', `Excluir o cupom "${item.code}"? Esta ação não pode ser desfeita.`, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Excluir', style: 'destructive', onPress: () => deleteMutation.mutate(item.id) },
-    ]);
+  const confirmDelete = (item: PartnerCoupon) => setDeleteConfirmItem(item);
+
+  const handleConfirmDelete = () => {
+    if (deleteConfirmItem) deleteMutation.mutate(deleteConfirmItem.id);
   };
 
-  const confirmBatchDelete = () => {
-    const n = selectedIds.size;
-    Alert.alert('Excluir cupons', `Excluir ${n} cupom${n !== 1 ? 'ns' : ''}? Esta ação não pode ser desfeita.`, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Excluir',
-        style: 'destructive',
-        onPress: async () => {
-          for (const id of selectedIds) {
-            await deletePartnerCoupon(id);
-          }
-          queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'coupons'] });
-          setSelectedIds(new Set());
-          setSelectionMode(false);
-        },
-      },
-    ]);
+  const confirmBatchDelete = () => setBatchDeleteConfirmVisible(true);
+
+  const handleConfirmBatchDelete = async () => {
+    const ids = [...selectedIds];
+    setBatchDeleting(true);
+    try {
+      for (const id of ids) await deletePartnerCoupon(id);
+      queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'coupons'] });
+      setSelectedIds(new Set());
+      setSelectionMode(false);
+      setBatchDeleteConfirmVisible(false);
+      showToast(ids.length === 1 ? 'Cupom excluído' : 'Cupons excluídos');
+    } catch (e) {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível excluir.'));
+    } finally {
+      setBatchDeleting(false);
+    }
   };
 
   const toggleSelect = (id: string) => {
@@ -235,6 +244,66 @@ export default function PartnerCouponsScreen() {
           </TouchableOpacity>
         )}
       </PartnerPanelLayout>
+      <Modal visible={deleteConfirmItem != null} transparent animationType="fade">
+        <Pressable style={styles.deleteModalOverlay} onPress={() => setDeleteConfirmItem(null)}>
+          <Pressable style={[styles.deleteModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.deleteModalTitle, { color: colors.textPrimary }]}>Excluir cupom?</Text>
+            <Text style={[styles.deleteModalMessage, { color: colors.textSecondary }]}>
+              {deleteConfirmItem ? `Excluir o cupom "${deleteConfirmItem.code}"? Esta ação não pode ser desfeita.` : ''}
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.textSecondary, backgroundColor: 'transparent', marginRight: spacing.sm }]}
+                onPress={() => setDeleteConfirmItem(null)}
+              >
+                <Text style={[styles.deleteModalBtnText, { color: colors.textPrimary, fontWeight: '600' }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18', flex: 1 }]}
+                onPress={handleConfirmDelete}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? (
+                  <ActivityIndicator size="small" color={colors.error || '#B91C1C'} />
+                ) : (
+                  <Text style={[styles.deleteModalBtnText, { color: colors.error || '#B91C1C', fontWeight: '600' }]}>Excluir</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      <Modal visible={batchDeleteConfirmVisible} transparent animationType="fade">
+        <Pressable style={styles.deleteModalOverlay} onPress={() => !batchDeleting && setBatchDeleteConfirmVisible(false)}>
+          <Pressable style={[styles.deleteModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.deleteModalTitle, { color: colors.textPrimary }]}>Excluir cupons?</Text>
+            <Text style={[styles.deleteModalMessage, { color: colors.textSecondary }]}>
+              Excluir {selectedIds.size} cupom{selectedIds.size !== 1 ? 'ns' : ''}? Esta ação não pode ser desfeita.
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.textSecondary, backgroundColor: 'transparent', marginRight: spacing.sm }]}
+                onPress={() => !batchDeleting && setBatchDeleteConfirmVisible(false)}
+                disabled={batchDeleting}
+              >
+                <Text style={[styles.deleteModalBtnText, { color: colors.textPrimary, fontWeight: '600' }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18', flex: 1 }]}
+                onPress={handleConfirmBatchDelete}
+                disabled={batchDeleting}
+              >
+                {batchDeleting ? (
+                  <ActivityIndicator size="small" color={colors.error || '#B91C1C'} />
+                ) : (
+                  <Text style={[styles.deleteModalBtnText, { color: colors.error || '#B91C1C', fontWeight: '600' }]}>Excluir</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      {toastMessage != null && <Toast message={toastMessage} onHide={() => setToastMessage(null)} />}
     </ScreenContainer>
   );
 }
@@ -273,4 +342,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  deleteModalCard: { width: '100%', maxWidth: 400, borderRadius: 16, padding: spacing.lg },
+  deleteModalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  deleteModalMessage: { fontSize: 14, lineHeight: 20, marginBottom: spacing.lg },
+  deleteModalActions: { flexDirection: 'row', alignItems: 'center' },
+  deleteModalBtn: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  deleteModalBtnText: { fontSize: 16 },
 });

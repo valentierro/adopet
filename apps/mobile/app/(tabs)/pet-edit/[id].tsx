@@ -13,13 +13,15 @@ import {
   ActivityIndicator,
   Modal,
   FlatList,
+  Pressable,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, PrimaryButton, SecondaryButton, LoadingLogo, VerifiedBadge } from '../../../src/components';
+import { ScreenContainer, PrimaryButton, SecondaryButton, LoadingLogo, VerifiedBadge, Toast } from '../../../src/components';
 import { useTheme } from '../../../src/hooks/useTheme';
+import { useToastWithDedupe } from '../../../src/hooks/useToastWithDedupe';
 import {
   getPet,
   updatePet,
@@ -65,6 +67,7 @@ export default function PetEditScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { colors } = useTheme();
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
   const [name, setName] = useState('');
   const [species, setSpecies] = useState<'dog' | 'cat'>('dog');
   const [breed, setBreed] = useState('');
@@ -106,6 +109,8 @@ export default function PetEditScreen() {
   const [neutered, setNeutered] = useState(false);
   const [partnerId, setPartnerId] = useState('');
   const [showAdopterModal, setShowAdopterModal] = useState(false);
+  const [removeAnnouncementModalVisible, setRemoveAnnouncementModalVisible] = useState(false);
+  const [removePhotoConfirmMediaId, setRemovePhotoConfirmMediaId] = useState<string | null>(null);
   const [selectedAdopter, setSelectedAdopter] = useState<
     { type: 'id'; id: string; name: string } | { type: 'username'; username: string; name: string } | { type: 'other' } | null
   >(null);
@@ -359,7 +364,11 @@ export default function PetEditScreen() {
 
   const deleteMediaMutation = useMutation({
     mutationFn: (mediaId: string) => deletePetMedia(id!, mediaId),
-    onSuccess: () => invalidate(),
+    onSuccess: () => {
+      setRemovePhotoConfirmMediaId(null);
+      showToast('Foto removida');
+      invalidate();
+    },
     onError: (e: unknown) =>
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível remover a foto.')),
   });
@@ -394,6 +403,8 @@ export default function PetEditScreen() {
   const deletePetMutation = useMutation({
     mutationFn: () => deletePet(id!),
     onSuccess: () => {
+      setRemoveAnnouncementModalVisible(false);
+      showToast('Anúncio removido');
       queryClient.invalidateQueries({ queryKey: ['pets', 'mine'] });
       queryClient.invalidateQueries({ queryKey: ['pet', id] });
       router.back();
@@ -414,16 +425,13 @@ export default function PetEditScreen() {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível cancelar. Tente novamente.')),
   });
 
-  const handleRemoveAnnouncement = () => {
-    Alert.alert(
-      'Remover anúncio?',
-      'O anúncio será excluído permanentemente. Esta ação não pode ser desfeita.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Remover', style: 'destructive', onPress: () => deletePetMutation.mutate() },
-      ]
-    );
+  const handleRemoveAnnouncement = () => setRemoveAnnouncementModalVisible(true);
+
+  const handleConfirmRemoveAnnouncement = () => {
+    deletePetMutation.mutate();
   };
+
+  const handleCancelRemoveAnnouncement = () => setRemoveAnnouncementModalVisible(false);
 
   const handleSave = () => {
     if (pet?.status === 'ADOPTED') return;
@@ -443,17 +451,22 @@ export default function PetEditScreen() {
     updateMutation.mutate();
   };
 
-  const handleDeletePhoto = (mediaId: string) => {
+  const handleRequestDeletePhoto = (mediaId: string) => {
     const items = pet?.mediaItems ?? [];
     if (items.length <= 1) {
       Alert.alert('Atenção', 'O pet precisa ter pelo menos uma foto.');
       return;
     }
-    Alert.alert('Remover foto?', undefined, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Remover', style: 'destructive', onPress: () => deleteMediaMutation.mutate(mediaId) },
-    ]);
+    setRemovePhotoConfirmMediaId(mediaId);
   };
+
+  const handleConfirmDeletePhoto = () => {
+    if (removePhotoConfirmMediaId) {
+      deleteMediaMutation.mutate(removePhotoConfirmMediaId);
+    }
+  };
+
+  const handleCancelDeletePhoto = () => setRemovePhotoConfirmMediaId(null);
 
   const handleMovePhoto = (index: number, dir: 'up' | 'down') => {
     const items = [...(pet?.mediaItems ?? [])];
@@ -541,7 +554,7 @@ export default function PetEditScreen() {
               <Image source={{ uri: m.url }} style={styles.thumb} />
               <TouchableOpacity
                 style={[styles.removeThumb, { backgroundColor: colors.error || '#c00' }]}
-                onPress={() => handleDeletePhoto(m.id)}
+                onPress={() => handleRequestDeletePhoto(m.id)}
                 disabled={isAdopted || deleteMediaMutation.isPending}
               >
                 <Text style={styles.removeThumbText}>×</Text>
@@ -1134,6 +1147,65 @@ export default function PetEditScreen() {
         </View>
       )}
 
+      <Modal visible={removePhotoConfirmMediaId != null} transparent animationType="fade">
+        <Pressable style={styles.removeModalOverlay} onPress={handleCancelDeletePhoto}>
+          <Pressable style={[styles.removeModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.removeModalTitle, { color: colors.textPrimary }]}>Remover foto?</Text>
+            <Text style={[styles.removeModalMessage, { color: colors.textSecondary }]}>
+              A foto será removida do anúncio.
+            </Text>
+            <View style={styles.removeModalActions}>
+              <TouchableOpacity
+                style={[styles.removeModalBtn, { borderColor: colors.textSecondary, backgroundColor: 'transparent', marginRight: spacing.sm }]}
+                onPress={handleCancelDeletePhoto}
+              >
+                <Text style={[styles.removeModalBtnText, { color: colors.textPrimary, fontWeight: '600' }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.removeModalBtn, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18', flex: 1 }]}
+                onPress={handleConfirmDeletePhoto}
+                disabled={deleteMediaMutation.isPending}
+              >
+                {deleteMediaMutation.isPending ? (
+                  <ActivityIndicator size="small" color={colors.error || '#B91C1C'} />
+                ) : (
+                  <Text style={[styles.removeModalBtnText, { color: colors.error || '#B91C1C', fontWeight: '600' }]}>Remover</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      <Modal visible={removeAnnouncementModalVisible} transparent animationType="fade">
+        <Pressable style={styles.removeModalOverlay} onPress={handleCancelRemoveAnnouncement}>
+          <Pressable style={[styles.removeModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.removeModalTitle, { color: colors.textPrimary }]}>Remover anúncio?</Text>
+            <Text style={[styles.removeModalMessage, { color: colors.textSecondary }]}>
+              O anúncio será excluído permanentemente. Tudo relacionado a ele também será removido: conversas, pessoas que favoritaram, etc. Esta ação não pode ser desfeita.
+            </Text>
+            <View style={styles.removeModalActions}>
+              <TouchableOpacity
+                style={[styles.removeModalBtn, { borderColor: colors.textSecondary, backgroundColor: 'transparent', marginRight: spacing.sm }]}
+                onPress={handleCancelRemoveAnnouncement}
+              >
+                <Text style={[styles.removeModalBtnText, { color: colors.textPrimary, fontWeight: '600' }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.removeModalBtn, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18', flex: 1 }]}
+                onPress={handleConfirmRemoveAnnouncement}
+                disabled={deletePetMutation.isPending}
+              >
+                {deletePetMutation.isPending ? (
+                  <ActivityIndicator size="small" color={colors.error || '#B91C1C'} />
+                ) : (
+                  <Text style={[styles.removeModalBtnText, { color: colors.error || '#B91C1C', fontWeight: '600' }]}>Remover</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <Modal visible={showAdopterModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -1226,6 +1298,7 @@ export default function PetEditScreen() {
           </View>
         </View>
       </Modal>
+      {toastMessage != null && <Toast message={toastMessage} onHide={() => setToastMessage(null)} />}
     </ScreenContainer>
   );
 }
@@ -1317,4 +1390,30 @@ const styles = StyleSheet.create({
   modalBtnText: { fontWeight: '600' },
   modalBtnTextWhite: { color: '#fff', fontWeight: '600' },
   modalBtnDisabled: { opacity: 0.6 },
+  removeModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  removeModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: spacing.lg,
+  },
+  removeModalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  removeModalMessage: { fontSize: 14, lineHeight: 20, marginBottom: spacing.lg },
+  removeModalActions: { flexDirection: 'row', alignItems: 'center' },
+  removeModalBtn: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  removeModalBtnText: { fontSize: 16 },
 });

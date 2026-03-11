@@ -20,6 +20,100 @@ const PREFERENCE_MATCH_FIELDS = [
   { key: 'neuteredPref' as const, label: 'Preferência de castração' },
 ];
 
+/** Campos considerados para conclusão do perfil (todas as seções exceto "Por que quer adotar"). */
+const PROFILE_COMPLETION_FIELDS: { key: string; label: string; source: 'user' | 'prefs' }[] = [
+  { key: 'avatarUrl', label: 'Foto de perfil', source: 'user' },
+  { key: 'name', label: 'Nome', source: 'user' },
+  { key: 'username', label: 'Nome de usuário', source: 'user' },
+  { key: 'phone', label: 'Telefone', source: 'user' },
+  { key: 'city', label: 'Cidade', source: 'user' },
+  { key: 'birthDate', label: 'Data de nascimento', source: 'user' },
+  { key: 'bio', label: 'Sobre você', source: 'user' },
+  { key: 'housingType', label: 'Tipo de moradia', source: 'user' },
+  { key: 'hasYard', label: 'Tem quintal', source: 'user' },
+  { key: 'hasOtherPets', label: 'Tem outros pets', source: 'user' },
+  { key: 'hasChildren', label: 'Tem crianças', source: 'user' },
+  { key: 'timeAtHome', label: 'Tempo em casa', source: 'user' },
+  { key: 'petsAllowedAtHome', label: 'Pets permitidos no local', source: 'user' },
+  { key: 'dogExperience', label: 'Experiência com cachorro', source: 'user' },
+  { key: 'catExperience', label: 'Experiência com gato', source: 'user' },
+  { key: 'householdAgreesToAdoption', label: 'Todos concordam com a adoção', source: 'user' },
+  { key: 'activityLevel', label: 'Nível de atividade', source: 'user' },
+  { key: 'preferredPetAge', label: 'Idade preferida do pet', source: 'user' },
+  { key: 'commitsToVetCare', label: 'Compromisso com cuidados veterinários', source: 'user' },
+  { key: 'walkFrequency', label: 'Frequência de passeios', source: 'user' },
+  { key: 'monthlyBudgetForPet', label: 'Orçamento mensal para o pet', source: 'user' },
+  { key: 'species', label: 'Espécie', source: 'prefs' },
+  { key: 'sizePref', label: 'Tamanho preferido', source: 'prefs' },
+  { key: 'sexPref', label: 'Sexo preferido do pet', source: 'prefs' },
+  { key: 'neuteredPref', label: 'Preferência de castração', source: 'prefs' },
+];
+
+type ProfileCompletionUser = {
+  avatarUrl?: string | null;
+  name?: string | null;
+  username?: string | null;
+  phone?: string | null;
+  city?: string | null;
+  birthDate?: Date | null;
+  bio?: string | null;
+  housingType?: string | null;
+  hasYard?: boolean | null;
+  hasOtherPets?: boolean | null;
+  hasChildren?: boolean | null;
+  timeAtHome?: string | null;
+  petsAllowedAtHome?: string | null;
+  dogExperience?: string | null;
+  catExperience?: string | null;
+  householdAgreesToAdoption?: string | null;
+  activityLevel?: string | null;
+  preferredPetAge?: string | null;
+  commitsToVetCare?: string | null;
+  walkFrequency?: string | null;
+  monthlyBudgetForPet?: string | null;
+};
+type ProfileCompletionPrefs = {
+  species?: string | null;
+  sizePref?: string | null;
+  sexPref?: string | null;
+  neuteredPref?: string | null;
+};
+
+function isProfileFieldFilled(
+  key: string,
+  user: ProfileCompletionUser,
+  prefs: ProfileCompletionPrefs,
+): boolean {
+  const isStrFilled = (v: string | null | undefined) => v != null && String(v).trim() !== '';
+  const isDateFilled = (v: Date | null | undefined) => v != null;
+  const isBoolFilled = (v: boolean | null | undefined) => v !== undefined && v !== null;
+  if (PROFILE_COMPLETION_FIELDS.find((f) => f.key === key)?.source === 'prefs') {
+    return isStrFilled((prefs as Record<string, unknown>)[key] as string);
+  }
+  const u = user as Record<string, unknown>;
+  const val = u[key];
+  if (key === 'avatarUrl' || key === 'name' || key === 'username' || key === 'phone' || key === 'city' || key === 'bio' || key === 'housingType' || key === 'timeAtHome' || key === 'petsAllowedAtHome' || key === 'dogExperience' || key === 'catExperience' || key === 'householdAgreesToAdoption' || key === 'activityLevel' || key === 'preferredPetAge' || key === 'commitsToVetCare' || key === 'walkFrequency' || key === 'monthlyBudgetForPet')
+    return isStrFilled(val as string);
+  if (key === 'birthDate') return isDateFilled(val as Date);
+  if (key === 'hasYard' || key === 'hasOtherPets' || key === 'hasChildren') return isBoolFilled(val as boolean);
+  return false;
+}
+
+/** Conclusão do perfil: todas as seções exceto "Por que quer adotar". */
+function getProfileCompletion(
+  user: ProfileCompletionUser,
+  prefs: ProfileCompletionPrefs,
+): { completionPercent: number; missingFields: { key: string; label: string }[] } {
+  const missingFields = PROFILE_COMPLETION_FIELDS.filter((f) => !isProfileFieldFilled(f.key, user, prefs));
+  const total = PROFILE_COMPLETION_FIELDS.length;
+  const filled = total - missingFields.length;
+  const completionPercent = total === 0 ? 100 : Math.round((filled / total) * 100);
+  return {
+    completionPercent,
+    missingFields: missingFields.map((f) => ({ key: f.key, label: f.label })),
+  };
+}
+
 /** Normaliza RG para armazenamento: dígitos + até uma letra no final. Retorna null se vazio. */
 function normalizeRgOptional(value: string | undefined): string | null {
   const s = String(value ?? '').replace(/\s/g, '').toUpperCase().trim();
@@ -28,21 +122,6 @@ function normalizeRgOptional(value: string | undefined): string | null {
   const trailingLetter = s.match(/([A-Z])$/)?.[1] ?? '';
   const out = (digits + trailingLetter).slice(0, 20);
   return out || null;
-}
-
-function getPreferencesCompletion(prefs: { species?: string | null; sizePref?: string | null; sexPref?: string | null; neuteredPref?: string | null }): { completionPercent: number; missingFields: { key: string; label: string }[] } {
-  const total = PREFERENCE_MATCH_FIELDS.length;
-  const missingFields = PREFERENCE_MATCH_FIELDS.filter((f) => {
-    if (f.key === 'neuteredPref') return false; // Indiferente (BOTH ou null) = preenchido, tanto faz
-    const v = prefs[f.key];
-    return v == null || v === '';
-  });
-  const filled = total - missingFields.length;
-  const completionPercent = total === 0 ? 100 : Math.round((filled / total) * 100);
-  return {
-    completionPercent,
-    missingFields: missingFields.map((f) => ({ key: f.key, label: f.label })),
-  };
 }
 
 const ADOPTER_SELECT = {
@@ -490,36 +569,70 @@ export class MeService {
   }
 
   async getPreferences(userId: string): Promise<PreferencesResponseDto> {
-    const prefs = await this.prisma.userPreferences.findUnique({
-      where: { userId },
-    });
-    if (!prefs) {
-      const completion = getPreferencesCompletion({ species: 'BOTH' });
-      return {
-        species: 'BOTH',
-        radiusKm: 50,
-        notifyNewPets: true,
-        notifyMessages: true,
-        notifyReminders: true,
-        notifyListingReminders: true,
-        neuteredPref: undefined,
-        completionPercent: completion.completionPercent,
-        missingFields: completion.missingFields,
-      };
-    }
-    const completion = getPreferencesCompletion(prefs);
+    const [user, prefs] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          avatarUrl: true,
+          name: true,
+          username: true,
+          phone: true,
+          city: true,
+          birthDate: true,
+          bio: true,
+          housingType: true,
+          hasYard: true,
+          hasOtherPets: true,
+          hasChildren: true,
+          timeAtHome: true,
+          petsAllowedAtHome: true,
+          dogExperience: true,
+          catExperience: true,
+          householdAgreesToAdoption: true,
+          activityLevel: true,
+          preferredPetAge: true,
+          commitsToVetCare: true,
+          walkFrequency: true,
+          monthlyBudgetForPet: true,
+        },
+      }),
+      this.prisma.userPreferences.findUnique({
+        where: { userId },
+      }),
+    ]);
+    const prefsData = prefs
+      ? {
+          species: prefs.species as 'DOG' | 'CAT' | 'BOTH',
+          radiusKm: prefs.radiusKm,
+          sizePref: prefs.sizePref ?? undefined,
+          sexPref: prefs.sexPref ?? undefined,
+          neuteredPref: prefs.neuteredPref ?? undefined,
+          latitude: prefs.latitude ?? undefined,
+          longitude: prefs.longitude ?? undefined,
+          notifyNewPets: prefs.notifyNewPets,
+          notifyMessages: prefs.notifyMessages,
+          notifyReminders: prefs.notifyReminders,
+          notifyListingReminders: prefs.notifyListingReminders,
+        }
+      : {
+          species: 'BOTH' as const,
+          radiusKm: 50,
+          notifyNewPets: true,
+          notifyMessages: true,
+          notifyReminders: true,
+          notifyListingReminders: true,
+          sizePref: undefined as string | undefined,
+          sexPref: undefined as string | undefined,
+          neuteredPref: undefined as string | undefined,
+          latitude: undefined as number | undefined,
+          longitude: undefined as number | undefined,
+        };
+    const prefsForCompletion: ProfileCompletionPrefs = prefs
+      ? { species: prefs.species, sizePref: prefs.sizePref, sexPref: prefs.sexPref, neuteredPref: prefs.neuteredPref }
+      : { species: 'BOTH' };
+    const completion = getProfileCompletion(user ?? {}, prefsForCompletion);
     return {
-      species: prefs.species as 'DOG' | 'CAT' | 'BOTH',
-      radiusKm: prefs.radiusKm,
-      sizePref: prefs.sizePref ?? undefined,
-      sexPref: prefs.sexPref ?? undefined,
-      neuteredPref: prefs.neuteredPref ?? undefined,
-      latitude: prefs.latitude ?? undefined,
-      longitude: prefs.longitude ?? undefined,
-      notifyNewPets: prefs.notifyNewPets,
-      notifyMessages: prefs.notifyMessages,
-      notifyReminders: prefs.notifyReminders,
-      notifyListingReminders: prefs.notifyListingReminders,
+      ...prefsData,
       completionPercent: completion.completionPercent,
       missingFields: completion.missingFields,
     };
@@ -567,21 +680,38 @@ export class MeService {
         data: { missionPreferencesCompleteAt: new Date() },
       });
     }
-    if (matchPrefsSent) {
-      const hasSpecies = prefs.species != null && prefs.species !== '';
-      const hasSizePref = prefs.sizePref != null && prefs.sizePref !== '';
-      const hasSexPref = prefs.sexPref != null && prefs.sexPref !== '';
-      if (!hasSpecies || !hasSizePref || !hasSexPref) {
-        const missing: string[] = [];
-        if (!hasSpecies) missing.push('espécie preferida (cachorro/gato/ambos)');
-        if (!hasSizePref) missing.push('porte preferido');
-        if (!hasSexPref) missing.push('sexo preferido do pet');
-        throw new BadRequestException(
-          'Para o match score funcionar corretamente, preencha as preferências: ' + missing.join(', ') + '.',
-        );
-      }
-    }
-    const completion = getPreferencesCompletion(prefs);
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        avatarUrl: true,
+        name: true,
+        username: true,
+        phone: true,
+        city: true,
+        birthDate: true,
+        bio: true,
+        housingType: true,
+        hasYard: true,
+        hasOtherPets: true,
+        hasChildren: true,
+        timeAtHome: true,
+        petsAllowedAtHome: true,
+        dogExperience: true,
+        catExperience: true,
+        householdAgreesToAdoption: true,
+        activityLevel: true,
+        preferredPetAge: true,
+        commitsToVetCare: true,
+        walkFrequency: true,
+        monthlyBudgetForPet: true,
+      },
+    });
+    const completion = getProfileCompletion(user ?? {}, {
+      species: prefs.species,
+      sizePref: prefs.sizePref,
+      sexPref: prefs.sexPref,
+      neuteredPref: prefs.neuteredPref,
+    });
     return {
       species: prefs.species,
       radiusKm: prefs.radiusKm,

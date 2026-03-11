@@ -10,7 +10,8 @@ describe('FavoritesService', () => {
   let service: FavoritesService;
   let prisma: {
     pet: { findUnique: jest.Mock };
-    favorite: { findUnique: jest.Mock; create: jest.Mock; delete: jest.Mock; findMany: jest.Mock };
+    favorite: { findUnique: jest.Mock; create: jest.Mock; delete: jest.Mock; findMany: jest.Mock; count: jest.Mock };
+    conversation: { deleteMany: jest.Mock };
     user: { findUnique: jest.Mock };
     userPreferences: { findUnique: jest.Mock };
   };
@@ -37,7 +38,9 @@ describe('FavoritesService', () => {
         create: jest.fn(),
         delete: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn().mockResolvedValue(0),
       },
+      conversation: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
       user: { findUnique: jest.fn().mockResolvedValue({ name: 'Test User' }) },
       userPreferences: { findUnique: jest.fn().mockResolvedValue(null) },
     };
@@ -105,12 +108,15 @@ describe('FavoritesService', () => {
       expect(prisma.favorite.delete).not.toHaveBeenCalled();
     });
 
-    it('should delete favorite and return message when it exists', async () => {
+    it('should delete favorite and conversation and return message when it exists', async () => {
       prisma.favorite.findUnique.mockResolvedValue({ id: 'fav-1', userId, petId });
       prisma.favorite.delete.mockResolvedValue({});
       const result = await service.remove(userId, petId);
       expect(result).toEqual({ message: 'OK' });
       expect(prisma.favorite.delete).toHaveBeenCalledWith({ where: { id: 'fav-1' } });
+      expect(prisma.conversation.deleteMany).toHaveBeenCalledWith({
+        where: { petId, adopterId: userId, type: 'NORMAL' },
+      });
     });
   });
 

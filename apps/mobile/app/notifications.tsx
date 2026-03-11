@@ -14,6 +14,7 @@ import {
   LayoutAnimation,
   Platform,
   Animated,
+  Modal,
 } from 'react-native';
 import { configureExpandAnimation } from '../src/utils/layoutAnimation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -119,6 +120,7 @@ export default function NotificationsScreen() {
   const [notifyMessages, setNotifyMessages] = useState(true);
   const [notifyReminders, setNotifyReminders] = useState(true);
   const [notifyListingReminders, setNotifyListingReminders] = useState(true);
+  const [deleteConfirmIds, setDeleteConfirmIds] = useState<string[]>([]);
 
   const { data: prefs } = useQuery({
     queryKey: ['me', 'preferences'],
@@ -254,6 +256,7 @@ export default function NotificationsScreen() {
   const deleteOneMutation = useMutation({
     mutationFn: deleteNotification,
     onSuccess: () => {
+      setDeleteConfirmIds([]);
       runListExitAnimation();
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications-unread-count'] });
@@ -271,6 +274,7 @@ export default function NotificationsScreen() {
   const deleteManyMutation = useMutation({
     mutationFn: deleteNotifications,
     onSuccess: (data) => {
+      setDeleteConfirmIds([]);
       runListExitAnimation();
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'notifications-unread-count'] });
@@ -406,27 +410,17 @@ export default function NotificationsScreen() {
 
   const handleDeleteSelected = useCallback(() => {
     if (selectedIds.size === 0) return;
-    Alert.alert(
-      'Excluir notificações',
-      selectedIds.size === 1
-        ? 'Excluir esta notificação? Esta ação não pode ser desfeita.'
-        : `Excluir ${selectedIds.size} notificações? Esta ação não pode ser desfeita.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Excluir',
-          style: 'destructive',
-          onPress: () => {
-            if (selectedIds.size === 1) {
-              deleteOneMutation.mutate([...selectedIds][0]!);
-            } else {
-              deleteManyMutation.mutate([...selectedIds]);
-            }
-          },
-        },
-      ],
-    );
-  }, [selectedIds, deleteOneMutation, deleteManyMutation]);
+    setDeleteConfirmIds([...selectedIds]);
+  }, [selectedIds]);
+
+  const handleConfirmDeleteNotifications = useCallback(() => {
+    if (deleteConfirmIds.length === 0) return;
+    if (deleteConfirmIds.length === 1) {
+      deleteOneMutation.mutate(deleteConfirmIds[0]!);
+    } else {
+      deleteManyMutation.mutate(deleteConfirmIds);
+    }
+  }, [deleteConfirmIds, deleteOneMutation, deleteManyMutation]);
 
   const showCardActions = useCallback(
     (n: InAppNotificationItem) => {
@@ -439,22 +433,13 @@ export default function NotificationsScreen() {
           text: opt,
           onPress: () => {
             if (opt === 'Arquivar') archiveOneMutation.mutate(n.id);
-            if (opt === 'Excluir') {
-              Alert.alert(
-                'Excluir notificação',
-                'Esta ação não pode ser desfeita.',
-                [
-                  { text: 'Cancelar', style: 'cancel' },
-                  { text: 'Excluir', style: 'destructive', onPress: () => deleteOneMutation.mutate(n.id) },
-                ],
-              );
-            }
+            if (opt === 'Excluir') setDeleteConfirmIds([n.id]);
           },
         }))),
         { text: 'Cancelar', style: 'cancel' },
       ]);
     },
-    [archived, archiveOneMutation, deleteOneMutation],
+    [archived, archiveOneMutation],
   );
 
   const exitSelectionMode = useCallback(() => {
@@ -781,6 +766,37 @@ export default function NotificationsScreen() {
           </View>
         )}
       </ScrollView>
+      <Modal visible={deleteConfirmIds.length > 0} transparent animationType="fade">
+        <Pressable style={styles.deleteModalOverlay} onPress={() => setDeleteConfirmIds([])}>
+          <Pressable style={[styles.deleteModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.deleteModalTitle, { color: colors.textPrimary }]}>Excluir notificação{deleteConfirmIds.length !== 1 ? 's' : ''}?</Text>
+            <Text style={[styles.deleteModalMessage, { color: colors.textSecondary }]}>
+              {deleteConfirmIds.length === 1
+                ? 'Excluir esta notificação? Esta ação não pode ser desfeita.'
+                : `Excluir ${deleteConfirmIds.length} notificações? Esta ação não pode ser desfeita.`}
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.textSecondary, backgroundColor: 'transparent', marginRight: spacing.sm }]}
+                onPress={() => setDeleteConfirmIds([])}
+              >
+                <Text style={[styles.deleteModalBtnText, { color: colors.textPrimary, fontWeight: '600' }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18', flex: 1 }]}
+                onPress={handleConfirmDeleteNotifications}
+                disabled={deleteOneMutation.isPending || deleteManyMutation.isPending}
+              >
+                {(deleteOneMutation.isPending || deleteManyMutation.isPending) ? (
+                  <ActivityIndicator size="small" color={colors.error || '#B91C1C'} />
+                ) : (
+                  <Text style={[styles.deleteModalBtnText, { color: colors.error || '#B91C1C', fontWeight: '600' }]}>Excluir</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
       <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
     </ScreenContainer>
   );
@@ -1019,4 +1035,25 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  deleteModalCard: { width: '100%', maxWidth: 400, borderRadius: 16, padding: spacing.lg },
+  deleteModalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  deleteModalMessage: { fontSize: 14, lineHeight: 20, marginBottom: spacing.lg },
+  deleteModalActions: { flexDirection: 'row', alignItems: 'center' },
+  deleteModalBtn: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  deleteModalBtnText: { fontSize: 16 },
 });

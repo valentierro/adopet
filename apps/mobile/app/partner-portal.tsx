@@ -1,10 +1,12 @@
 import { useRouter } from 'expo-router';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator } from 'react-native';
+import { useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, Modal, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, LoadingLogo, PartnerPanelLayout, ProfileMenuFooter } from '../src/components';
+import { ScreenContainer, LoadingLogo, PartnerPanelLayout, ProfileMenuFooter, Toast } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
+import { useToastWithDedupe } from '../src/hooks/useToastWithDedupe';
 import { useClientConfig } from '../src/hooks/useClientConfig';
 import {
   getMyPartner,
@@ -24,6 +26,8 @@ export default function PartnerPortalScreen() {
   const queryClient = useQueryClient();
   const { colors } = useTheme();
   const { config: clientConfig } = useClientConfig();
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
+  const [leaveAndRemoveConfirmVisible, setLeaveAndRemoveConfirmVisible] = useState(false);
   const { data: partner, isLoading } = useQuery({
     queryKey: ['me', 'partner'],
     queryFn: getMyPartner,
@@ -72,6 +76,8 @@ export default function PartnerPortalScreen() {
   const leaveAndRemoveMutation = useMutation({
     mutationFn: leavePartnerAndRemoveMembers,
     onSuccess: () => {
+      setLeaveAndRemoveConfirmVisible(false);
+      showToast('Desvinculado. Membros foram removidos.');
       queryClient.invalidateQueries({ queryKey: ['me', 'partner'] });
       router.replace('/partner-portal');
     },
@@ -95,20 +101,9 @@ export default function PartnerPortalScreen() {
     );
   };
 
-  const handleLeaveAndRemoveMembers = () => {
-    Alert.alert(
-      'Desvincular e remover todos os membros',
-      'Você e todos os membros da ONG serão desvinculados. A ONG sairá da lista de parceiros. Os ex-membros continuarão no app como usuários comuns (sem vínculo com a ONG). Esta ação não pode ser desfeita. Deseja continuar?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Desvincular e remover todos',
-          style: 'destructive',
-          onPress: () => leaveAndRemoveMutation.mutate(),
-        },
-      ],
-    );
-  };
+  const handleLeaveAndRemoveMembers = () => setLeaveAndRemoveConfirmVisible(true);
+
+  const handleConfirmLeaveAndRemove = () => leaveAndRemoveMutation.mutate();
 
   if (isLoading && !partner) {
     return (
@@ -426,6 +421,37 @@ export default function PartnerPortalScreen() {
           )}
         </ScrollView>
       </PartnerPanelLayout>
+      <Modal visible={leaveAndRemoveConfirmVisible} transparent animationType="fade">
+        <Pressable style={styles.deleteModalOverlay} onPress={() => !leaveAndRemoveMutation.isPending && setLeaveAndRemoveConfirmVisible(false)}>
+          <Pressable style={[styles.deleteModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.deleteModalTitle, { color: colors.textPrimary }]}>Desvincular e remover todos os membros?</Text>
+            <Text style={[styles.deleteModalMessage, { color: colors.textSecondary }]}>
+              Você e todos os membros da ONG serão desvinculados. A ONG sairá da lista de parceiros. Os ex-membros continuarão no app como usuários comuns (sem vínculo com a ONG). Esta ação não pode ser desfeita.
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.textSecondary, backgroundColor: 'transparent', marginRight: spacing.sm }]}
+                onPress={() => !leaveAndRemoveMutation.isPending && setLeaveAndRemoveConfirmVisible(false)}
+                disabled={leaveAndRemoveMutation.isPending}
+              >
+                <Text style={[styles.deleteModalBtnText, { color: colors.textPrimary, fontWeight: '600' }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18', flex: 1 }]}
+                onPress={handleConfirmLeaveAndRemove}
+                disabled={leaveAndRemoveMutation.isPending}
+              >
+                {leaveAndRemoveMutation.isPending ? (
+                  <ActivityIndicator size="small" color={colors.error || '#B91C1C'} />
+                ) : (
+                  <Text style={[styles.deleteModalBtnText, { color: colors.error || '#B91C1C', fontWeight: '600' }]}>Desvincular e remover</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      {toastMessage != null && <Toast message={toastMessage} onHide={() => setToastMessage(null)} />}
       <ProfileMenuFooter />
     </ScreenContainer>
   );
@@ -509,4 +535,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   leaveLabel: { fontSize: 16, fontWeight: '600' },
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  deleteModalCard: { width: '100%', maxWidth: 400, borderRadius: 16, padding: spacing.lg },
+  deleteModalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  deleteModalMessage: { fontSize: 14, lineHeight: 20, marginBottom: spacing.lg },
+  deleteModalActions: { flexDirection: 'row', alignItems: 'center' },
+  deleteModalBtn: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  deleteModalBtnText: { fontSize: 16 },
 });

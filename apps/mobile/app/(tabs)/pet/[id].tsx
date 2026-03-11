@@ -18,6 +18,7 @@ import {
   Pressable,
   TextInput,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { ScreenContainer, PrimaryButton, SecondaryButton, StatusBadge, LoadingLogo, VerifiedBadge, TutorLevelBadge, MatchScoreBadge, Toast } from '../../../src/components';
@@ -245,6 +246,7 @@ export default function PetDetailsScreen() {
   const favorites = favoritesData?.items ?? [];
   const isFavorited = !!id && favorites.some((f) => f.petId === id);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [removeFavConfirmVisible, setRemoveFavConfirmVisible] = useState(false);
   const addFavMutation = useMutation({
     mutationFn: () => addFavorite(id!),
     onSuccess: () => {
@@ -265,8 +267,10 @@ export default function PetDetailsScreen() {
   const removeFavMutation = useMutation({
     mutationFn: () => removeFavorite(id!),
     onSuccess: () => {
+      setRemoveFavConfirmVisible(false);
       setToastMessage('Removido dos favoritos');
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
     },
     onError: (e: unknown) => {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível remover dos favoritos.'));
@@ -1309,11 +1313,21 @@ export default function PetDetailsScreen() {
                 disabled={conversarLoading}
               />
             </CtaPulse>
-            <SecondaryButton
-              title={removeFavMutation.isPending ? 'Removendo...' : 'Remover dos favoritos'}
-              onPress={() => removeFavMutation.mutate()}
+            <TouchableOpacity
+              style={[
+                styles.removeFavBtn,
+                {
+                  borderColor: colors.error || '#B91C1C',
+                  backgroundColor: (colors.error || '#B91C1C') + '18',
+                },
+              ]}
+              onPress={() => setRemoveFavConfirmVisible(true)}
               disabled={removeFavMutation.isPending}
-            />
+            >
+              <Text style={[styles.removeFavBtnText, { color: colors.error || '#B91C1C' }]}>
+                Remover dos favoritos
+              </Text>
+            </TouchableOpacity>
           </>
         ) : (
           <PrimaryButton
@@ -1361,6 +1375,38 @@ export default function PetDetailsScreen() {
               }}
               style={styles.completeProfileModalBtn}
             />
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={removeFavConfirmVisible} transparent animationType="fade">
+        <Pressable style={styles.modalOverlay} onPress={() => setRemoveFavConfirmVisible(false)}>
+          <Pressable style={[styles.modalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Remover dos favoritos?</Text>
+            <Text style={[styles.completeProfileModalMessage, { color: colors.textSecondary }]}>
+              O pet sairá da sua lista de favoritos. Você pode curtir novamente no feed quando quiser.
+            </Text>
+            <View style={styles.removeFavModalActions}>
+              <TouchableOpacity
+                style={[styles.removeFavModalBtn, { borderColor: colors.textSecondary, backgroundColor: 'transparent', marginRight: spacing.sm }]}
+                onPress={() => setRemoveFavConfirmVisible(false)}
+              >
+                <Text style={[styles.removeFavModalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.removeFavModalBtn, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18', flex: 1 }]}
+                onPress={() => {
+                  removeFavMutation.mutate();
+                }}
+                disabled={removeFavMutation.isPending}
+              >
+                {removeFavMutation.isPending ? (
+                  <ActivityIndicator size="small" color={colors.error || '#B91C1C'} />
+                ) : (
+                  <Text style={[styles.removeFavModalBtnText, { color: colors.error || '#B91C1C', fontWeight: '600' }]}>Remover</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -1860,6 +1906,25 @@ const styles = StyleSheet.create({
   completeProfileModalLinkWrap: { marginBottom: spacing.lg },
   completeProfileModalLink: { fontSize: 15, fontWeight: '600', textDecorationLine: 'underline' },
   completeProfileModalBtn: { alignSelf: 'stretch' },
+  removeFavBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeFavBtnText: { fontSize: 16, fontWeight: '600' },
+  removeFavModalActions: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.md, width: '100%' },
+  removeFavModalBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  removeFavModalBtnText: { fontSize: 14 },
   reportModalInput: {
     borderWidth: 1,
     borderRadius: 8,

@@ -88,12 +88,14 @@ const BUDGET_OPTIONS = [
 ];
 
 const SPECIES_OPTIONS = [
+  { value: '' as const, label: 'Não informar' },
   { value: 'DOG' as const, label: 'Cachorros' },
   { value: 'CAT' as const, label: 'Gatos' },
   { value: 'BOTH' as const, label: 'Cachorros e gatos' },
 ];
 
 const SIZE_PREF_OPTIONS = [
+  { value: '' as const, label: 'Não informar' },
   { value: 'BOTH' as const, label: 'Qualquer' },
   { value: 'small' as const, label: 'Pequeno' },
   { value: 'medium' as const, label: 'Médio' },
@@ -102,36 +104,89 @@ const SIZE_PREF_OPTIONS = [
 ];
 
 const SEX_PREF_OPTIONS = [
+  { value: '' as const, label: 'Não informar' },
   { value: 'BOTH' as const, label: 'Qualquer' },
   { value: 'male' as const, label: 'Macho' },
   { value: 'female' as const, label: 'Fêmea' },
 ];
 
 const NEUTERED_PREF_OPTIONS = [
+  { value: '' as const, label: 'Não informar' },
   { value: 'BOTH' as const, label: 'Indiferente' },
   { value: 'YES' as const, label: 'Prefiro castrado' },
   { value: 'NO' as const, label: 'Aceito não castrado' },
 ];
 
-const PREFERENCE_MATCH_FIELDS = [
-  { key: 'species' as const, label: 'Espécie' },
-  { key: 'sizePref' as const, label: 'Tamanho preferido' },
-  { key: 'sexPref' as const, label: 'Sexo preferido do pet' },
-  { key: 'neuteredPref' as const, label: 'Preferência de castração' },
+/** Campos considerados para conclusão do perfil (todas as seções exceto "Por que quer adotar"). */
+const PROFILE_COMPLETION_FIELDS: { key: string; label: string }[] = [
+  { key: 'avatarUrl', label: 'Foto de perfil' },
+  { key: 'name', label: 'Nome' },
+  { key: 'username', label: 'Nome de usuário' },
+  { key: 'phone', label: 'Telefone' },
+  { key: 'city', label: 'Cidade' },
+  { key: 'birthDate', label: 'Data de nascimento' },
+  { key: 'bio', label: 'Sobre você' },
+  { key: 'housingType', label: 'Tipo de moradia' },
+  { key: 'hasYard', label: 'Tem quintal' },
+  { key: 'hasOtherPets', label: 'Tem outros pets' },
+  { key: 'hasChildren', label: 'Tem crianças' },
+  { key: 'timeAtHome', label: 'Tempo em casa' },
+  { key: 'petsAllowedAtHome', label: 'Pets permitidos no local' },
+  { key: 'dogExperience', label: 'Experiência com cachorro' },
+  { key: 'catExperience', label: 'Experiência com gato' },
+  { key: 'householdAgreesToAdoption', label: 'Todos concordam com a adoção' },
+  { key: 'activityLevel', label: 'Nível de atividade' },
+  { key: 'preferredPetAge', label: 'Idade preferida do pet' },
+  { key: 'commitsToVetCare', label: 'Compromisso com cuidados veterinários' },
+  { key: 'walkFrequency', label: 'Frequência de passeios' },
+  { key: 'monthlyBudgetForPet', label: 'Orçamento mensal para o pet' },
+  { key: 'species', label: 'Espécie' },
+  { key: 'sizePref', label: 'Tamanho preferido' },
+  { key: 'sexPref', label: 'Sexo preferido do pet' },
+  { key: 'neuteredPref', label: 'Preferência de castração' },
 ];
 
-function getCompletionFromPrefs(prefs: {
-  species?: string | null;
-  sizePref?: string | null;
-  sexPref?: string | null;
-  neuteredPref?: string | null;
-}): { completionPercent: number; missingFields: { key: string; label: string }[] } {
-  const missingFields = PREFERENCE_MATCH_FIELDS.filter((f) => {
-    if (f.key === 'neuteredPref') return false; // Indiferente (BOTH ou null) = preenchido
-    const v = prefs[f.key];
-    return v == null || v === '';
-  });
-  const total = PREFERENCE_MATCH_FIELDS.length;
+type ProfileFormState = {
+  avatarUrl?: string | null;
+  name: string;
+  username: string;
+  phone: string;
+  city: string;
+  birthDate: string;
+  bio: string;
+  housingType: string;
+  hasYard: boolean | undefined;
+  hasOtherPets: boolean | undefined;
+  hasChildren: boolean | undefined;
+  timeAtHome: string;
+  petsAllowedAtHome: string;
+  dogExperience: string;
+  catExperience: string;
+  householdAgreesToAdoption: string;
+  activityLevel: string;
+  preferredPetAge: string;
+  commitsToVetCare: string;
+  walkFrequency: string;
+  monthlyBudgetForPet: string;
+  species: string;
+  sizePref: string;
+  sexPref: string;
+  neuteredPref: string;
+};
+
+function isProfileFieldFilled(key: string, form: ProfileFormState): boolean {
+  const isStrFilled = (v: string | null | undefined) => v != null && String(v).trim() !== '';
+  const isBoolFilled = (v: boolean | null | undefined) => v !== undefined && v !== null;
+  const v = (form as Record<string, unknown>)[key];
+  if (key === 'avatarUrl') return isStrFilled(v as string);
+  if (key === 'hasYard' || key === 'hasOtherPets' || key === 'hasChildren') return isBoolFilled(v as boolean);
+  return isStrFilled(v as string);
+}
+
+/** Conclusão do perfil: todas as seções exceto "Por que quer adotar". */
+function getProfileCompletionFromForm(form: ProfileFormState): { completionPercent: number; missingFields: { key: string; label: string }[] } {
+  const missingFields = PROFILE_COMPLETION_FIELDS.filter((f) => !isProfileFieldFilled(f.key, form));
+  const total = PROFILE_COMPLETION_FIELDS.length;
   const filled = total - missingFields.length;
   const completionPercent = total === 0 ? 100 : Math.round((filled / total) * 100);
   return { completionPercent, missingFields: missingFields.map((f) => ({ key: f.key, label: f.label })) };
@@ -192,10 +247,10 @@ export default function ProfileEditScreen() {
   const [commitsToVetCare, setCommitsToVetCare] = useState<string>('');
   const [walkFrequency, setWalkFrequency] = useState<string>('');
   const [monthlyBudgetForPet, setMonthlyBudgetForPet] = useState<string>('');
-  const [species, setSpecies] = useState<'DOG' | 'CAT' | 'BOTH'>('BOTH');
-  const [sizePref, setSizePref] = useState<'BOTH' | 'small' | 'medium' | 'large' | 'xlarge'>('BOTH');
-  const [sexPref, setSexPref] = useState<'BOTH' | 'male' | 'female'>('BOTH');
-  const [neuteredPref, setNeuteredPref] = useState<'BOTH' | 'YES' | 'NO'>('BOTH');
+  const [species, setSpecies] = useState<'DOG' | 'CAT' | 'BOTH' | ''>('');
+  const [sizePref, setSizePref] = useState<'BOTH' | 'small' | 'medium' | 'large' | 'xlarge' | ''>('');
+  const [sexPref, setSexPref] = useState<'BOTH' | 'male' | 'female' | ''>('');
+  const [neuteredPref, setNeuteredPref] = useState<'BOTH' | 'YES' | 'NO' | ''>('');
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [sectionPetPrefsExpanded, setSectionPetPrefsExpanded] = useState(true);
   const [sectionBasicExpanded, setSectionBasicExpanded] = useState(true);
@@ -234,10 +289,10 @@ export default function ProfileEditScreen() {
 
   useEffect(() => {
     if (prefs) {
-      setSpecies((prefs.species as 'DOG' | 'CAT' | 'BOTH') ?? 'BOTH');
-      setSizePref((prefs.sizePref as 'BOTH' | 'small' | 'medium' | 'large' | 'xlarge') ?? 'BOTH');
-      setSexPref((prefs.sexPref as 'BOTH' | 'male' | 'female') ?? 'BOTH');
-      setNeuteredPref((prefs.neuteredPref as 'BOTH' | 'YES' | 'NO') ?? 'BOTH');
+      setSpecies((prefs.species as 'DOG' | 'CAT' | 'BOTH') ?? '');
+      setSizePref((prefs.sizePref as 'BOTH' | 'small' | 'medium' | 'large' | 'xlarge') ?? '');
+      setSexPref((prefs.sexPref as 'BOTH' | 'male' | 'female') ?? '');
+      setNeuteredPref((prefs.neuteredPref as 'BOTH' | 'YES' | 'NO') ?? '');
     }
   }, [prefs]);
 
@@ -391,22 +446,39 @@ export default function ProfileEditScreen() {
     updatePrefsMutation.mutate({ species, sizePref, sexPref, neuteredPref });
   };
 
-  const completion =
-    prefs && typeof prefs.completionPercent === 'number' && Array.isArray(prefs.missingFields)
-      ? { completionPercent: prefs.completionPercent, missingFields: prefs.missingFields }
-      : prefs
-        ? getCompletionFromPrefs({
-            species: prefs.species,
-            sizePref: prefs.sizePref,
-            sexPref: prefs.sexPref,
-            neuteredPref: prefs.neuteredPref,
-          })
-        : { completionPercent: 0, missingFields: [] };
+  // Percentual considera todas as seções do perfil (exceto "Por que quer adotar")
+  const completion = getProfileCompletionFromForm({
+    avatarUrl: user?.avatarUrl ?? null,
+    name,
+    username,
+    phone,
+    city,
+    birthDate,
+    bio,
+    housingType,
+    hasYard,
+    hasOtherPets,
+    hasChildren,
+    timeAtHome,
+    petsAllowedAtHome,
+    dogExperience,
+    catExperience,
+    householdAgreesToAdoption,
+    activityLevel,
+    preferredPetAge,
+    commitsToVetCare,
+    walkFrequency,
+    monthlyBudgetForPet,
+    species,
+    sizePref,
+    sexPref,
+    neuteredPref,
+  });
 
   useEffect(() => {
     const target = completion.completionPercent;
     const allFilled = completion.missingFields.length === 0;
-    // Quando todas as preferências de match estão preenchidas, exibir 100% sempre (evita mostrar 96% durante a animação).
+    // Quando o perfil está 100% completo, exibir 100% sempre (evita mostrar 96% durante a animação).
     if (allFilled && target >= 100) {
       completionPercentRef.current = 100;
       setDisplayPercent(100);
@@ -523,7 +595,7 @@ export default function ProfileEditScreen() {
         </CollapsibleSection>
 
         <Text style={[styles.sectionLabel, { color: colors.textSecondary, marginTop: spacing.lg, textAlign: 'center' }]}>
-          Preenchimento das preferências de pet
+          Preenchimento do perfil
         </Text>
         <View style={styles.completionWrap}>
           <View style={styles.completionRow}>
@@ -569,10 +641,10 @@ export default function ProfileEditScreen() {
         >
           <Pressable style={styles.modalBackdrop} onPress={() => setShowCompletionModal(false)}>
             <Pressable style={[styles.modalCard, { backgroundColor: colors.cardBg }]} onPress={(e) => e.stopPropagation()}>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Preenchimento das preferências</Text>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Preenchimento do perfil</Text>
               {completion.missingFields.length === 0 ? (
                 <Text style={[styles.modalBody, { color: colors.textSecondary }]}>
-                  Você preencheu todas as preferências usadas no cálculo de compatibilidade (match).
+                  Você preencheu todas as seções do perfil (dados básicos, informações para adoção e preferências de pet).
                 </Text>
               ) : (
                 <>
@@ -585,7 +657,7 @@ export default function ProfileEditScreen() {
                 </>
               )}
               <Text style={[styles.modalImportance, { color: colors.textSecondary }]}>
-                Quanto mais preferências preenchidas, mais preciso fica o score de compatibilidade com cada pet.
+                Quanto mais completo o perfil, mais preciso fica o score de compatibilidade com cada pet.
               </Text>
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: colors.primary }]}

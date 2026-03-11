@@ -17,6 +17,7 @@ export default function PartnerAdoptionFormsScreen() {
   const { colors } = useTheme();
   const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
   const [newFormModalVisible, setNewFormModalVisible] = useState(false);
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<AdoptionFormTemplateWithQuestions | null>(null);
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ['me', 'partner', 'adoption-forms'],
@@ -29,20 +30,23 @@ export default function PartnerAdoptionFormsScreen() {
       queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'adoption-forms'] });
       showToast(data.message);
     },
-    onError: (e: unknown) =>
-      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível excluir o formulário.')),
+    onError: (e: unknown) => {
+      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível excluir o formulário.'));
+    },
   });
 
   const confirmDelete = (item: AdoptionFormTemplateWithQuestions) => {
-    Alert.alert(
-      'Excluir formulário',
-      `Excluir "${item.name}"? As solicitações em aberto com este formulário serão canceladas e os interessados serão notificados.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Excluir', style: 'destructive', onPress: () => deleteMutation.mutate(item.id) },
-      ],
-    );
+    setDeleteConfirmItem(item);
   };
+
+  const handleConfirmDelete = () => {
+    if (deleteConfirmItem) {
+      deleteMutation.mutate(deleteConfirmItem.id);
+      setDeleteConfirmItem(null);
+    }
+  };
+
+  const handleCancelDelete = () => setDeleteConfirmItem(null);
 
   const renderItem = ({ item }: { item: AdoptionFormTemplateWithQuestions }) => (
     <TouchableOpacity
@@ -169,6 +173,37 @@ export default function PartnerAdoptionFormsScreen() {
             </Pressable>
           </Pressable>
         </Modal>
+        <Modal visible={deleteConfirmItem != null} transparent animationType="fade">
+          <Pressable style={styles.deleteModalOverlay} onPress={handleCancelDelete}>
+            <Pressable style={[styles.deleteModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+              <Text style={[styles.deleteModalTitle, { color: colors.textPrimary }]}>Excluir formulário?</Text>
+              <Text style={[styles.deleteModalMessage, { color: colors.textSecondary }]}>
+                {deleteConfirmItem
+                  ? `Excluir "${deleteConfirmItem.name}"? As solicitações em aberto com este formulário serão canceladas e os interessados serão notificados.`
+                  : ''}
+              </Text>
+              <View style={styles.deleteModalActions}>
+                <TouchableOpacity
+                  style={[styles.deleteModalBtn, { borderColor: colors.textSecondary, backgroundColor: 'transparent', marginRight: spacing.sm }]}
+                  onPress={handleCancelDelete}
+                >
+                  <Text style={[styles.deleteModalBtnText, { color: colors.textPrimary, fontWeight: '600' }]}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.deleteModalBtn, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18', flex: 1 }]}
+                  onPress={handleConfirmDelete}
+                  disabled={deleteMutation.isPending}
+                >
+                  {deleteMutation.isPending ? (
+                    <ActivityIndicator size="small" color={colors.error || '#B91C1C'} />
+                  ) : (
+                    <Text style={[styles.deleteModalBtnText, { color: colors.error || '#B91C1C', fontWeight: '600' }]}>Excluir</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
         <FlatList
           data={templates}
           keyExtractor={(t) => t.id}
@@ -268,4 +303,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalCancelText: { fontSize: 16, fontWeight: '500' },
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  deleteModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: spacing.lg,
+  },
+  deleteModalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  deleteModalMessage: { fontSize: 14, lineHeight: 20, marginBottom: spacing.lg },
+  deleteModalActions: { flexDirection: 'row', alignItems: 'center' },
+  deleteModalBtn: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  deleteModalBtnText: { fontSize: 16 },
 });

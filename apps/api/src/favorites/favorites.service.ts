@@ -91,6 +91,10 @@ export class FavoritesService {
     });
     if (!fav) throw new NotFoundException('Favorito não encontrado');
     await this.prisma.favorite.delete({ where: { id: fav.id } });
+    // Remover conversa ativa desse pet com o usuário (adotante), pois não pode ter conversa sem o pet nos favoritos
+    await this.prisma.conversation.deleteMany({
+      where: { petId, adopterId: userId, type: 'NORMAL' },
+    });
     return { message: 'OK' };
   }
 

@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, RefreshControl, SectionList } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, RefreshControl, SectionList, Modal, Pressable, ActivityIndicator } from 'react-native';
 import { configureExpandAnimation } from '../../src/utils/layoutAnimation';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ScreenContainer, EmptyState, LoadingLogo, PageIntro, Toast } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useToastWithDedupe } from '../../src/hooks/useToastWithDedupe';
@@ -22,7 +22,8 @@ export default function ChatsScreen() {
   const queryClient = useQueryClient();
   const userId = useAuthStore((s) => s.user?.id);
   const { colors } = useTheme();
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
+  const [deleteConversationConfirm, setDeleteConversationConfirm] = useState<{ id: string; petName: string } | null>(null);
   const [sectionExpanded, setSectionExpanded] = useState<Record<SectionKey, boolean>>({
     inProgress: true,
     finalized: true,
@@ -49,31 +50,29 @@ export default function ChatsScreen() {
     staleTime: 60_000,
   });
 
-  const handleDeleteConversation = useCallback(
-    (conversationId: string, petName: string) => {
-      Alert.alert(
-        'Apagar conversa',
-        `Deseja apagar a conversa sobre ${petName}? Esta ação não pode ser desfeita.`,
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          {
-            text: 'Apagar',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                await deleteConversation(conversationId);
-                await queryClient.invalidateQueries({ queryKey: ['conversations'] });
-                showToast('Conversa apagada.');
-              } catch {
-                showToast('Não foi possível apagar a conversa.');
-              }
-            },
-          },
-        ],
-      );
+  const deleteConversationMutation = useMutation({
+    mutationFn: (conversationId: string) => deleteConversation(conversationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      setDeleteConversationConfirm(null);
+      showToast('Conversa apagada.');
     },
-    [queryClient],
-  );
+    onError: () => {
+      showToast('Não foi possível apagar a conversa.');
+    },
+  });
+
+  const handleRequestDeleteConversation = useCallback((conversationId: string, petName: string) => {
+    setDeleteConversationConfirm({ id: conversationId, petName });
+  }, []);
+
+  const handleConfirmDeleteConversation = useCallback(() => {
+    if (deleteConversationConfirm) {
+      deleteConversationMutation.mutate(deleteConversationConfirm.id);
+    }
+  }, [deleteConversationConfirm, deleteConversationMutation]);
+
+  const handleCancelDeleteConversation = useCallback(() => setDeleteConversationConfirm(null), []);
 
   useFocusEffect(
     useCallback(() => {
@@ -153,7 +152,7 @@ export default function ChatsScreen() {
           <TouchableOpacity
             style={styles.rowMain}
             onPress={() => (isBlocked ? null : router.push(`/chat/${c.id}`))}
-            onLongPress={() => (isBlocked ? null : handleDeleteConversation(c.id, c.pet.name))}
+            onLongPress={() => (isBlocked ? null : handleRequestDeleteConversation(c.id, c.pet.name))}
             activeOpacity={0.7}
             disabled={isBlocked}
           >
@@ -202,7 +201,7 @@ export default function ChatsScreen() {
         </View>
       );
     },
-    [colors, router, handleDeleteConversation, handleUnblock],
+    [colors, router, handleRequestDeleteConversation, handleUnblock],
   );
 
   const renderSectionHeader = useCallback(
@@ -276,6 +275,37 @@ export default function ChatsScreen() {
 
   return (
     <ScreenContainer scroll={false}>
+      <Modal visible={deleteConversationConfirm != null} transparent animationType="fade">
+        <Pressable style={styles.deleteModalOverlay} onPress={handleCancelDeleteConversation}>
+          <Pressable style={[styles.deleteModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.deleteModalTitle, { color: colors.textPrimary }]}>Apagar conversa?</Text>
+            <Text style={[styles.deleteModalMessage, { color: colors.textSecondary }]}>
+              {deleteConversationConfirm
+                ? `Deseja apagar a conversa sobre ${deleteConversationConfirm.petName}? Esta ação não pode ser desfeita.`
+                : ''}
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.textSecondary, backgroundColor: 'transparent', marginRight: spacing.sm }]}
+                onPress={handleCancelDeleteConversation}
+              >
+                <Text style={[styles.deleteModalBtnText, { color: colors.textPrimary, fontWeight: '600' }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18', flex: 1 }]}
+                onPress={handleConfirmDeleteConversation}
+                disabled={deleteConversationMutation.isPending}
+              >
+                {deleteConversationMutation.isPending ? (
+                  <ActivityIndicator size="small" color={colors.error || '#B91C1C'} />
+                ) : (
+                  <Text style={[styles.deleteModalBtnText, { color: colors.error || '#B91C1C', fontWeight: '600' }]}>Apagar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
       <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
       <SectionList
         sections={sections}
@@ -361,4 +391,30 @@ const styles = StyleSheet.create({
   rowTitle: { fontSize: 16, fontWeight: '600' },
   rowSub: { fontSize: 12, marginTop: 2 },
   rowPreview: { fontSize: 13, marginTop: 2 },
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  deleteModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: spacing.lg,
+  },
+  deleteModalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  deleteModalMessage: { fontSize: 14, lineHeight: 20, marginBottom: spacing.lg },
+  deleteModalActions: { flexDirection: 'row', alignItems: 'center' },
+  deleteModalBtn: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  deleteModalBtnText: { fontSize: 16 },
 });

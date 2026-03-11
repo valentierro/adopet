@@ -30,8 +30,10 @@ import {
   SecondaryButton,
   StatusBadge,
   VerifiedBadge,
+  Toast,
 } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
+import { useToastWithDedupe } from '../src/hooks/useToastWithDedupe';
 import { useListViewMode } from '../src/hooks/useListViewMode';
 import { useResponsiveGridColumns } from '../src/hooks/useResponsiveGridColumns';
 import {
@@ -163,11 +165,16 @@ export default function PartnerMyPetsScreen() {
     },
   });
 
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
+  const [removeConfirmItem, setRemoveConfirmItem] = useState<OngPetItem | null>(null);
+
   const deleteMutation = useMutation({
     mutationFn: deleteOngPet,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'ong-pets'] });
       queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'ong-pets', 'pending-count'] });
+      setRemoveConfirmItem(null);
+      showToast('Anúncio removido');
     },
   });
 
@@ -212,23 +219,17 @@ export default function PartnerMyPetsScreen() {
     );
   };
 
-  const handleRemove = (item: OngPetItem) => {
-    Alert.alert(
-      'Remover anúncio',
-      `Remover permanentemente o anúncio de ${item.name}? Esta ação não pode ser desfeita e todos os dados relacionados serão excluídos.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Remover',
-          style: 'destructive',
-          onPress: () =>
-            deleteMutation.mutate(item.id, {
-              onError: (e) => Alert.alert('Erro', getFriendlyErrorMessage(e)),
-            }),
-        },
-      ],
-    );
+  const handleRemove = (item: OngPetItem) => setRemoveConfirmItem(item);
+
+  const handleConfirmRemove = () => {
+    if (removeConfirmItem) {
+      deleteMutation.mutate(removeConfirmItem.id, {
+        onError: (e) => Alert.alert('Erro', getFriendlyErrorMessage(e)),
+      });
+    }
   };
+
+  const handleCancelRemove = () => setRemoveConfirmItem(null);
 
   const showPetActions = (item: OngPetItem) => {
     const options: string[] = [];
@@ -578,6 +579,38 @@ export default function PartnerMyPetsScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      <Modal visible={removeConfirmItem != null} transparent animationType="fade">
+        <Pressable style={styles.deleteModalOverlay} onPress={handleCancelRemove}>
+          <Pressable style={[styles.deleteModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.deleteModalTitle, { color: colors.textPrimary }]}>Remover anúncio?</Text>
+            <Text style={[styles.deleteModalMessage, { color: colors.textSecondary }]}>
+              {removeConfirmItem
+                ? `Remover permanentemente o anúncio de ${removeConfirmItem.name}? Esta ação não pode ser desfeita e todos os dados relacionados serão excluídos.`
+                : ''}
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.textSecondary, backgroundColor: 'transparent', marginRight: spacing.sm }]}
+                onPress={handleCancelRemove}
+              >
+                <Text style={[styles.deleteModalBtnText, { color: colors.textPrimary, fontWeight: '600' }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18', flex: 1 }]}
+                onPress={handleConfirmRemove}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? (
+                  <ActivityIndicator size="small" color={colors.error || '#B91C1C'} />
+                ) : (
+                  <Text style={[styles.deleteModalBtnText, { color: colors.error || '#B91C1C', fontWeight: '600' }]}>Remover</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      {toastMessage != null && <Toast message={toastMessage} onHide={() => setToastMessage(null)} />}
     </ScreenContainer>
   );
 }
@@ -664,4 +697,25 @@ const styles = StyleSheet.create({
   rejectModalInput: { borderWidth: 1, borderRadius: 12, padding: spacing.md, fontSize: 16, minHeight: 100, textAlignVertical: 'top' },
   rejectModalActions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
   rejectModalBtn: { flex: 1 },
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  deleteModalCard: { width: '100%', maxWidth: 400, borderRadius: 16, padding: spacing.lg },
+  deleteModalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  deleteModalMessage: { fontSize: 14, lineHeight: 20, marginBottom: spacing.lg },
+  deleteModalActions: { flexDirection: 'row', alignItems: 'center' },
+  deleteModalBtn: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  deleteModalBtnText: { fontSize: 16 },
 });

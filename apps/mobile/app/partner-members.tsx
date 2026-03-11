@@ -12,12 +12,14 @@ import {
   ScrollView,
   Modal,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, LoadingLogo, PartnerPanelLayout, ProfileMenuFooter, PrimaryButton } from '../src/components';
+import { ScreenContainer, LoadingLogo, PartnerPanelLayout, ProfileMenuFooter, PrimaryButton, Toast } from '../src/components';
 import { useTheme } from '../src/hooks/useTheme';
+import { useToastWithDedupe } from '../src/hooks/useToastWithDedupe';
 import {
   getMyPartnerMembers,
   addMyPartnerMember,
@@ -47,6 +49,8 @@ export default function PartnerMembersScreen() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<PartnerMemberRole | ''>('');
+  const [removeConfirmMember, setRemoveConfirmMember] = useState<PartnerMember | null>(null);
+  const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
 
   const { data: members, isLoading } = useQuery({
     queryKey: ['me', 'partner', 'members'],
@@ -84,6 +88,8 @@ export default function PartnerMembersScreen() {
     mutationFn: (memberUserId: string) => removeMyPartnerMember(memberUserId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['me', 'partner', 'members'] });
+      setRemoveConfirmMember(null);
+      showToast('Membro removido');
     },
   });
 
@@ -135,25 +141,14 @@ export default function PartnerMembersScreen() {
     );
   };
 
-  const handleRemove = (member: PartnerMember) => {
-    Alert.alert(
-      'Remover membro',
-      `Desvincular ${member.name} da ONG? A conta do usuário no app não será excluída.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Remover',
-          style: 'destructive',
-          onPress: () => {
-            removeMutation.mutate(member.userId, {
-              onError: (err: unknown) => {
-                Alert.alert('Erro', getFriendlyErrorMessage(err, 'Não foi possível remover.'));
-              },
-            });
-          },
-        },
-      ],
-    );
+  const handleRemove = (member: PartnerMember) => setRemoveConfirmMember(member);
+
+  const handleConfirmRemoveMember = () => {
+    if (removeConfirmMember) {
+      removeMutation.mutate(removeConfirmMember.userId, {
+        onError: (err: unknown) => Alert.alert('Erro', getFriendlyErrorMessage(err, 'Não foi possível remover.')),
+      });
+    }
   };
 
   if (isLoading && !members) {
@@ -435,6 +430,38 @@ export default function PartnerMembersScreen() {
             </Pressable>
           </Pressable>
         </Modal>
+      <Modal visible={removeConfirmMember != null} transparent animationType="fade">
+        <Pressable style={styles.deleteModalOverlay} onPress={() => setRemoveConfirmMember(null)}>
+          <Pressable style={[styles.deleteModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.deleteModalTitle, { color: colors.textPrimary }]}>Remover membro?</Text>
+            <Text style={[styles.deleteModalMessage, { color: colors.textSecondary }]}>
+              {removeConfirmMember
+                ? `Desvincular ${removeConfirmMember.name} da ONG? A conta do usuário no app não será excluída.`
+                : ''}
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.textSecondary, backgroundColor: 'transparent', marginRight: spacing.sm }]}
+                onPress={() => setRemoveConfirmMember(null)}
+              >
+                <Text style={[styles.deleteModalBtnText, { color: colors.textPrimary, fontWeight: '600' }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18', flex: 1 }]}
+                onPress={handleConfirmRemoveMember}
+                disabled={removeMutation.isPending}
+              >
+                {removeMutation.isPending ? (
+                  <ActivityIndicator size="small" color={colors.error || '#B91C1C'} />
+                ) : (
+                  <Text style={[styles.deleteModalBtnText, { color: colors.error || '#B91C1C', fontWeight: '600' }]}>Remover</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      {toastMessage != null && <Toast message={toastMessage} onHide={() => setToastMessage(null)} />}
       </PartnerPanelLayout>
       <ProfileMenuFooter />
     </ScreenContainer>
@@ -550,4 +577,25 @@ const styles = StyleSheet.create({
   editModalContent: { maxWidth: 360 },
   empty: { paddingVertical: spacing.lg },
   emptyText: { fontSize: 15, textAlign: 'center' },
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  deleteModalCard: { width: '100%', maxWidth: 400, borderRadius: 16, padding: spacing.lg },
+  deleteModalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  deleteModalMessage: { fontSize: 14, lineHeight: 20, marginBottom: spacing.lg },
+  deleteModalActions: { flexDirection: 'row', alignItems: 'center' },
+  deleteModalBtn: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  deleteModalBtnText: { fontSize: 16 },
 });

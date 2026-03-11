@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, TextInput, Modal, Pressable, ActivityIndicator } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
@@ -54,6 +54,7 @@ export default function SavedSearchesScreen() {
   const [breed, setBreed] = useState('');
   const [radiusKm, setRadiusKm] = useState<number | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<SavedSearchItem | null>(null);
   const { toastMessage, setToastMessage, showToast } = useToastWithDedupe();
 
   const { data: list = [], isLoading, refetch } = useQuery({
@@ -129,6 +130,13 @@ export default function SavedSearchesScreen() {
     setSize('');
     setBreed('');
     setRadiusKm(null);
+  };
+
+  const handleConfirmDeleteSearch = () => {
+    if (deleteConfirmItem) {
+      deleteMutation.mutate(deleteConfirmItem.id);
+      setDeleteConfirmItem(null);
+    }
   };
 
   const buildBody = () => ({
@@ -302,12 +310,7 @@ export default function SavedSearchesScreen() {
                 <Ionicons name="create-outline" size={22} color={colors.primary} />
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => {
-                  Alert.alert('Remover', 'Deixar de receber avisos desta busca?', [
-                    { text: 'Cancelar', style: 'cancel' },
-                    { text: 'Remover', style: 'destructive', onPress: () => deleteMutation.mutate(s.id) },
-                  ]);
-                }}
+                onPress={() => setDeleteConfirmItem(s)}
                 style={styles.actionBtn}
               >
                 <Ionicons name="trash-outline" size={22} color={colors.error} />
@@ -316,6 +319,35 @@ export default function SavedSearchesScreen() {
           </View>
         ))
       )}
+      <Modal visible={deleteConfirmItem != null} transparent animationType="fade">
+        <Pressable style={styles.deleteModalOverlay} onPress={() => setDeleteConfirmItem(null)}>
+          <Pressable style={[styles.deleteModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.deleteModalTitle, { color: colors.textPrimary }]}>Remover busca?</Text>
+            <Text style={[styles.deleteModalMessage, { color: colors.textSecondary }]}>
+              Deixar de receber avisos desta busca?
+            </Text>
+            <View style={styles.deleteModalActions}>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.textSecondary, backgroundColor: 'transparent', marginRight: spacing.sm }]}
+                onPress={() => setDeleteConfirmItem(null)}
+              >
+                <Text style={[styles.deleteModalBtnText, { color: colors.textPrimary, fontWeight: '600' }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteModalBtn, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18', flex: 1 }]}
+                onPress={handleConfirmDeleteSearch}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? (
+                  <ActivityIndicator size="small" color={colors.error || '#B91C1C'} />
+                ) : (
+                  <Text style={[styles.deleteModalBtnText, { color: colors.error || '#B91C1C', fontWeight: '600' }]}>Remover</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
       <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
     </ScreenContainer>
   );
@@ -353,4 +385,30 @@ const styles = StyleSheet.create({
   rowLabel: { flex: 1, fontSize: 15 },
   rowActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   actionBtn: { padding: spacing.xs },
+  deleteModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  deleteModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: spacing.lg,
+  },
+  deleteModalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 8 },
+  deleteModalMessage: { fontSize: 14, lineHeight: 20, marginBottom: spacing.lg },
+  deleteModalActions: { flexDirection: 'row', alignItems: 'center' },
+  deleteModalBtn: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  deleteModalBtnText: { fontSize: 16 },
 });

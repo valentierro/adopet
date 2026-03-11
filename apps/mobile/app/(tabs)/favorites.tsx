@@ -80,10 +80,10 @@ const FAVORITE_GRID_ITEM_HEIGHT = 220;
 type FavoriteRowProps = {
   item: FavoriteItem;
   viewMode: 'list' | 'grid';
-  colors: { primary: string; surface: string; textPrimary: string; textSecondary: string; warning?: string };
+  colors: { primary: string; surface: string; textPrimary: string; textSecondary: string; warning?: string; error?: string };
   onPressPet: (petId: string) => void;
   onChat: (item: FavoriteItem) => void;
-  onRemove: (petId: string) => void;
+  onRequestRemove: (petId: string) => void;
   isChatLoading?: boolean;
   gridCellWidth?: number;
   gridIndex?: number;
@@ -96,7 +96,7 @@ const FavoriteRow = React.memo(function FavoriteRow({
   colors,
   onPressPet,
   onChat,
-  onRemove,
+  onRequestRemove,
   isChatLoading = false,
   gridCellWidth = 0,
   gridIndex = 0,
@@ -165,18 +165,15 @@ const FavoriteRow = React.memo(function FavoriteRow({
                 <Ionicons name="chatbubble-outline" size={16} color="#fff" />
               )}
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.gridMiniBtn, { borderColor: colors.textSecondary, borderWidth: 1 }]}
-              onPress={(e) => {
-                e?.stopPropagation?.();
-                Alert.alert('Remover dos favoritos?', undefined, [
-                  { text: 'Cancelar', style: 'cancel' },
-                  { text: 'Remover', style: 'destructive', onPress: () => onRemove(item.petId) },
-                ]);
-              }}
-            >
-              <Ionicons name="trash-outline" size={16} color={colors.textSecondary} />
-            </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.gridMiniBtn, styles.removeBtnOutline, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18' }]}
+          onPress={(e) => {
+            e?.stopPropagation?.();
+            onRequestRemove(item.petId);
+          }}
+        >
+          <Ionicons name="trash-outline" size={16} color={colors.error || '#B91C1C'} />
+        </TouchableOpacity>
           </View>
         </View>
       </TouchableOpacity>
@@ -205,19 +202,13 @@ const FavoriteRow = React.memo(function FavoriteRow({
           style={styles.chatBtn}
         />
         <TouchableOpacity
-          style={[styles.removeBtn, { borderColor: colors.textSecondary }]}
-          onPress={() => {
-            Alert.alert(
-              'Remover dos favoritos?',
-              undefined,
-              [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Remover', style: 'destructive', onPress: () => onRemove(item.petId) },
-              ],
-            );
+          style={[styles.removeBtn, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18' }]}
+          onPress={(e) => {
+            e?.stopPropagation?.();
+            onRequestRemove(item.petId);
           }}
         >
-          <Text style={[styles.removeBtnText, { color: colors.textSecondary }]}>Remover</Text>
+          <Text style={[styles.removeBtnText, { color: colors.error || '#B91C1C', fontWeight: '600' }]}>Remover</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -303,6 +294,7 @@ export default function FavoritesScreen() {
       showToast('Removido dos favoritos');
       queryClient.invalidateQueries({ queryKey: ['favorites'] });
       queryClient.refetchQueries({ queryKey: ['favorites'] });
+      queryClient.invalidateQueries({ queryKey: ['conversations'] });
     },
     onError: (e: unknown) => {
       Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível remover dos favoritos.'));
@@ -311,6 +303,7 @@ export default function FavoritesScreen() {
 
   const [showCompleteProfileModal, setShowCompleteProfileModal] = useState(false);
   const [chatLoadingPetId, setChatLoadingPetId] = useState<string | null>(null);
+  const [removeConfirmPetId, setRemoveConfirmPetId] = useState<string | null>(null);
 
   const startChat = useCallback(
     async (item: FavoriteItem) => {
@@ -341,10 +334,14 @@ export default function FavoritesScreen() {
   const hasSpeciesFilter = speciesFilter !== 'BOTH';
   const estimatedItemSize = viewMode === 'grid' ? FAVORITE_GRID_ITEM_HEIGHT : FAVORITE_LIST_ITEM_HEIGHT;
   const handlePressPet = useCallback((petId: string) => router.push(`/pet/${petId}`), [router]);
-  const handleRemove = useCallback(
-    (petId: string) => removeMutation.mutate(petId),
-    [removeMutation],
-  );
+  const handleRequestRemove = useCallback((petId: string) => setRemoveConfirmPetId(petId), []);
+  const handleConfirmRemove = useCallback(() => {
+    if (removeConfirmPetId) {
+      removeMutation.mutate(removeConfirmPetId);
+      setRemoveConfirmPetId(null);
+    }
+  }, [removeConfirmPetId, removeMutation]);
+  const handleCancelRemove = useCallback(() => setRemoveConfirmPetId(null), []);
 
   const renderItem = useCallback(
     ({ item, index }: { item: FavoriteItem; index: number }) => (
@@ -354,14 +351,14 @@ export default function FavoritesScreen() {
         colors={colors}
         onPressPet={handlePressPet}
         onChat={startChat}
-        onRemove={handleRemove}
+        onRequestRemove={handleRequestRemove}
         isChatLoading={chatLoadingPetId === item.petId}
         gridCellWidth={gridCellWidth}
         gridIndex={index}
         viewedPetIds={viewedPetIds}
       />
     ),
-    [viewMode, colors, handlePressPet, startChat, handleRemove, chatLoadingPetId, gridCellWidth, viewedPetIds],
+    [viewMode, colors, handlePressPet, startChat, handleRequestRemove, chatLoadingPetId, gridCellWidth, viewedPetIds],
   );
 
   const rawItemCount = items.length;
@@ -523,6 +520,35 @@ export default function FavoritesScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      <Modal visible={removeConfirmPetId != null} transparent animationType="fade">
+        <Pressable style={styles.completeProfileModalOverlay} onPress={handleCancelRemove}>
+          <Pressable style={[styles.completeProfileModalCard, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.completeProfileModalTitle, { color: colors.textPrimary }]}>Remover dos favoritos?</Text>
+            <Text style={[styles.completeProfileModalMessage, { color: colors.textSecondary }]}>
+              O pet sairá da sua lista de favoritos. Você pode curtir novamente no feed quando quiser.
+            </Text>
+            <View style={styles.removeModalActions}>
+              <TouchableOpacity
+                style={[styles.removeBtn, { borderColor: colors.textSecondary, backgroundColor: 'transparent', marginRight: spacing.sm }]}
+                onPress={handleCancelRemove}
+              >
+                <Text style={[styles.removeBtnText, { color: colors.textPrimary, fontWeight: '600' }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.removeBtn, { borderColor: colors.error || '#B91C1C', backgroundColor: (colors.error || '#B91C1C') + '18', flex: 1 }]}
+                onPress={handleConfirmRemove}
+                disabled={removeMutation.isPending}
+              >
+                {removeMutation.isPending ? (
+                  <ActivityIndicator size="small" color={colors.error || '#B91C1C'} />
+                ) : (
+                  <Text style={[styles.removeBtnText, { color: colors.error || '#B91C1C', fontWeight: '600' }]}>Remover</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
       <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
     </ScreenContainer>
   );
@@ -608,7 +634,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   chatBtnText: { color: '#fff', fontWeight: '600' },
-  removeBtn: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: 10, borderWidth: 1 },
+  removeBtn: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: 10, borderWidth: 1.5, minWidth: 88, alignItems: 'center' as const, justifyContent: 'center' as const },
+  removeBtnOutline: { borderWidth: 1.5 },
   removeBtnText: { fontSize: 14 },
   emptyCta: {
     flexDirection: 'row',
@@ -641,4 +668,5 @@ const styles = StyleSheet.create({
   completeProfileModalLinkWrap: { marginBottom: spacing.lg },
   completeProfileModalLink: { fontSize: 15, fontWeight: '600', textDecorationLine: 'underline' },
   completeProfileModalBtn: { alignSelf: 'stretch' },
+  removeModalActions: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.md, width: '100%' },
 });

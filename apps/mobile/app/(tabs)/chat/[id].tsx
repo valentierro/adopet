@@ -686,16 +686,25 @@ export default function ChatRoomScreen() {
       {conversation?.pet ? (
         <View style={[styles.chatInfoBar, { backgroundColor: colors.surface, borderBottomColor: colors.border ?? colors.surface }]}>
           <View style={styles.chatInfoBarRow}>
-            {conversation.pet.photoUrl ? (
-              <Image
-                source={{ uri: conversation.pet.photoUrl }}
-                style={[styles.chatInfoBarImage, { backgroundColor: colors.background }]}
-              />
-            ) : (
-              <View style={[styles.chatInfoBarImage, styles.chatInfoBarImagePlaceholder, { backgroundColor: colors.background }]}>
-                <Ionicons name="paw" size={22} color={colors.textSecondary} />
-              </View>
-            )}
+            <TouchableOpacity
+              onPress={() => conversation.pet?.id && router.push(`/pet/${conversation.pet.id}`)}
+              activeOpacity={0.8}
+              accessibilityLabel={`Ver detalhes do pet ${conversation.pet?.name ?? ''}`}
+              accessibilityRole="button"
+              style={styles.chatInfoBarImageTouchable}
+            >
+              {conversation.pet.photoUrl ? (
+                <Image
+                  source={{ uri: conversation.pet.photoUrl }}
+                  style={[styles.chatInfoBarImage, { backgroundColor: colors.background }]}
+                  pointerEvents="none"
+                />
+              ) : (
+                <View pointerEvents="none" style={[styles.chatInfoBarImage, styles.chatInfoBarImagePlaceholder, { backgroundColor: colors.background }]}>
+                  <Ionicons name="paw" size={22} color={colors.textSecondary} />
+                </View>
+              )}
+            </TouchableOpacity>
             <View style={styles.chatInfoBarText}>
               {conversation.petId && !isTutorView ? (
                 <View style={styles.chatInfoBarNameRow}>
@@ -1796,6 +1805,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   chatInfoBarRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  chatInfoBarImageTouchable: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    ...(Platform.OS === 'web' && { cursor: 'pointer' as const }),
+  },
   chatInfoBarImage: { width: 48, height: 48, borderRadius: 24 },
   chatInfoBarImagePlaceholder: { justifyContent: 'center', alignItems: 'center' },
   chatInfoBarText: { flex: 1, minWidth: 0, gap: 2 },
