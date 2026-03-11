@@ -13,7 +13,7 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { fetchFeed, type FeedResponse, type FeedSpeciesFilter, type FeedTriageFilters, type FeedPartnerFilter } from '../../src/api/feed';
 import { createSwipe } from '../../src/api/swipes';
 import { addFavorite } from '../../src/api/favorites';
-import { recordPetView } from '../../src/api/pets';
+import { recordPetView, getPet } from '../../src/api/pets';
 import { trackEvent } from '../../src/analytics';
 import { getPreferences, updatePreferences } from '../../src/api/me';
 import { useUpdateCityFromLocation } from '../../src/hooks/useUpdateCityFromLocation';
@@ -164,17 +164,42 @@ export default function FeedScreen() {
   type ViewMode = 'swipe' | 'grid';
   type SortMode = 'relevance' | 'trending';
   const isGuest = !userId;
-  const params = useLocalSearchParams<{ trending?: string }>();
+  const params = useLocalSearchParams<{ trending?: string; petId?: string }>();
+  const openPetIdRef = useRef<string | null>(params.petId ?? null);
   const [sortMode, setSortModeState] = useState<SortMode>(() => (params.trending === '1' ? 'trending' : 'relevance'));
   const appliedTrendingRef = useRef(false);
-  const [viewMode, setViewModeState] = useState<ViewMode>('swipe');
+  const [viewMode, setViewModeState] = useState<ViewMode>(() => (params.petId ? 'swipe' : 'swipe'));
+  useEffect(() => {
+    openPetIdRef.current = params.petId ?? null;
+  }, [params.petId]);
+  // Ao voltar para o feed com outro petId (ex.: clicou em outro pet no carrossel), reordenar ou buscar e colocar em primeiro
+  useEffect(() => {
+    const petId = params.petId;
+    if (!petId) return;
+    setAccumulatedItems((prev) => {
+      const list = prev ?? [];
+      if (list.length === 0) return list;
+      const idx = list.findIndex((p) => p.id === petId);
+      if (idx >= 0) {
+        const pet = list[idx];
+        return [pet, ...list.slice(0, idx), ...list.slice(idx + 1)];
+      }
+      return list;
+    });
+    getPet(petId).then((pet) => {
+      setAccumulatedItems((prev) => {
+        if (prev?.[0]?.id === petId) return prev;
+        return [pet, ...(prev ?? [])];
+      });
+    }).catch(() => {});
+  }, [params.petId]);
   useEffect(() => {
     if (params.trending === '1' && !appliedTrendingRef.current) {
       appliedTrendingRef.current = true;
       setSortModeState('trending');
-      setViewModeState('grid');
+      setViewModeState(params.petId ? 'swipe' : 'grid');
     }
-  }, [params.trending]);
+  }, [params.trending, params.petId]);
   const effectiveViewMode: ViewMode = isGuest ? 'grid' : viewMode;
   const [matchTooltipMessage, setMatchTooltipMessage] = useState<string | null>(null);
   const matchTooltipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -326,10 +351,25 @@ export default function FeedScreen() {
   }, [isLoading, isRefetching]);
 
   // Primeira carga: define lista; ao carregar mais: append (mesma ordem/prioridade da API para grid e swipe)
+  // Se abriu com petId (ex.: clicou no carrossel "Conheça esses pets"), coloca esse pet primeiro no swipe
   useEffect(() => {
     if (!data?.items?.length) return;
     if (cursor === null) {
-      setAccumulatedItems(data.items);
+      const openPetId = openPetIdRef.current;
+      if (openPetId) {
+        openPetIdRef.current = null;
+        const idx = data.items.findIndex((p) => p.id === openPetId);
+        if (idx >= 0) {
+          const pet = data.items[idx];
+          setAccumulatedItems([pet, ...data.items.slice(0, idx), ...data.items.slice(idx + 1)]);
+        } else {
+          getPet(openPetId)
+            .then((pet) => setAccumulatedItems([pet, ...data.items]))
+            .catch(() => setAccumulatedItems(data.items));
+        }
+      } else {
+        setAccumulatedItems(data.items);
+      }
     } else {
       setAccumulatedItems((prev) => {
         const ids = new Set((prev ?? []).map((p) => p.id));

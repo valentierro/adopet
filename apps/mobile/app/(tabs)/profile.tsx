@@ -2,13 +2,13 @@ import { useEffect, useCallback, useState, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import Constants from 'expo-constants';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Share, Linking, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Share, Linking, Animated, Modal, Pressable, ScrollView, useWindowDimensions } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
-import { ScreenContainer, PrimaryButton, SecondaryButton, LoadingLogo, PageIntro, VerifiedBadge, TutorLevelBadge } from '../../src/components';
+import { ScreenContainer, PrimaryButton, SecondaryButton, LoadingLogo, PageIntro, VerifiedBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useClientConfig } from '../../src/hooks/useClientConfig';
 import { useAuthStore } from '../../src/stores/authStore';
@@ -19,6 +19,23 @@ import { presign, confirmAvatarUpload } from '../../src/api/uploads';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { configureExpandAnimation } from '../../src/utils/layoutAnimation';
 import { spacing } from '../../src/theme';
+import { LinearGradient } from 'expo-linear-gradient';
+
+const TUTOR_LEVEL_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
+  BEGINNER: 'paw-outline',
+  ACTIVE: 'paw',
+  TRUSTED: 'ribbon-outline',
+  STAR: 'star',
+  GOLD: 'trophy',
+};
+
+const GAMIFICATION_LEVELS: { pts: number; title: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { pts: 0, title: 'Tutor Iniciante', icon: 'paw-outline' },
+  { pts: 25, title: 'Tutor Ativo', icon: 'paw' },
+  { pts: 75, title: 'Tutor Confiável', icon: 'ribbon-outline' },
+  { pts: 150, title: 'Tutor Destaque', icon: 'star' },
+  { pts: 300, title: 'Tutor Ouro', icon: 'trophy' },
+];
 
 /** URL para doação/apoio ao app (pode usar deep link de volta ao app no futuro). */
 const DONATION_URL = 'https://appadopet.com.br/#apoie';
@@ -180,6 +197,22 @@ export default function ProfileScreen() {
 
   const [infoAdocaoExpanded, setInfoAdocaoExpanded] = useState(false);
   const [preferenciasBuscaExpanded, setPreferenciasBuscaExpanded] = useState(false);
+  const [showGamificationModal, setShowGamificationModal] = useState(false);
+  const [showAdoptionsExplanationModal, setShowAdoptionsExplanationModal] = useState(false);
+  const { height: windowHeight } = useWindowDimensions();
+  const modalHeight = Math.min(windowHeight * 0.82, 560);
+
+  const roleBadgeLabel =
+    user?.isAdmin === true
+      ? 'Admin'
+      : user?.partner?.type === 'ONG' || (user?.partnerMemberships && user.partnerMemberships.length > 0)
+        ? 'ONG'
+        : user?.partner
+          ? 'Parceiro'
+          : 'Tutor';
+  const roleBadgeIcon: keyof typeof Ionicons.glyphMap =
+    roleBadgeLabel === 'Admin' ? 'shield-checkmark' : roleBadgeLabel === 'ONG' ? 'heart' : roleBadgeLabel === 'Parceiro' ? 'storefront' : 'paw';
+  const roleBadgeColor = roleBadgeLabel === 'Admin' ? '#b45309' : '#15803d';
 
   const uploadAvatarMutation = useMutation({
     mutationFn: async ({ uri, token }: { uri: string; token?: string | null }) => {
@@ -250,7 +283,108 @@ export default function ProfileScreen() {
 
   return (
     <ScreenContainer scroll>
-      <PageIntro title="Perfil" subtitle="Seus dados e configurações da conta." />
+      <LinearGradient
+        colors={[colors.primary + '22', colors.primary + '08']}
+        style={[styles.profileHeaderBlock, { borderRadius: 20, overflow: 'hidden' }]}
+      >
+        <View style={styles.profileHeaderRow}>
+          <View style={[styles.avatarOuterWrap, styles.profileHeaderAvatarWrap]}>
+            {showCompleteProfileBanner && (
+              <Animated.View
+                pointerEvents="none"
+                style={[styles.avatarRing, { borderColor: colors.primary, opacity: avatarRingOpacity }]}
+              />
+            )}
+            <TouchableOpacity
+              style={[styles.avatarWrap]}
+              onPress={() => hapticThen(pickAndUploadAvatar)}
+              disabled={uploadAvatarMutation.isPending}
+            >
+              {user?.avatarUrl ? (
+                <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} contentFit="cover" />
+              ) : (
+                <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface }]}>
+                  <Text style={[styles.avatarText, { color: colors.textSecondary }]}>
+                    {uploadAvatarMutation.isPending ? '' : (user?.name?.charAt(0) ?? '?').toUpperCase()}
+                  </Text>
+                  {uploadAvatarMutation.isPending && (
+                    <ActivityIndicator size="small" color={colors.primary} style={styles.avatarLoader} />
+                  )}
+                </View>
+              )}
+              <View style={[styles.avatarBadge, { backgroundColor: colors.primary }]}>
+                <Ionicons name="camera" size={14} color="#fff" />
+              </View>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.profileHeaderText}>
+            <Text style={[styles.profileHeaderName, { color: colors.textPrimary }]} numberOfLines={1}>
+              {user?.name ?? 'Carregando...'}
+            </Text>
+            {user?.username ? (
+              <Text style={[styles.profileHeaderUserEmailLabel, { color: colors.textSecondary }]} numberOfLines={1}>
+                Usuário: @{user.username}
+              </Text>
+            ) : null}
+            <Text style={[styles.profileHeaderEmailLine, { color: colors.textSecondary }]} numberOfLines={1}>
+              E-mail: {user?.email ?? ''}
+            </Text>
+            <TouchableOpacity
+              style={styles.profileHeaderLinkRow}
+              onPress={() => hapticThen(() => router.push('/profile-edit'))}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.profileHeaderLink, { color: colors.primary }]}>Meu perfil</Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+            </TouchableOpacity>
+            <View style={styles.profileHeaderBadgeRow}>
+              {(user?.verified || user?.kycStatus === 'VERIFIED') && (
+                <VerifiedBadge variant="user" size={16} showLabel backgroundColor={colors.primary} textColor="#fff" />
+              )}
+              <View style={[styles.roleBadgeWrap, { backgroundColor: roleBadgeColor + '22' }]}>
+                <Ionicons name={roleBadgeIcon} size={12} color={roleBadgeColor} />
+                <Text style={[styles.roleBadgeText, { color: roleBadgeColor }]}>{roleBadgeLabel}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+        {tutorStats ? (
+          <View style={[styles.profileStatsRow, { backgroundColor: colors.surface }]}>
+            <View style={styles.profileStat}>
+              <Text style={[styles.profileStatValue, { color: colors.primary }]}>{tutorStats.points}</Text>
+              <Text style={[styles.profileStatLabel, { color: colors.textSecondary }]}>pontos</Text>
+            </View>
+            <View style={[styles.profileStatDivider, { backgroundColor: colors.textSecondary }]} />
+            <TouchableOpacity
+              style={styles.profileStat}
+              onPress={() => hapticThen(() => setShowAdoptionsExplanationModal(true))}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.profileStatValue, { color: colors.primary }]}>{tutorStats.adoptedCount}</Text>
+              <Text style={[styles.profileStatLabel, { color: colors.textSecondary }]}>
+                {tutorStats.adoptedCount === 1 ? 'adoção' : 'adoções'}
+              </Text>
+            </TouchableOpacity>
+            <View style={[styles.profileStatDivider, { backgroundColor: colors.textSecondary }]} />
+            <View style={[styles.profileStat, styles.profileStatTitleWrap]}>
+              <View style={[styles.tutorLevelBadge, { backgroundColor: colors.primary + '18' }]}>
+                <Ionicons name={TUTOR_LEVEL_ICON[tutorStats.level] ?? 'paw-outline'} size={18} color={colors.primary} />
+                <Text style={[styles.profileStatTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                  {tutorStats.title}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              hitSlop={12}
+              onPress={() => hapticThen(() => setShowGamificationModal(true))}
+              style={styles.profileStatInfoBtn}
+            >
+              <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+        ) : null}
+      </LinearGradient>
+
       {showCompleteProfileBanner && (
         <TouchableOpacity
           style={[styles.completeBanner, { backgroundColor: colors.primary + '20', borderColor: colors.primary }]}
@@ -267,51 +401,6 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
         </TouchableOpacity>
       )}
-      <View style={styles.avatarOuterWrap}>
-        {showCompleteProfileBanner && (
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.avatarRing,
-              {
-                borderColor: colors.primary,
-                opacity: avatarRingOpacity,
-              },
-            ]}
-          />
-        )}
-        <TouchableOpacity
-          style={[styles.avatarWrap]}
-          onPress={() => hapticThen(pickAndUploadAvatar)}
-          disabled={uploadAvatarMutation.isPending}
-        >
-        {user?.avatarUrl ? (
-          <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} contentFit="cover" />
-        ) : (
-          <View style={[styles.avatarPlaceholder, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.avatarText, { color: colors.textSecondary }]}>
-              {uploadAvatarMutation.isPending ? '' : (user?.name?.charAt(0) ?? '?').toUpperCase()}
-            </Text>
-            {uploadAvatarMutation.isPending && (
-              <ActivityIndicator size="small" color={colors.primary} style={styles.avatarLoader} />
-            )}
-          </View>
-        )}
-        <View style={[styles.avatarBadge, { backgroundColor: colors.primary }]}>
-          <Ionicons name="camera" size={14} color="#fff" />
-        </View>
-      </TouchableOpacity>
-      </View>
-      <View style={styles.nameRow}>
-        <Text style={[styles.name, { color: colors.textPrimary }]}>{user?.name ?? 'Carregando...'}</Text>
-        {(user?.verified || user?.kycStatus === 'VERIFIED') && (
-          <VerifiedBadge variant="user" size={18} showLabel backgroundColor={colors.primary} />
-        )}
-      </View>
-      <Text style={[styles.email, { color: colors.textSecondary }]}>{user?.email ?? ''}</Text>
-      {user?.username ? (
-        <Text style={[styles.username, { color: colors.textSecondary }]}>@{user.username}</Text>
-      ) : null}
       {user?.kycStatus === 'VERIFIED' && !user?.isPartner ? (
         <View style={[styles.kycBlockWrap, { backgroundColor: colors.primary + '18' }]}>
           <View style={[styles.kycPendingRow, { marginBottom: 0, backgroundColor: 'transparent' }]}>
@@ -520,11 +609,6 @@ export default function ProfileScreen() {
               router.push('/verification-request?type=USER_VERIFIED');
             }}
           />
-        </View>
-      )}
-      {tutorStats && (
-        <View style={styles.tutorStatsWrap}>
-          <TutorLevelBadge tutorStats={tutorStats} showDetails compact={false} />
         </View>
       )}
       {/* Conta */}
@@ -927,6 +1011,77 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         )}
       </View>
+
+      <Modal visible={showGamificationModal} transparent animationType="fade" onRequestClose={() => setShowGamificationModal(false)}>
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowGamificationModal(false)} />
+          <View style={[styles.gamificationModal, { backgroundColor: colors.surface, height: modalHeight }]}>
+            <View style={styles.gamificationModalHeader}>
+              <Text style={[styles.gamificationModalTitle, { color: colors.textPrimary }]}>Como funciona sua pontuação</Text>
+              <TouchableOpacity hitSlop={12} onPress={() => setShowGamificationModal(false)}>
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.gamificationModalBody} contentContainerStyle={styles.gamificationModalBodyContent} showsVerticalScrollIndicator>
+              <Text style={[styles.gamificationModalP, { color: colors.textSecondary }]}>
+                <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Pontos</Text> — Você ganha pontos quando seus pets recebem o selo de verificação do Adopet (10 pts por pet) e quando uma adoção é confirmada pela equipe (25 pts por adoção). Há bônus na primeira adoção e em marcos como 3ª, 5ª e 10ª adoção.
+              </Text>
+              <Text style={[styles.gamificationModalP, { color: colors.textSecondary }]}>
+                <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Adoções</Text> — Soma de pets que você adotou + pets que você anunciou e foram adotados (só confirmadas pela Adopet). Toque no número no perfil para mais detalhes.
+              </Text>
+              <Text style={[styles.gamificationModalP, { color: colors.textSecondary }]}>
+                <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Título</Text> — Seu nível como tutor, baseado nos pontos acumulados:
+              </Text>
+              <View style={[styles.gamificationLevels, { backgroundColor: colors.surface, borderColor: colors.primary + '40' }]}>
+                <View style={[styles.gamificationLevelHeader, { backgroundColor: colors.primary + '18', borderBottomColor: colors.primary + '50' }]}>
+                  <Text style={[styles.gamificationLevelHeaderPts, { color: colors.primary }]}>Pontos</Text>
+                  <Text style={[styles.gamificationLevelHeaderTitle, { color: colors.textPrimary }]}>Título</Text>
+                </View>
+                {GAMIFICATION_LEVELS.map(({ pts, title, icon }, idx) => (
+                  <View key={title} style={[styles.gamificationLevelRow, { borderBottomColor: colors.textSecondary + '30' }, idx === GAMIFICATION_LEVELS.length - 1 && styles.gamificationLevelRowLast]}>
+                    <Text style={[styles.gamificationLevelPts, { color: colors.primary }]}>{pts} pts</Text>
+                    <View style={styles.gamificationLevelTitleWrap}>
+                      <Ionicons name={icon} size={18} color={colors.primary} style={styles.gamificationLevelIcon} />
+                      <Text style={[styles.gamificationLevelTitle, { color: colors.textPrimary }]}>{title}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+            <TouchableOpacity style={[styles.gamificationModalBtn, { backgroundColor: colors.primary }]} onPress={() => setShowGamificationModal(false)} activeOpacity={0.8}>
+              <Text style={styles.gamificationModalBtnText}>Entendi</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showAdoptionsExplanationModal} transparent animationType="fade" onRequestClose={() => setShowAdoptionsExplanationModal(false)}>
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowAdoptionsExplanationModal(false)} />
+          <Pressable style={[styles.verificationModalCard, { backgroundColor: colors.surface, maxWidth: 340 }]} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.verificationModalHeader}>
+              <View style={[styles.verificationModalIconWrap, { backgroundColor: colors.primary + '18' }]}>
+                <Ionicons name="heart" size={32} color={colors.primary} />
+              </View>
+              <Text style={[styles.verificationModalTitle, { color: colors.textPrimary }]}>Sobre as adoções</Text>
+            </View>
+            <Text style={[styles.verificationModalP, { color: colors.textSecondary }]}>O número de adoções reúne duas coisas:</Text>
+            <Text style={[styles.verificationModalP, { color: colors.textSecondary, marginTop: 0 }]}>
+              <Text style={{ fontWeight: '600', color: colors.textPrimary }}>• Pets que você adotou</Text> — adoções em que você foi o adotante.
+            </Text>
+            <Text style={[styles.verificationModalP, { color: colors.textSecondary, marginTop: 4 }]}>
+              <Text style={{ fontWeight: '600', color: colors.textPrimary }}>• Pets que você anunciou e foram adotados</Text> — adoções em que você foi o tutor e outra pessoa adotou.
+            </Text>
+            <Text style={[styles.verificationModalP, { color: colors.textSecondary, marginTop: 12 }]}>
+              Só entram adoções confirmadas pela equipe Adopet. Você pode ver o detalhe em Minhas adoções.
+            </Text>
+            <View style={styles.verificationModalActions}>
+              <PrimaryButton title="Ver Minhas adoções" onPress={() => { setShowAdoptionsExplanationModal(false); router.push('/(tabs)/my-adoptions'); }} style={styles.verificationModalCta} />
+              <SecondaryButton title="Fechar" onPress={() => setShowAdoptionsExplanationModal(false)} />
+            </View>
+          </Pressable>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -943,6 +1098,57 @@ const styles = StyleSheet.create({
   completeBannerText: { flex: 1, marginLeft: spacing.sm },
   completeBannerTitle: { fontSize: 16, fontWeight: '700' },
   completeBannerSub: { fontSize: 13, marginTop: 2 },
+  profileHeaderBlock: {
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+  },
+  profileHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  profileHeaderAvatarWrap: { marginBottom: 0 },
+  profileHeaderText: { flex: 1, minWidth: 0 },
+  profileHeaderName: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
+  profileHeaderUserEmailLabel: { fontSize: 14, marginBottom: 2 },
+  profileHeaderEmailLine: { fontSize: 14, marginBottom: 4 },
+  profileHeaderLinkRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  profileHeaderLink: { fontSize: 15, fontWeight: '600' },
+  profileHeaderBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 6 },
+  roleBadgeWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+  },
+  roleBadgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
+  profileStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 10,
+  },
+  profileStat: { flex: 1, alignItems: 'center' },
+  profileStatValue: { fontSize: 16, fontWeight: '800' },
+  profileStatLabel: { fontSize: 10, marginTop: 1 },
+  profileStatDivider: { width: 1, height: 24, opacity: 0.3, marginHorizontal: spacing.xs },
+  profileStatTitleWrap: { flex: 1.2, minWidth: 0 },
+  tutorLevelBadge: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 2,
+  },
+  profileStatTitle: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
+  profileStatInfoBtn: { padding: spacing.xs, marginLeft: spacing.xs },
   avatarOuterWrap: {
     alignSelf: 'center',
     marginBottom: spacing.md,
@@ -1021,9 +1227,6 @@ const styles = StyleSheet.create({
   },
   verificationCta: {
     marginBottom: spacing.md,
-  },
-  tutorStatsWrap: {
-    marginBottom: spacing.lg,
   },
   errorText: {
     fontSize: 12,
@@ -1234,4 +1437,77 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: spacing.md,
   },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.lg,
+  },
+  gamificationModal: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  gamificationModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  gamificationModalTitle: { fontSize: 18, fontWeight: '700', flex: 1, paddingRight: spacing.md },
+  gamificationModalBody: { flex: 1, minHeight: 0 },
+  gamificationModalBodyContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  gamificationModalP: { fontSize: 14, lineHeight: 22, marginBottom: spacing.md },
+  gamificationLevels: { borderRadius: 12, overflow: 'hidden', marginTop: spacing.sm, borderWidth: 1 },
+  gamificationLevelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1.5,
+  },
+  gamificationLevelHeaderPts: { fontSize: 12, fontWeight: '800', width: 56, textTransform: 'uppercase', letterSpacing: 0.5 },
+  gamificationLevelHeaderTitle: { fontSize: 12, fontWeight: '800', flex: 1, textTransform: 'uppercase', letterSpacing: 0.5 },
+  gamificationLevelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+  },
+  gamificationLevelRowLast: { borderBottomWidth: 0 },
+  gamificationLevelPts: { fontSize: 14, fontWeight: '700', width: 56 },
+  gamificationLevelTitleWrap: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 },
+  gamificationLevelIcon: { marginRight: 8 },
+  gamificationLevelTitle: { fontSize: 14, fontWeight: '600', flex: 1 },
+  gamificationModalBtn: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  gamificationModalBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  verificationModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 20,
+    padding: spacing.xl,
+  },
+  verificationModalHeader: { alignItems: 'center', marginBottom: spacing.lg },
+  verificationModalIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+  },
+  verificationModalTitle: { fontSize: 20, fontWeight: '700' },
+  verificationModalP: { fontSize: 14, lineHeight: 22, marginBottom: spacing.md },
+  verificationModalActions: { gap: spacing.sm, marginTop: spacing.sm },
+  verificationModalCta: { marginBottom: 0 },
 });

@@ -16,24 +16,17 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
   Platform,
-  LayoutAnimation,
-  UIManager,
 } from 'react-native';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { ScreenContainer, LoadingLogo, VerifiedBadge, PrimaryButton, SecondaryButton, UsuarioVerificadoModal, DashboardSpotlightTour, Toast } from '../../src/components';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ScreenContainer, LoadingLogo, PrimaryButton, SecondaryButton, DashboardSpotlightTour, VerifiedBadge, StatusBadge } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useClientConfig } from '../../src/hooks/useClientConfig';
-import { useToastWithDedupe } from '../../src/hooks/useToastWithDedupe';
 import { useAuthStore } from '../../src/stores/authStore';
-import { getMe, getTutorStats, getMyAdoptions, getPreferences, getPendingAdoptionConfirmations, getMyNotificationsUnreadCount, cancelKyc, KYC_CANCELLATION_REASONS } from '../../src/api/me';
+import { getMe, getTutorStats, getMyAdoptions, getPreferences, getPendingAdoptionConfirmations, getMyNotificationsUnreadCount } from '../../src/api/me';
 import { getAdminStats } from '../../src/api/admin';
 import { getPartnerAnalytics, getMyPartnerOngPetsPendingCount } from '../../src/api/partner';
 import { getMinePets } from '../../src/api/pets';
@@ -43,6 +36,8 @@ import { getPassedPets } from '../../src/api/swipes';
 import { fetchFeed } from '../../src/api/feed';
 import { spacing } from '../../src/theme';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
+import { getSpeciesLabel } from '../../src/utils/petLabels';
+import { getMatchScoreColor } from '../../src/utils/matchScoreColor';
 import { getOnboardingSeen } from '../../src/storage/onboarding';
 import {
   getCardsOrder,
@@ -138,6 +133,19 @@ function useDashboardData() {
     staleTime: 2 * 60_000,
     enabled: hasUser,
   });
+  const { data: trendingFeedData, refetch: refetchTrending } = useQuery({
+    queryKey: ['feed', 'trending', prefs?.radiusKm, userCoords?.lat, userCoords?.lng],
+    queryFn: () =>
+      fetchFeed({
+        ...(userCoords && { lat: userCoords.lat, lng: userCoords.lng }),
+        radiusKm: prefs?.radiusKm ?? 300,
+        species: 'BOTH',
+        limit: 60,
+        sortBy: 'trending',
+      }),
+    staleTime: 2 * 60_000,
+    enabled: hasUser,
+  });
   const { data: adoptionsData, refetch: refetchAdoptions } = useQuery({
     queryKey: ['me', 'adoptions'],
     queryFn: getMyAdoptions,
@@ -178,6 +186,7 @@ function useDashboardData() {
   const feedPreviewItems = feedData?.items ?? [];
   const feedTotalCount = feedData?.totalCount;
   const carouselFeedItems = carouselFeedData?.items ?? [];
+  const trendingFeedItems = trendingFeedData?.items ?? [];
 
   const pendingConfirmations = pendingConfirmationsData?.items ?? [];
   const [refreshing, setRefreshing] = useState(false);
@@ -189,13 +198,14 @@ function useDashboardData() {
       refetchConv(),
       refetchFeed(),
       refetchCarousel(),
+      refetchTrending(),
       refetchAdoptions(),
       refetchPassed(),
       refetchPendingConfirmations(),
       refetchNotificationsCount(),
     ]);
     setRefreshing(false);
-  }, [refetchMine, refetchFav, refetchConv, refetchFeed, refetchCarousel, refetchAdoptions, refetchPassed, refetchPendingConfirmations, refetchNotificationsCount]);
+  }, [refetchMine, refetchFav, refetchConv, refetchFeed, refetchCarousel, refetchTrending, refetchAdoptions, refetchPassed, refetchPendingConfirmations, refetchNotificationsCount]);
 
   return {
     user,
@@ -210,28 +220,13 @@ function useDashboardData() {
     feedPreviewItems,
     feedTotalCount,
     carouselFeedItems,
+    trendingFeedItems,
     pendingConfirmations,
     notificationsUnreadCount: notificationsUnreadData?.count ?? 0,
     refetchAll,
     refreshing,
   };
 }
-
-const GAMIFICATION_LEVELS: { pts: number; title: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { pts: 0, title: 'Tutor Iniciante', icon: 'paw-outline' },
-  { pts: 25, title: 'Tutor Ativo', icon: 'paw' },
-  { pts: 75, title: 'Tutor Confiável', icon: 'ribbon-outline' },
-  { pts: 150, title: 'Tutor Destaque', icon: 'star' },
-  { pts: 300, title: 'Tutor Ouro', icon: 'trophy' },
-];
-
-const TUTOR_LEVEL_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
-  BEGINNER: 'paw-outline',
-  ACTIVE: 'paw',
-  TRUSTED: 'ribbon-outline',
-  STAR: 'star',
-  GOLD: 'trophy',
-};
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -240,7 +235,6 @@ export default function DashboardScreen() {
   const { width, height: windowHeight } = useWindowDimensions();
   const cardGap = spacing.md;
   const cardWidth = (width - spacing.lg * 2 - cardGap) / 2;
-  const [showGamificationModal, setShowGamificationModal] = useState(false);
   const modalHeight = Math.min(windowHeight * 0.82, 560);
 
   const {
@@ -255,6 +249,7 @@ export default function DashboardScreen() {
     feedPreviewItems,
     feedTotalCount,
     carouselFeedItems,
+    trendingFeedItems,
     pendingConfirmations,
     notificationsUnreadCount,
     refetchAll,
@@ -268,8 +263,6 @@ export default function DashboardScreen() {
   const feedCarouselOffsetRef = useRef(0);
   const mainScrollRef = useRef<ScrollView>(null);
   const mainScrollOffsetRef = useRef(0);
-  const verificationChipRef = useRef<View>(null);
-  const statsRowRef = useRef<View>(null);
   const personalizeOrderRef = useRef<View>(null);
   const feedCardRef = useRef<View>(null);
   const meusAnunciosRef = useRef<View>(null);
@@ -281,30 +274,21 @@ export default function DashboardScreen() {
   const [reorderDraft, setReorderDraft] = useState<string[]>([]);
   const [cardsOrder, setCardsOrderState] = useState<string[]>([]);
   const [cardsOrderLoaded, setCardsOrderLoaded] = useState(false);
-  /** Só para usuário comum: hero recolhido = mais espaço para o carrossel grande */
-  const [heroExpanded, setHeroExpanded] = useState(true);
-  const toggleHeroExpanded = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setHeroExpanded((e) => !e);
-  }, []);
-  const FEED_CAROUSEL_THUMB_SIZE = 72;
-  const FEED_CAROUSEL_GAP = 8;
-  const FEED_CAROUSEL_ITEM_WIDTH = FEED_CAROUSEL_THUMB_SIZE + FEED_CAROUSEL_GAP;
+  /** Tamanho dos cards do carrossel "Descobrir pets" */
+  const FEED_CAROUSEL_WIDTH = 110;
+  const FEED_CAROUSEL_HEIGHT = 95;
+  const FEED_CAROUSEL_GAP = 10;
+  const FEED_CAROUSEL_ITEM_WIDTH = FEED_CAROUSEL_WIDTH + FEED_CAROUSEL_GAP;
   const feedThumbUrls = useMemo(
     () => carouselFeedItems.map((p) => p.photos?.[0]).filter(Boolean) as string[],
     [carouselFeedItems],
   );
-  useEffect(() => {
-    if (feedThumbUrls.length === 0) return;
-    const segmentWidth = FEED_CAROUSEL_ITEM_WIDTH * feedThumbUrls.length;
-    const id = setInterval(() => {
-      const next = feedCarouselOffsetRef.current + FEED_CAROUSEL_ITEM_WIDTH;
-      const wrapped = next >= 2 * segmentWidth ? next - segmentWidth : next;
-      feedCarouselRef.current?.scrollTo({ x: wrapped, animated: true });
-    }, 3000);
-    return () => clearInterval(id);
-  }, [feedThumbUrls.length]);
-
+  /** Até 20 pets com foto, ordenados por maior match score para a seção "Pets em destaque para você" */
+  const featuredPets = useMemo(() => {
+    const withPhoto = trendingFeedItems.filter((p) => p.photos?.length);
+    const byMatch = [...withPhoto].sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
+    return byMatch.slice(0, 20);
+  }, [trendingFeedItems]);
   const { data: _u, isLoading, isError, refetch: refetchMe } = useQuery({ queryKey: ['me'], queryFn: getMe, retry: 1 });
   const isAdmin = user?.isAdmin === true;
   const { data: adminStats } = useQuery({
@@ -354,57 +338,6 @@ export default function DashboardScreen() {
       }
     }, [refetchAll, isAdmin, isNonOngPartnerEarly, isOngAdmin, queryClient]),
   );
-  const [showVerificationModal, setShowVerificationModal] = useState(false);
-  const [showVerifiedInfoModal, setShowVerifiedInfoModal] = useState(false);
-  const [showAdoptionsExplanationModal, setShowAdoptionsExplanationModal] = useState(false);
-  const firstName = user?.name?.trim().split(/\s+/)[0] || '';
-  const isNonPartner = !user?.partner && !(user?.partnerMemberships && user.partnerMemberships.length > 0);
-  const isKycVerified = user?.kycStatus === 'VERIFIED';
-  const isKycPending = user?.kycStatus === 'PENDING';
-
-  /** Badge do perfil na tela inicial: Admin, ONG, Parceiro ou Tutor */
-  const roleBadgeLabel =
-    user?.isAdmin === true
-      ? 'Admin'
-      : user?.partner?.type === 'ONG' || (user?.partnerMemberships && user.partnerMemberships.length > 0)
-        ? 'ONG'
-        : user?.partner
-          ? 'Parceiro'
-          : 'Tutor';
-  const roleBadgeIcon: keyof typeof Ionicons.glyphMap =
-    roleBadgeLabel === 'Admin'
-      ? 'shield-checkmark'
-      : roleBadgeLabel === 'ONG'
-        ? 'heart'
-        : roleBadgeLabel === 'Parceiro'
-          ? 'storefront'
-          : 'paw';
-  const roleBadgeColor = roleBadgeLabel === 'Admin' ? '#b45309' : '#15803d';
-  const [showKycPendingModal, setShowKycPendingModal] = useState(false);
-  const [showKycCancelForm, setShowKycCancelForm] = useState(false);
-  const [kycCancelReason, setKycCancelReason] = useState<string | null>(null);
-  const { toastMessage: kycCancelToast, setToastMessage: setKycCancelToast, showToast } = useToastWithDedupe();
-
-  const handleRequestVerification = () => {
-    setShowVerificationModal(false);
-    router.push('/kyc');
-  };
-
-  const cancelKycMutation = useMutation({
-    mutationFn: (reason: string) => cancelKyc(reason),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['me'] });
-      queryClient.invalidateQueries({ queryKey: ['me', 'kyc-status'] });
-      setShowKycPendingModal(false);
-      setShowKycCancelForm(false);
-      setKycCancelReason(null);
-      showToast('Solicitação de verificação cancelada. Você pode solicitar novamente quando quiser.');
-    },
-    onError: (e: unknown) => {
-      Alert.alert('Erro', getFriendlyErrorMessage(e, 'Não foi possível cancelar. Tente novamente.'));
-    },
-  });
-
   useEffect(() => {
     if (user) setUser(user);
   }, [user, setUser]);
@@ -658,235 +591,133 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         ) : null}
 
-        {profileKey === 'user' ? (
-          <>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={toggleHeroExpanded}
-              style={[styles.heroCollapsedWrap, { borderRadius: 20, overflow: 'hidden' }]}
+        <View style={styles.spotlightSection}>
+          <View style={styles.spotlightHeader}>
+            <Text style={[styles.spotlightTitle, { color: colors.textPrimary }]}>Pets em destaque para você</Text>
+            {featuredPets.length > 0 ? (
+              <TouchableOpacity onPress={() => router.push('/feed')} hitSlop={12}>
+                <Text style={[styles.spotlightVerTodos, { color: colors.primary }]}>Ver todos</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          {featuredPets.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.spotlightScrollContent}
             >
-              <LinearGradient
-                colors={[colors.primary + '22', colors.primary + '08']}
-                style={styles.heroGradientFill}
-              >
-                {heroExpanded ? (
-                  <View style={styles.heroInner}>
-                    <View style={styles.heroExpandRow}>
-                      <Text style={[styles.hello, { color: colors.textSecondary }]}>Olá,</Text>
-                      <TouchableOpacity hitSlop={12} onPress={(e) => { e?.stopPropagation?.(); toggleHeroExpanded(); }}>
-                        <Ionicons name="chevron-up" size={22} color={colors.textSecondary} />
-                      </TouchableOpacity>
+              {featuredPets.map((pet) => (
+                <TouchableOpacity
+                  key={pet.id}
+                  style={[styles.spotlightCard, { backgroundColor: colors.surface }]}
+                  onPress={() => router.push({ pathname: '/(tabs)/feed', params: { petId: pet.id, trending: '1' } })}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.spotlightCardImageWrap}>
+                    <Image
+                      source={{ uri: pet.photos[0] }}
+                      style={styles.spotlightCardImage}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.spotlightTopRightBadges}>
+                      {typeof pet.matchScore === 'number' && (
+                        <View style={[styles.spotlightMatchBadge, { backgroundColor: getMatchScoreColor(pet.matchScore) + 'e6' }]}>
+                          <Text style={styles.spotlightMatchBadgeText}>{pet.matchScore}%</Text>
+                        </View>
+                      )}
+                      {pet.verified && (
+                        <View style={styles.spotlightVerifiedWrap}>
+                          <VerifiedBadge variant="pet" size={20} iconBackgroundColor={colors.primary} />
+                        </View>
+                      )}
                     </View>
-                    <View style={styles.heroNameRow}>
-                      <View style={styles.heroNameWrap}>
-                        <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
-                          {firstName || 'Visitante'}
+                    {pet.partner && (
+                      <View
+                        style={[
+                          styles.spotlightPartnerBadge,
+                          {
+                            backgroundColor: (pet.partner as { isPaidPartner?: boolean }).isPaidPartner
+                              ? 'rgba(251, 191, 36, 0.95)'
+                              : 'rgba(217, 119, 6, 0.92)',
+                          },
+                        ]}
+                      >
+                        {(pet.partner as { logoUrl?: string }).logoUrl ? (
+                          <Image
+                            source={{ uri: (pet.partner as { logoUrl: string }).logoUrl }}
+                            style={styles.spotlightPartnerLogo}
+                            resizeMode="contain"
+                          />
+                        ) : (
+                          <Ionicons
+                            name={(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'star' : 'heart'}
+                            size={12}
+                            color="#fff"
+                          />
+                        )}
+                        <Text style={styles.spotlightPartnerText}>
+                          {(pet.partner as { isPaidPartner?: boolean }).isPaidPartner ? 'Patrocinado' : 'Parceiro'}
                         </Text>
                       </View>
-                      <View style={styles.heroLogoBlock}>
-                        <Image source={isDark ? LogoDark : LogoLight} style={styles.heroLogo} resizeMode="contain" />
-                      </View>
-                    </View>
-                    <View style={styles.heroStatusRow}>
-                      <View style={styles.heroStatusLeft}>
-                        {(user?.verified || isKycVerified) ? (
-                          <TouchableOpacity onPress={(e) => { e?.stopPropagation?.(); setShowVerifiedInfoModal(true); }} hitSlop={8} activeOpacity={0.7}>
-                            <VerifiedBadge variant="user" size={18} showLabel backgroundColor={colors.primary} textColor="#fff" />
-                          </TouchableOpacity>
-                        ) : isNonPartner && isKycPending ? (
-                          <TouchableOpacity onPress={(e) => { e?.stopPropagation?.(); setShowKycPendingModal(true); }} hitSlop={8} style={styles.verificationChip} activeOpacity={0.7}>
-                            <Ionicons name="time-outline" size={20} color={colors.warning || '#d97706'} />
-                            <Text style={[styles.verificationChipText, { color: colors.warning || '#d97706' }]}>Verificação em análise</Text>
-                          </TouchableOpacity>
-                        ) : isNonPartner ? (
-                          <View ref={verificationChipRef} collapsable={false}>
-                            <TouchableOpacity onPress={(e) => { e?.stopPropagation?.(); setShowVerificationModal(true); }} hitSlop={8} style={styles.verificationChip} activeOpacity={0.7}>
-                              <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
-                              <Text style={[styles.verificationChipText, { color: colors.primary }]}>Solicitar verificação</Text>
-                            </TouchableOpacity>
-                          </View>
-                        ) : null}
-                      </View>
-                      {user ? (
-                        <View style={[styles.roleBadgeWrap, { backgroundColor: roleBadgeColor + '22' }]}>
-                          <Ionicons name={roleBadgeIcon} size={14} color={roleBadgeColor} />
-                          <Text style={[styles.roleBadgeText, { color: roleBadgeColor }]}>{roleBadgeLabel}</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                    <Text style={[styles.heroTagline, { color: colors.textSecondary }]}>Encontre seu próximo companheiro</Text>
-                    {typeof feedTotalCount === 'number' && feedTotalCount > 0 ? (
-                      <TouchableOpacity onPress={(e) => { e?.stopPropagation?.(); router.push('/feed'); }} activeOpacity={0.7}>
-                        <Text style={[styles.heroHint, { color: colors.primary }]}>{feedTotalCount} pet{feedTotalCount !== 1 ? 's' : ''} na sua região</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                    {tutorStats ? (
-                      <View ref={statsRowRef} collapsable={false} style={[styles.statsRow, { backgroundColor: colors.surface }]}>
-                        <View style={styles.stat}>
-                          <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.points}</Text>
-                          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>pontos</Text>
-                        </View>
-                        <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
-                        <TouchableOpacity style={styles.stat} onPress={(e) => { e?.stopPropagation?.(); setShowAdoptionsExplanationModal(true); }} activeOpacity={0.7}>
-                          <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.adoptedCount}</Text>
-                          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{tutorStats.adoptedCount === 1 ? 'adoção' : 'adoções'}</Text>
-                        </TouchableOpacity>
-                        <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
-                        <View style={[styles.stat, styles.statTitleWrap]}>
-                          <View style={[styles.tutorLevelBadge, { backgroundColor: colors.primary + '18' }]}>
-                            <Ionicons name={TUTOR_LEVEL_ICON[tutorStats.level] ?? 'paw-outline'} size={20} color={colors.primary} style={styles.statTitleIcon} />
-                            <Text style={[styles.statTitle, { color: colors.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">{tutorStats.title}</Text>
-                          </View>
-                        </View>
-                        <TouchableOpacity hitSlop={12} onPress={(e) => { e?.stopPropagation?.(); setShowGamificationModal(true); }} style={styles.statInfoBtn}>
-                          <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
-                        </TouchableOpacity>
-                      </View>
-                    ) : null}
+                    )}
                   </View>
-                ) : (
-                  <View style={styles.heroCollapsed}>
-                    <Text style={[styles.heroCollapsedName, { color: colors.textPrimary }]} numberOfLines={1}>{firstName || 'Visitante'}</Text>
-                    {user ? (
-                      <View style={[styles.roleBadgeWrap, { backgroundColor: roleBadgeColor + '22' }]}>
-                        <Ionicons name={roleBadgeIcon} size={14} color={roleBadgeColor} />
-                        <Text style={[styles.roleBadgeText, { color: roleBadgeColor }]}>{roleBadgeLabel}</Text>
-                      </View>
-                    ) : null}
-                    <Ionicons name="chevron-down" size={22} color={colors.textSecondary} />
-                  </View>
-                )}
-              </LinearGradient>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <LinearGradient
-            colors={[colors.primary + '22', colors.primary + '08']}
-            style={[styles.hero, { borderRadius: 20, overflow: 'hidden' }]}
-          >
-            <View style={styles.heroInner}>
-              <Text style={[styles.hello, { color: colors.textSecondary }]}>Olá,</Text>
-              <View style={styles.heroNameRow}>
-                <View style={styles.heroNameWrap}>
-                  <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
-                    {firstName || 'Visitante'}
-                  </Text>
-                </View>
-                <View style={styles.heroLogoBlock}>
-                  <Image
-                    source={isDark ? LogoDark : LogoLight}
-                    style={styles.heroLogo}
-                    resizeMode="contain"
-                  />
-                </View>
-              </View>
-              <View style={styles.heroStatusRow}>
-                <View style={styles.heroStatusLeft}>
-                  {(user?.verified || isKycVerified) ? (
-                    <TouchableOpacity
-                      onPress={() => setShowVerifiedInfoModal(true)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      activeOpacity={0.7}
-                    >
-                      <VerifiedBadge variant="user" size={18} showLabel backgroundColor={colors.primary} textColor="#fff" />
-                    </TouchableOpacity>
-                  ) : isNonPartner && isKycPending ? (
-                    <TouchableOpacity
-                      onPress={() => setShowKycPendingModal(true)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      style={styles.verificationChip}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="time-outline" size={20} color={colors.warning || '#d97706'} />
-                      <Text style={[styles.verificationChipText, { color: colors.warning || '#d97706' }]}>Verificação em análise</Text>
-                    </TouchableOpacity>
-                  ) : isNonPartner ? (
-                    <View ref={verificationChipRef} collapsable={false}>
-                      <TouchableOpacity
-                        onPress={() => setShowVerificationModal(true)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        style={styles.verificationChip}
-                        activeOpacity={0.7}
-                      >
-                        <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
-                        <Text style={[styles.verificationChipText, { color: colors.primary }]}>Solicitar verificação</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : null}
-                </View>
-                {user ? (
-                  <View style={[styles.roleBadgeWrap, { backgroundColor: roleBadgeColor + '22' }]}>
-                    <Ionicons name={roleBadgeIcon} size={14} color={roleBadgeColor} />
-                    <Text style={[styles.roleBadgeText, { color: roleBadgeColor }]}>{roleBadgeLabel}</Text>
-                  </View>
-                ) : null}
-              </View>
-              <Text style={[styles.heroTagline, { color: colors.textSecondary }]}>
-                Encontre seu próximo companheiro
-              </Text>
-              {typeof feedTotalCount === 'number' && feedTotalCount > 0 ? (
-                <TouchableOpacity onPress={() => router.push('/feed')} activeOpacity={0.7}>
-                  <Text style={[styles.heroHint, { color: colors.primary }]}>
-                    {feedTotalCount} pet{feedTotalCount !== 1 ? 's' : ''} na sua região
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-              {tutorStats ? (
-                <View ref={statsRowRef} collapsable={false} style={[styles.statsRow, { backgroundColor: colors.surface }]}>
-                  <View style={styles.stat}>
-                    <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.points}</Text>
-                    <Text style={[styles.statLabel, { color: colors.textSecondary }]}>pontos</Text>
-                  </View>
-                  <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
-                  <TouchableOpacity
-                    style={styles.stat}
-                    onPress={() => setShowAdoptionsExplanationModal(true)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.adoptedCount}</Text>
-                    <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
-                      {tutorStats.adoptedCount === 1 ? 'adoção' : 'adoções'}
+                  <View style={[styles.spotlightCardNameWrap, { backgroundColor: colors.surface }]}>
+                    <Text style={[styles.spotlightCardName, { color: colors.textPrimary }]} numberOfLines={1}>
+                      {pet.name}
                     </Text>
-                  </TouchableOpacity>
-                  <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
-                  <View style={[styles.stat, styles.statTitleWrap]}>
-                    <View style={[styles.tutorLevelBadge, { backgroundColor: colors.primary + '18' }]}>
-                      <Ionicons
-                        name={TUTOR_LEVEL_ICON[tutorStats.level] ?? 'paw-outline'}
-                        size={20}
-                        color={colors.primary}
-                        style={styles.statTitleIcon}
+                    <Text style={[styles.spotlightCardMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {getSpeciesLabel(pet.species)}
+                      {typeof pet.age === 'number' ? ` • ${pet.age} ${pet.age === 1 ? 'ano' : 'anos'}` : ''}
+                    </Text>
+                    <View style={styles.spotlightCardBadges}>
+                      <StatusBadge
+                        label={pet.vaccinated ? 'Vacinado' : 'Não vacinado'}
+                        variant={pet.vaccinated ? 'success' : 'warning'}
                       />
-                      <Text style={[styles.statTitle, { color: colors.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
-                        {tutorStats.title}
-                      </Text>
+                      {typeof pet.neutered === 'boolean' && (
+                        <StatusBadge
+                          label={pet.neutered ? 'Castrado' : 'Não castrado'}
+                          variant={pet.neutered ? 'success' : 'warning'}
+                        />
+                      )}
                     </View>
                   </View>
-                  <TouchableOpacity
-                    hitSlop={12}
-                    onPress={() => setShowGamificationModal(true)}
-                    style={styles.statInfoBtn}
-                  >
-                    <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
-                  </TouchableOpacity>
-                </View>
-              ) : null}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <View style={[styles.spotlightEmpty, { backgroundColor: colors.surface }]}>
+              <Ionicons name="paw-outline" size={40} color={colors.textSecondary} style={styles.spotlightEmptyIcon} />
+              <Text style={[styles.spotlightEmptyText, { color: colors.textSecondary }]}>
+                Ainda não há pets em destaque. Anuncie ou volte em breve.
+              </Text>
+              <View style={styles.spotlightEmptyActions}>
+                <TouchableOpacity
+                  style={[styles.spotlightEmptyBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => router.push('/feed')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.spotlightEmptyBtnText}>Ver feed</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.spotlightEmptyBtn, styles.spotlightEmptyBtnSecondary, { borderColor: colors.primary }]}
+                  onPress={() => router.push('/(tabs)/add-pet')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.spotlightEmptyBtnTextSecondary, { color: colors.primary }]}>Anunciar pet</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </LinearGradient>
-        )}
+          )}
+        </View>
 
-        {/* Card "Descobrir pets" em segundo, logo após o hero */}
+        {/* Card "Descobrir pets" — sem carrossel, após "Pets em destaque para você" */}
         <View ref={feedCardRef} style={{ marginBottom: spacing.lg }} collapsable={false}>
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={() => router.push('/feed')}
-          style={styles.cardWrapFeedHero}
-        >
-          <LinearGradient
-            colors={['#d97706', '#b45309']}
-            style={[styles.cardFeedHero, { borderRadius: 16, overflow: 'hidden' }]}
-          >
-            {feedThumbUrls.length > 0 ? (
+          <View style={styles.cardWrapFeedHero}>
+            <LinearGradient
+              colors={['#d97706', '#b45309']}
+              style={[styles.cardFeedHero, { borderRadius: 16, overflow: 'hidden' }]}
+            >
               <View style={styles.feedCardContent}>
                 <View style={styles.feedCardTop}>
                   <View style={[styles.feedCardIconWrapLarge, styles.iconWrapLight]}>
@@ -900,116 +731,37 @@ export default function DashboardScreen() {
                       <Text style={[styles.feedCardNumberHero, { color: 'rgba(255,255,255,0.95)' }]}>
                         {feedTotalCount} pet{feedTotalCount !== 1 ? 's' : ''} na sua região
                       </Text>
-                    ) : null}
+                    ) : (
+                      <Text style={[styles.feedCardSubtitle, { color: 'rgba(255,255,255,0.9)' }]} numberOfLines={1}>
+                        Nenhum pet no momento na sua região
+                      </Text>
+                    )}
                     <Text style={[styles.feedCardActionPhrase, { color: 'rgba(255,255,255,0.9)' }]}>
-                      Toque no card para ver os pets disponíveis
+                      {feedThumbUrls.length > 0 ? 'Toque para ver no feed ou no mapa' : 'Explore no feed ou no mapa'}
                     </Text>
                   </View>
                 </View>
-                <TouchableOpacity
-                  style={styles.feedCardVerPetsButton}
-                  onPress={(e) => {
-                    e?.stopPropagation?.();
-                    router.push('/feed');
-                  }}
-                  activeOpacity={0.85}
-                >
-                  <Text style={styles.feedCardVerPetsButtonText}>Ver pets</Text>
-                  <Ionicons name="chevron-forward" size={18} color="#b45309" />
-                </TouchableOpacity>
-                <ScrollView
-                  ref={feedCarouselRef}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  decelerationRate="fast"
-                  snapToInterval={FEED_CAROUSEL_ITEM_WIDTH}
-                  snapToAlignment="start"
-                  contentContainerStyle={[
-                    styles.feedCarouselContent,
-                    {
-                      width:
-                        (feedThumbUrls.length * 3) * FEED_CAROUSEL_ITEM_WIDTH -
-                        FEED_CAROUSEL_GAP,
-                    },
-                  ]}
-                  onScroll={(e) => {
-                    feedCarouselOffsetRef.current = e.nativeEvent.contentOffset.x;
-                  }}
-                  scrollEventThrottle={32}
-                  onLayout={() => {
-                    const segmentWidth = FEED_CAROUSEL_ITEM_WIDTH * feedThumbUrls.length;
-                    feedCarouselRef.current?.scrollTo({
-                      x: segmentWidth,
-                      animated: false,
-                    });
-                    feedCarouselOffsetRef.current = segmentWidth;
-                  }}
-                  onMomentumScrollEnd={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
-                    const x = e.nativeEvent.contentOffset.x;
-                    const segmentWidth = FEED_CAROUSEL_ITEM_WIDTH * feedThumbUrls.length;
-                    if (x < segmentWidth * 0.5) {
-                      feedCarouselRef.current?.scrollTo({
-                        x: x + segmentWidth,
-                        animated: false,
-                      });
-                    } else if (x > segmentWidth * 2.5) {
-                      feedCarouselRef.current?.scrollTo({
-                        x: x - segmentWidth,
-                        animated: false,
-                      });
-                    }
-                  }}
-                >
-                  {[...feedThumbUrls, ...feedThumbUrls, ...feedThumbUrls].map((uri, i) => (
-                    <Image
-                      key={`${i}`}
-                      source={{ uri }}
-                      style={[
-                        styles.feedThumbLarge,
-                        {
-                          width: FEED_CAROUSEL_THUMB_SIZE,
-                          height: FEED_CAROUSEL_THUMB_SIZE,
-                          marginRight:
-                            i < feedThumbUrls.length * 3 - 1 ? FEED_CAROUSEL_GAP : 0,
-                        },
-                      ]}
-                    />
-                  ))}
-                </ScrollView>
-              </View>
-            ) : (
-              <View style={styles.feedCardContent}>
-                <View style={styles.feedCardTop}>
-                  <View style={[styles.feedCardIconWrapLarge, styles.iconWrapLight]}>
-                    <Ionicons name="paw" size={36} color="#fff" />
-                  </View>
-                  <View style={styles.feedCardText}>
-                    <Text style={[styles.feedCardTitleHero, { color: '#fff' }]} numberOfLines={1}>
-                      Encontre seu próximo amigo
-                    </Text>
-                    <Text style={[styles.feedCardSubtitle, { color: 'rgba(255,255,255,0.9)' }]} numberOfLines={1}>
-                      Nenhum pet no momento na sua região
-                    </Text>
-                    <Text style={[styles.feedCardActionPhrase, { color: 'rgba(255,255,255,0.9)' }]}>
-                      Explore no mapa ou volte em breve
-                    </Text>
-                  </View>
+                <View style={styles.feedCardButtonsRow}>
+                  <TouchableOpacity
+                    style={styles.feedCardVerPetsButton}
+                    onPress={() => router.push('/feed')}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.feedCardVerPetsButtonText}>Ver pets</Text>
+                    <Ionicons name="chevron-forward" size={18} color="#b45309" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.feedCardMapButton}
+                    onPress={() => router.push('/map')}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="map" size={18} color="#fff" />
+                    <Text style={styles.feedCardMapButtonText}>Ver no mapa</Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity
-                  style={styles.feedCardMapButton}
-                  onPress={(e) => {
-                    e?.stopPropagation?.();
-                    router.push('/map');
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="map" size={18} color="#fff" />
-                  <Text style={styles.feedCardMapButtonText}>Explorar no mapa</Text>
-                </TouchableOpacity>
               </View>
-            )}
-          </LinearGradient>
-        </TouchableOpacity>
+            </LinearGradient>
+          </View>
         </View>
 
         <View style={[styles.homeShortcutsRow, styles.homeShortcutsRowCompact]}>
@@ -1195,6 +947,44 @@ export default function DashboardScreen() {
             const feedCarouselSegmentWidth = feedThumbUrls.length > 0 ? FEED_CAROUSEL_ITEM_WIDTH * feedThumbUrls.length : 0;
             const content = isFeedCard && feedThumbUrls.length > 0 ? (
               <View style={styles.feedCardContent}>
+                <ScrollView
+                  ref={feedCarouselRef}
+                  style={styles.feedCarouselScrollView}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  decelerationRate="fast"
+                  snapToInterval={FEED_CAROUSEL_ITEM_WIDTH}
+                  snapToAlignment="start"
+                  contentContainerStyle={[
+                    styles.feedCarouselContent,
+                    styles.feedCarouselContentBanner,
+                    { width: feedCarouselData.length * FEED_CAROUSEL_ITEM_WIDTH - FEED_CAROUSEL_GAP },
+                  ]}
+                  onScroll={(e) => {
+                    feedCarouselOffsetRef.current = e.nativeEvent.contentOffset.x;
+                  }}
+                  scrollEventThrottle={32}
+                  onLayout={() => {
+                    feedCarouselRef.current?.scrollTo({ x: feedCarouselSegmentWidth, animated: false });
+                    feedCarouselOffsetRef.current = feedCarouselSegmentWidth;
+                  }}
+                  onMomentumScrollEnd={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
+                    const x = e.nativeEvent.contentOffset.x;
+                    if (x < feedCarouselSegmentWidth * 0.5) {
+                      feedCarouselRef.current?.scrollTo({ x: x + feedCarouselSegmentWidth, animated: false });
+                    } else if (x > feedCarouselSegmentWidth * 2.5) {
+                      feedCarouselRef.current?.scrollTo({ x: x - feedCarouselSegmentWidth, animated: false });
+                    }
+                  }}
+                >
+                  {feedCarouselData.map((uri, i) => (
+                    <Image
+                      key={`${uri}-${i}`}
+                      source={{ uri }}
+                      style={[styles.feedThumbBanner, { width: FEED_CAROUSEL_WIDTH, height: FEED_CAROUSEL_HEIGHT, marginRight: i < feedCarouselData.length - 1 ? FEED_CAROUSEL_GAP : 0 }]}
+                    />
+                  ))}
+                </ScrollView>
                 <View style={styles.feedCardTop}>
                   <View style={[styles.feedCardIconWrapLarge, styles.iconWrapLight]}>
                     <Ionicons name="paw" size={36} color="#fff" />
@@ -1224,42 +1014,6 @@ export default function DashboardScreen() {
                   <Text style={styles.feedCardVerPetsButtonText}>Ver pets</Text>
                   <Ionicons name="chevron-forward" size={18} color="#b45309" />
                 </TouchableOpacity>
-                <ScrollView
-                  ref={feedCarouselRef}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  decelerationRate="fast"
-                  snapToInterval={FEED_CAROUSEL_ITEM_WIDTH}
-                  snapToAlignment="start"
-                  contentContainerStyle={[
-                    styles.feedCarouselContent,
-                    { width: feedCarouselData.length * FEED_CAROUSEL_ITEM_WIDTH - FEED_CAROUSEL_GAP },
-                  ]}
-                  onScroll={(e) => {
-                    feedCarouselOffsetRef.current = e.nativeEvent.contentOffset.x;
-                  }}
-                  scrollEventThrottle={32}
-                  onLayout={() => {
-                    feedCarouselRef.current?.scrollTo({ x: feedCarouselSegmentWidth, animated: false });
-                    feedCarouselOffsetRef.current = feedCarouselSegmentWidth;
-                  }}
-                  onMomentumScrollEnd={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
-                    const x = e.nativeEvent.contentOffset.x;
-                    if (x < feedCarouselSegmentWidth * 0.5) {
-                      feedCarouselRef.current?.scrollTo({ x: x + feedCarouselSegmentWidth, animated: false });
-                    } else if (x > feedCarouselSegmentWidth * 2.5) {
-                      feedCarouselRef.current?.scrollTo({ x: x - feedCarouselSegmentWidth, animated: false });
-                    }
-                  }}
-                >
-                  {feedCarouselData.map((uri, i) => (
-                    <Image
-                      key={`${uri}-${i}`}
-                      source={{ uri }}
-                      style={[styles.feedThumbLarge, { width: FEED_CAROUSEL_THUMB_SIZE, height: FEED_CAROUSEL_THUMB_SIZE, marginRight: i < feedCarouselData.length - 1 ? FEED_CAROUSEL_GAP : 0 }]}
-                    />
-                  ))}
-                </ScrollView>
               </View>
             ) : isFeedCard && feedPreviewItems.length === 0 ? (
               <View style={styles.feedCardContent}>
@@ -1410,20 +1164,6 @@ export default function DashboardScreen() {
           scrollOffsetRef={mainScrollOffsetRef}
           steps={[
             {
-              key: 'verification',
-              targetRef: verificationChipRef,
-              title: 'Solicitar verificação',
-              message: 'Solicite o selo "Verificado" para seu perfil. A equipe Adopet analisa e aprova. O selo ajuda a transmitir confiança para outros usuários.',
-              tooltipPlacement: 'bottom',
-            },
-            {
-              key: 'adoptions',
-              targetRef: statsRowRef,
-              title: 'Pontos e adoções',
-              message: 'Aqui você vê seus pontos e a quantidade de adoções confirmadas. Quanto mais adoções, mais você sobe de nível (Tutor Iniciante, Ativo, etc.). Toque no "i" para saber como ganhar pontos.',
-              tooltipPlacement: 'bottom',
-            },
-            {
               key: 'personalize-order',
               targetRef: personalizeOrderRef,
               title: 'Personalizar ordem dos botões',
@@ -1441,81 +1181,6 @@ export default function DashboardScreen() {
           onComplete={() => setShowDashboardTour(false)}
         />
       )}
-
-      <Modal
-        visible={showGamificationModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowGamificationModal(false)}
-      >
-        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => setShowGamificationModal(false)}
-          />
-          <View
-            style={[styles.gamificationModal, { backgroundColor: colors.surface, height: modalHeight }]}
-          >
-            <View style={[styles.gamificationModalHeader, { flexShrink: 0 }]}>
-              <Text style={[styles.gamificationModalTitle, { color: colors.textPrimary }]}>
-                Como funciona sua pontuação
-              </Text>
-              <TouchableOpacity
-                hitSlop={12}
-                onPress={() => setShowGamificationModal(false)}
-                style={styles.gamificationModalClose}
-              >
-                <Ionicons name="close" size={24} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              style={styles.gamificationModalBody}
-              contentContainerStyle={styles.gamificationModalBodyContent}
-              showsVerticalScrollIndicator={true}
-              bounces={false}
-            >
-              <Text style={[styles.gamificationModalP, { color: colors.textSecondary }]}>
-                <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Pontos</Text> — Você ganha pontos quando seus pets recebem o selo de verificação do Adopet (10 pts por pet) e quando uma adoção é confirmada pela equipe (25 pts por adoção). Há bônus na primeira adoção e em marcos como 3ª, 5ª e 10ª adoção.
-              </Text>
-              <Text style={[styles.gamificationModalP, { color: colors.textSecondary }]}>
-                <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Adoções</Text> — Soma de pets que você adotou + pets que você anunciou e foram adotados (só confirmadas pela Adopet). Toque no número na home para mais detalhes.
-              </Text>
-              <Text style={[styles.gamificationModalP, { color: colors.textSecondary }]}>
-                <Text style={{ fontWeight: '700', color: colors.textPrimary }}>Título</Text> — Seu nível como tutor, baseado nos pontos acumulados:
-              </Text>
-              <View style={[styles.gamificationLevels, { backgroundColor: colors.surface, borderColor: colors.primary + '40' }]}>
-                <View style={[styles.gamificationLevelHeader, { backgroundColor: colors.primary + '18', borderBottomColor: colors.primary + '50' }]}>
-                  <Text style={[styles.gamificationLevelHeaderPts, { color: colors.primary }]}>Pontos</Text>
-                  <Text style={[styles.gamificationLevelHeaderTitle, { color: colors.textPrimary }]}>Título</Text>
-                </View>
-                {GAMIFICATION_LEVELS.map(({ pts, title, icon }, idx) => (
-                  <View
-                    key={title}
-                    style={[
-                      styles.gamificationLevelRow,
-                      { borderBottomColor: colors.textSecondary + '30' },
-                      idx === GAMIFICATION_LEVELS.length - 1 && styles.gamificationLevelRowLast,
-                    ]}
-                  >
-                    <Text style={[styles.gamificationLevelPts, { color: colors.primary }]}>{pts} pts</Text>
-                    <View style={styles.gamificationLevelTitleWrap}>
-                      <Ionicons name={icon} size={18} color={colors.primary} style={styles.gamificationLevelIcon} />
-                      <Text style={[styles.gamificationLevelTitle, { color: colors.textPrimary }]}>{title}</Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
-            <TouchableOpacity
-              style={[styles.gamificationModalBtn, { backgroundColor: colors.primary, flexShrink: 0 }]}
-              onPress={() => setShowGamificationModal(false)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.gamificationModalBtnText}>Entendi</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
       <Modal
         visible={showReorderModal}
@@ -1626,212 +1291,6 @@ export default function DashboardScreen() {
         </View>
       </Modal>
 
-      <Modal
-        visible={showAdoptionsExplanationModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowAdoptionsExplanationModal(false)}
-      >
-        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowAdoptionsExplanationModal(false)} />
-          <Pressable
-            style={[styles.verificationModalCard, { backgroundColor: colors.surface, maxWidth: 340 }]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={styles.verificationModalHeader}>
-              <View style={[styles.verificationModalIconWrap, { backgroundColor: colors.primary + '18' }]}>
-                <Ionicons name="heart" size={32} color={colors.primary} />
-              </View>
-              <Text style={[styles.verificationModalTitle, { color: colors.textPrimary }]}>Sobre as adoções</Text>
-            </View>
-            <Text style={[styles.verificationModalP, { color: colors.textSecondary }]}>
-              O número de adoções reúne duas coisas:
-            </Text>
-            <Text style={[styles.verificationModalP, { color: colors.textSecondary, marginTop: 0 }]}>
-              <Text style={{ fontWeight: '600', color: colors.textPrimary }}>• Pets que você adotou</Text> — adoções em que você foi o adotante.
-            </Text>
-            <Text style={[styles.verificationModalP, { color: colors.textSecondary, marginTop: 4 }]}>
-              <Text style={{ fontWeight: '600', color: colors.textPrimary }}>• Pets que você anunciou e foram adotados</Text> — adoções em que você foi o tutor e outra pessoa adotou.
-            </Text>
-            <Text style={[styles.verificationModalP, { color: colors.textSecondary, marginTop: 12 }]}>
-              Só entram adoções confirmadas pela equipe Adopet. Você pode ver o detalhe em Minhas adoções.
-            </Text>
-            <View style={styles.verificationModalActions}>
-              <PrimaryButton
-                title="Ver Minhas adoções"
-                onPress={() => {
-                  setShowAdoptionsExplanationModal(false);
-                  router.push('/(tabs)/my-adoptions');
-                }}
-                style={styles.verificationModalCta}
-              />
-              <SecondaryButton
-                title="Fechar"
-                onPress={() => setShowAdoptionsExplanationModal(false)}
-              />
-            </View>
-          </Pressable>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={showVerificationModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowVerificationModal(false)}
-      >
-        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShowVerificationModal(false)} />
-          <Pressable
-            style={[styles.verificationModalCard, { backgroundColor: colors.surface }]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View style={styles.verificationModalHeader}>
-              <View style={[styles.verificationModalIconWrap, { backgroundColor: colors.primary + '18' }]}>
-                <Ionicons name="shield-checkmark" size={32} color={colors.primary} />
-              </View>
-              <Text style={[styles.verificationModalTitle, { color: colors.textPrimary }]}>Solicitar selo</Text>
-            </View>
-            <Text style={[styles.verificationModalP, { color: colors.textSecondary }]}>
-              O selo "Verificado" indica que sua identidade foi conferida pela equipe Adopet. A verificação ajuda a reduzir fraudes e maus-tratos e torna a adoção mais segura para todos.
-            </Text>
-            <Text style={[styles.verificationModalP, { color: colors.textSecondary }]}>
-              Só quem tem o selo pode concluir o processo de adoção no app: o tutor só consegue marcar você como adotante após sua verificação ser aprovada.
-            </Text>
-            <Text style={[styles.verificationModalP, { color: colors.textSecondary }]}>
-              Para solicitar o selo, envie um documento (RG ou CNH) e uma selfie segurando o documento. Nossa equipe analisa e, se estiver tudo certo, você recebe o selo e pode finalizar adoções.
-            </Text>
-            {isKycVerified ? (
-              <Text style={[styles.verificationModalP, { color: colors.primary, fontWeight: '600' }]}>
-                Você já concluiu a verificação de identidade.
-              </Text>
-            ) : null}
-            <View style={styles.verificationModalActions}>
-              {!isKycVerified && (
-                <PrimaryButton
-                  title="Solicitar"
-                  onPress={handleRequestVerification}
-                  style={styles.verificationModalCta}
-                />
-              )}
-              <SecondaryButton
-                title={isKycVerified ? 'Fechar' : 'Depois'}
-                onPress={() => setShowVerificationModal(false)}
-              />
-            </View>
-          </Pressable>
-        </View>
-      </Modal>
-
-      <UsuarioVerificadoModal
-        visible={showVerifiedInfoModal}
-        onClose={() => setShowVerifiedInfoModal(false)}
-      />
-
-      <Modal
-        visible={showKycPendingModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          setShowKycPendingModal(false);
-          setShowKycCancelForm(false);
-          setKycCancelReason(null);
-        }}
-      >
-        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => {
-              setShowKycPendingModal(false);
-              setShowKycCancelForm(false);
-              setKycCancelReason(null);
-            }}
-          />
-          <Pressable
-            style={[styles.verificationModalCard, { backgroundColor: colors.surface }]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            {showKycCancelForm ? (
-              <>
-                <View style={styles.verificationModalHeader}>
-                  <View style={[styles.verificationModalIconWrap, { backgroundColor: (colors.warning || '#d97706') + '22' }]}>
-                    <Ionicons name="close-circle-outline" size={32} color={colors.warning || '#d97706'} />
-                  </View>
-                  <Text style={[styles.verificationModalTitle, { color: colors.textPrimary }]}>Cancelar solicitação de verificação</Text>
-                </View>
-                <View style={styles.kycCancelWarningWrap}>
-                  <Ionicons name="warning-outline" size={22} color={colors.warning || '#d97706'} style={styles.kycCancelWarningIcon} />
-                  <Text style={[styles.verificationModalP, { color: colors.textPrimary, fontWeight: '600', marginTop: 0 }]}>
-                    Só é possível concluir adoções com o KYC finalizado. Ao cancelar, você poderá solicitar a verificação novamente quando quiser.
-                  </Text>
-                </View>
-                <Text style={[styles.verificationModalP, { color: colors.textSecondary, marginBottom: spacing.xs }]}>Por que está cancelando?</Text>
-                <View style={styles.kycCancelOptionsWrap}>
-                  {KYC_CANCELLATION_REASONS.map((opt) => (
-                    <TouchableOpacity
-                      key={opt.value}
-                      style={[
-                        styles.kycCancelOptionRow,
-                        { borderColor: kycCancelReason === opt.value ? colors.primary : colors.textSecondary + '60' },
-                        kycCancelReason === opt.value && { backgroundColor: colors.primary + '18' },
-                      ]}
-                      onPress={() => setKycCancelReason(opt.value)}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons
-                        name={kycCancelReason === opt.value ? 'radio-button-on' : 'radio-button-off'}
-                        size={20}
-                        color={kycCancelReason === opt.value ? colors.primary : colors.textSecondary}
-                      />
-                      <Text style={[styles.kycCancelOptionLabel, { color: colors.textPrimary }]}>{opt.label}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <View style={styles.kycCancelModalActions}>
-                  <SecondaryButton
-                    title="Manter solicitação"
-                    onPress={() => {
-                      setShowKycCancelForm(false);
-                      setKycCancelReason(null);
-                    }}
-                  />
-                  <PrimaryButton
-                    title={cancelKycMutation.isPending ? 'Cancelando...' : 'Confirmar cancelamento'}
-                    onPress={() => kycCancelReason && cancelKycMutation.mutate(kycCancelReason)}
-                    loading={cancelKycMutation.isPending}
-                    disabled={!kycCancelReason}
-                  />
-                </View>
-              </>
-            ) : (
-              <>
-                <View style={styles.verificationModalHeader}>
-                  <View style={[styles.verificationModalIconWrap, { backgroundColor: (colors.warning || '#d97706') + '22' }]}>
-                    <Ionicons name="time" size={32} color={colors.warning || '#d97706'} />
-                  </View>
-                  <Text style={[styles.verificationModalTitle, { color: colors.textPrimary }]}>Verificação em análise</Text>
-                </View>
-                <Text style={[styles.verificationModalP, { color: colors.textSecondary }]}>
-                  Sua verificação de identidade está sendo analisada pela equipe Adopet. O resultado pode levar até 48 horas.
-                </Text>
-                <Text style={[styles.verificationModalP, { color: colors.textSecondary }]}>
-                  Assim que for aprovada, você poderá concluir o processo de adoção no app e os tutores poderão marcar você como adotante.
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setShowKycCancelForm(true)}
-                  style={[styles.kycCancelLinkBtn, { borderColor: colors.textSecondary }]}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.kycCancelLinkText, { color: colors.textSecondary }]}>Cancelar solicitação</Text>
-                </TouchableOpacity>
-                <SecondaryButton title="Fechar" onPress={() => setShowKycPendingModal(false)} />
-              </>
-            )}
-          </Pressable>
-        </View>
-      </Modal>
-
-      <Toast message={kycCancelToast} onHide={() => setKycCancelToast(null)} />
     </View>
   );
 }
@@ -1859,167 +1318,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   confirmBannerButtonText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  hero: {
-    marginBottom: spacing.lg,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  heroCollapsedWrap: {
-    marginBottom: spacing.md,
-  },
-  heroGradientFill: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-  },
-  heroExpandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  heroCollapsed: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  heroCollapsedName: {
-    fontSize: 17,
-    fontWeight: '700',
-    flex: 1,
-    minWidth: 0,
-  },
-  heroInner: {},
-  heroNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, minHeight: 28 },
-  heroNameWrap: { flex: 1, minWidth: 0, marginRight: spacing.sm },
-  heroStatusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, width: '100%' },
-  heroStatusLeft: { flexDirection: 'row', alignItems: 'center' },
-  verificationChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-  },
-  verificationChipText: { fontSize: 12, fontWeight: '600' },
-  heroLogoBlock: { alignItems: 'flex-end' },
-  heroLogo: { height: 24, width: 82 },
-  roleBadgeWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-  },
-  roleBadgeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.3 },
-  hello: { fontSize: 13, marginBottom: 1 },
-  name: { fontSize: 19, fontWeight: '700', letterSpacing: 0.3, flexShrink: 1, minWidth: 0 },
-  heroTagline: { fontSize: 12, marginTop: 2 },
-  heroHint: { fontSize: 12, fontWeight: '600', marginTop: 4 },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing.sm,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: 10,
-  },
-  stat: { flex: 1, alignItems: 'center' },
-  statTitleWrap: { flex: 1.2, minWidth: 0, flexShrink: 1, flexDirection: 'column', alignItems: 'center', justifyContent: 'center' },
-  tutorLevelBadge: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 2,
-    maxWidth: '100%',
-  },
-  statTitleIcon: { marginBottom: 0 },
-  statValue: { fontSize: 16, fontWeight: '800' },
-  statLabel: { fontSize: 10, marginTop: 1 },
-  statTitle: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
-  statDivider: { width: 1, height: 24, opacity: 0.3, marginHorizontal: spacing.xs },
-  statInfoBtn: { padding: spacing.xs, marginLeft: spacing.xs },
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.lg,
   },
-  gamificationModal: {
-    width: '100%',
-    maxWidth: 400,
-    borderRadius: 20,
-    overflow: 'hidden',
-  },
-  gamificationModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  gamificationModalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    flex: 1,
-    paddingRight: spacing.md,
-  },
-  gamificationModalClose: { padding: spacing.xs },
-  gamificationModalBody: {
-    flex: 1,
-    minHeight: 0,
-  },
-  gamificationModalBodyContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-  },
-  gamificationModalP: {
-    fontSize: 14,
-    lineHeight: 22,
-    marginBottom: spacing.md,
-  },
-  gamificationLevels: {
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginTop: spacing.sm,
-    borderWidth: 1,
-  },
-  gamificationLevelHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderBottomWidth: 1.5,
-  },
-  gamificationLevelHeaderPts: { fontSize: 12, fontWeight: '800', width: 56, textTransform: 'uppercase', letterSpacing: 0.5 },
-  gamificationLevelHeaderTitle: { fontSize: 12, fontWeight: '800', flex: 1, textTransform: 'uppercase', letterSpacing: 0.5 },
-  gamificationLevelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderBottomWidth: 1,
-  },
-  gamificationLevelRowLast: { borderBottomWidth: 0 },
-  gamificationLevelPts: { fontSize: 14, fontWeight: '700', width: 56 },
-  gamificationLevelTitleWrap: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 },
-  gamificationLevelIcon: { marginRight: 8 },
-  gamificationLevelTitle: { fontSize: 14, fontWeight: '600', flex: 1 },
-  gamificationModalBtn: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: 14,
-    alignItems: 'center',
-  },
-  gamificationModalBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   gridHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2297,7 +1601,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   cardFeedHero: {
-    minHeight: 200,
+    minHeight: 180,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
   },
@@ -2319,47 +1623,113 @@ const styles = StyleSheet.create({
   feedCardText: { flex: 1, marginLeft: spacing.sm, minWidth: 0, justifyContent: 'center' },
   feedCardCta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   feedCardCtaText: { color: 'rgba(255,255,255,0.95)', fontSize: 14, fontWeight: '700' },
+  feedCardButtonsRow: { flexDirection: 'row', gap: spacing.sm },
   feedCardVerPetsButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    alignSelf: 'flex-start',
-    paddingVertical: 10,
-    paddingHorizontal: spacing.lg,
+    paddingVertical: 18,
+    paddingHorizontal: spacing.sm,
     backgroundColor: '#fff',
     borderRadius: 12,
   },
-  feedCardVerPetsButtonText: { color: '#b45309', fontSize: 15, fontWeight: '700' },
+  feedCardVerPetsButtonText: { color: '#b45309', fontSize: 16, fontWeight: '700' },
   feedCardTitle: { fontSize: 16, fontWeight: '800' },
   feedCardTitleHero: { fontSize: 18, fontWeight: '800', marginBottom: 2 },
   feedCardNumberHero: { fontSize: 15, fontWeight: '700', marginBottom: 2 },
   feedCardActionPhrase: { fontSize: 12, fontWeight: '500', marginTop: 2 },
   feedCardSubtitle: { fontSize: 12, marginTop: 2, fontWeight: '500' },
   feedThumbsRow: { flexDirection: 'row', gap: 6, marginTop: spacing.xs },
+  feedCarouselScrollView: { backgroundColor: 'transparent' },
   feedCarouselContent: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: spacing.xs,
     paddingVertical: 2,
+    backgroundColor: 'transparent',
   },
+  feedCarouselContentBanner: { marginBottom: spacing.sm },
   feedThumb: { width: 48, height: 48, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.15)' },
   feedThumbLarge: { borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.15)' },
+  feedThumbBanner: { borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.15)' },
+  spotlightSection: { marginBottom: spacing.lg },
+  spotlightHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm },
+  spotlightTitle: { fontSize: 18, fontWeight: '800' },
+  spotlightVerTodos: { fontSize: 14, fontWeight: '600' },
+  spotlightEmpty: {
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    borderRadius: 16,
+    alignItems: 'center',
+  },
+  spotlightEmptyIcon: { marginBottom: spacing.sm },
+  spotlightEmptyText: { fontSize: 15, textAlign: 'center', lineHeight: 22, marginBottom: spacing.md },
+  spotlightEmptyActions: { flexDirection: 'row', gap: spacing.sm },
+  spotlightEmptyBtn: { paddingVertical: 12, paddingHorizontal: spacing.lg, borderRadius: 12 },
+  spotlightEmptyBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
+  spotlightEmptyBtnSecondary: { backgroundColor: 'transparent', borderWidth: 2 },
+  spotlightEmptyBtnTextSecondary: { fontSize: 15, fontWeight: '600' },
+  spotlightScrollContent: { paddingRight: spacing.lg },
+  spotlightCard: {
+    width: 180,
+    marginRight: spacing.md,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  spotlightCardImageWrap: { position: 'relative', width: 180, height: 200 },
+  spotlightCardImage: { width: 180, height: 200, backgroundColor: 'rgba(0,0,0,0.08)' },
+  spotlightTopRightBadges: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    zIndex: 1,
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  spotlightMatchBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  spotlightMatchBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  spotlightVerifiedWrap: {},
+  spotlightPartnerBadge: {
+    position: 'absolute',
+    bottom: spacing.sm,
+    left: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+    zIndex: 1,
+  },
+  spotlightPartnerLogo: { width: 14, height: 14, borderRadius: 7 },
+  spotlightPartnerText: { fontSize: 10, fontWeight: '600', color: '#fff' },
+  spotlightCardNameWrap: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
+  spotlightCardName: { fontSize: 15, fontWeight: '700' },
+  spotlightCardMeta: { fontSize: 12, marginTop: 2 },
+  spotlightCardBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 6 },
   feedThumbMore: { alignItems: 'center', justifyContent: 'center' },
   feedThumbMoreText: { color: 'rgba(255,255,255,0.95)', fontSize: 14, fontWeight: '700' },
   feedCardMapButton: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    marginTop: spacing.sm,
-    paddingVertical: 10,
-    paddingHorizontal: spacing.md,
+    paddingVertical: 18,
+    paddingHorizontal: spacing.sm,
     backgroundColor: 'rgba(255,255,255,0.25)',
     borderRadius: 12,
-    alignSelf: 'flex-start',
   },
-  feedCardMapButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  feedCardMapButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   errorWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: spacing.xl },
   errorTitle: { fontSize: 18, fontWeight: '700', marginBottom: spacing.sm, textAlign: 'center' },
   errorSub: { fontSize: 15, textAlign: 'center', marginBottom: spacing.lg },
@@ -2419,69 +1789,4 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   ctaButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  verificationModalCard: {
-    width: '100%',
-    maxWidth: 400,
-    borderRadius: 20,
-    padding: spacing.xl,
-  },
-  verificationModalHeader: {
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  verificationModalIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-  },
-  verificationModalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  verificationModalP: {
-    fontSize: 14,
-    lineHeight: 22,
-    marginBottom: spacing.md,
-  },
-  verificationModalFeedback: {
-    fontSize: 14,
-    fontStyle: 'italic',
-    marginBottom: spacing.md,
-  },
-  verificationModalActions: {
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  verificationModalCta: { marginBottom: 0 },
-  kycCancelWarningWrap: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.md,
-    gap: spacing.sm,
-  },
-  kycCancelWarningIcon: { marginTop: 2 },
-  kycCancelOptionsWrap: { marginBottom: spacing.md, gap: spacing.xs },
-  kycCancelOptionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderWidth: 1,
-    borderRadius: 10,
-  },
-  kycCancelOptionLabel: { fontSize: 14, flex: 1 },
-  kycCancelModalActions: { gap: spacing.sm },
-  kycCancelLinkBtn: {
-    alignSelf: 'stretch',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: spacing.md,
-    marginBottom: spacing.sm,
-    alignItems: 'center',
-  },
-  kycCancelLinkText: { fontSize: 15, fontWeight: '600' },
 });
