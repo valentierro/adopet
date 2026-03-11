@@ -15,7 +15,14 @@ import {
   Alert,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  Platform,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -274,6 +281,12 @@ export default function DashboardScreen() {
   const [reorderDraft, setReorderDraft] = useState<string[]>([]);
   const [cardsOrder, setCardsOrderState] = useState<string[]>([]);
   const [cardsOrderLoaded, setCardsOrderLoaded] = useState(false);
+  /** Só para usuário comum: hero recolhido = mais espaço para o carrossel grande */
+  const [heroExpanded, setHeroExpanded] = useState(true);
+  const toggleHeroExpanded = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setHeroExpanded((e) => !e);
+  }, []);
   const FEED_CAROUSEL_THUMB_SIZE = 72;
   const FEED_CAROUSEL_GAP = 8;
   const FEED_CAROUSEL_ITEM_WIDTH = FEED_CAROUSEL_THUMB_SIZE + FEED_CAROUSEL_GAP;
@@ -291,6 +304,7 @@ export default function DashboardScreen() {
     }, 3000);
     return () => clearInterval(id);
   }, [feedThumbUrls.length]);
+
   const { data: _u, isLoading, isError, refetch: refetchMe } = useQuery({ queryKey: ['me'], queryFn: getMe, retry: 1 });
   const isAdmin = user?.isAdmin === true;
   const { data: adminStats } = useQuery({
@@ -644,119 +658,222 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         ) : null}
 
-        <LinearGradient
-          colors={[colors.primary + '22', colors.primary + '08']}
-          style={[styles.hero, { borderRadius: 20, overflow: 'hidden' }]}
-        >
-          <View style={styles.heroInner}>
-            <Text style={[styles.hello, { color: colors.textSecondary }]}>Olá,</Text>
-            <View style={styles.heroNameRow}>
-              <View style={styles.heroNameWrap}>
-                <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
-                  {firstName || 'Visitante'}
-                </Text>
+        {profileKey === 'user' ? (
+          <>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={toggleHeroExpanded}
+              style={[styles.heroCollapsedWrap, { borderRadius: 20, overflow: 'hidden' }]}
+            >
+              <LinearGradient
+                colors={[colors.primary + '22', colors.primary + '08']}
+                style={styles.heroGradientFill}
+              >
+                {heroExpanded ? (
+                  <View style={styles.heroInner}>
+                    <View style={styles.heroExpandRow}>
+                      <Text style={[styles.hello, { color: colors.textSecondary }]}>Olá,</Text>
+                      <TouchableOpacity hitSlop={12} onPress={(e) => { e?.stopPropagation?.(); toggleHeroExpanded(); }}>
+                        <Ionicons name="chevron-up" size={22} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.heroNameRow}>
+                      <View style={styles.heroNameWrap}>
+                        <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
+                          {firstName || 'Visitante'}
+                        </Text>
+                      </View>
+                      <View style={styles.heroLogoBlock}>
+                        <Image source={isDark ? LogoDark : LogoLight} style={styles.heroLogo} resizeMode="contain" />
+                      </View>
+                    </View>
+                    <View style={styles.heroStatusRow}>
+                      <View style={styles.heroStatusLeft}>
+                        {(user?.verified || isKycVerified) ? (
+                          <TouchableOpacity onPress={(e) => { e?.stopPropagation?.(); setShowVerifiedInfoModal(true); }} hitSlop={8} activeOpacity={0.7}>
+                            <VerifiedBadge variant="user" size={18} showLabel backgroundColor={colors.primary} textColor="#fff" />
+                          </TouchableOpacity>
+                        ) : isNonPartner && isKycPending ? (
+                          <TouchableOpacity onPress={(e) => { e?.stopPropagation?.(); setShowKycPendingModal(true); }} hitSlop={8} style={styles.verificationChip} activeOpacity={0.7}>
+                            <Ionicons name="time-outline" size={20} color={colors.warning || '#d97706'} />
+                            <Text style={[styles.verificationChipText, { color: colors.warning || '#d97706' }]}>Verificação em análise</Text>
+                          </TouchableOpacity>
+                        ) : isNonPartner ? (
+                          <View ref={verificationChipRef} collapsable={false}>
+                            <TouchableOpacity onPress={(e) => { e?.stopPropagation?.(); setShowVerificationModal(true); }} hitSlop={8} style={styles.verificationChip} activeOpacity={0.7}>
+                              <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
+                              <Text style={[styles.verificationChipText, { color: colors.primary }]}>Solicitar verificação</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : null}
+                      </View>
+                      {user ? (
+                        <View style={[styles.roleBadgeWrap, { backgroundColor: roleBadgeColor + '22' }]}>
+                          <Ionicons name={roleBadgeIcon} size={14} color={roleBadgeColor} />
+                          <Text style={[styles.roleBadgeText, { color: roleBadgeColor }]}>{roleBadgeLabel}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text style={[styles.heroTagline, { color: colors.textSecondary }]}>Encontre seu próximo companheiro</Text>
+                    {typeof feedTotalCount === 'number' && feedTotalCount > 0 ? (
+                      <TouchableOpacity onPress={(e) => { e?.stopPropagation?.(); router.push('/feed'); }} activeOpacity={0.7}>
+                        <Text style={[styles.heroHint, { color: colors.primary }]}>{feedTotalCount} pet{feedTotalCount !== 1 ? 's' : ''} na sua região</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                    {tutorStats ? (
+                      <View ref={statsRowRef} collapsable={false} style={[styles.statsRow, { backgroundColor: colors.surface }]}>
+                        <View style={styles.stat}>
+                          <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.points}</Text>
+                          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>pontos</Text>
+                        </View>
+                        <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
+                        <TouchableOpacity style={styles.stat} onPress={(e) => { e?.stopPropagation?.(); setShowAdoptionsExplanationModal(true); }} activeOpacity={0.7}>
+                          <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.adoptedCount}</Text>
+                          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{tutorStats.adoptedCount === 1 ? 'adoção' : 'adoções'}</Text>
+                        </TouchableOpacity>
+                        <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
+                        <View style={[styles.stat, styles.statTitleWrap]}>
+                          <View style={[styles.tutorLevelBadge, { backgroundColor: colors.primary + '18' }]}>
+                            <Ionicons name={TUTOR_LEVEL_ICON[tutorStats.level] ?? 'paw-outline'} size={20} color={colors.primary} style={styles.statTitleIcon} />
+                            <Text style={[styles.statTitle, { color: colors.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">{tutorStats.title}</Text>
+                          </View>
+                        </View>
+                        <TouchableOpacity hitSlop={12} onPress={(e) => { e?.stopPropagation?.(); setShowGamificationModal(true); }} style={styles.statInfoBtn}>
+                          <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : (
+                  <View style={styles.heroCollapsed}>
+                    <Text style={[styles.heroCollapsedName, { color: colors.textPrimary }]} numberOfLines={1}>{firstName || 'Visitante'}</Text>
+                    {user ? (
+                      <View style={[styles.roleBadgeWrap, { backgroundColor: roleBadgeColor + '22' }]}>
+                        <Ionicons name={roleBadgeIcon} size={14} color={roleBadgeColor} />
+                        <Text style={[styles.roleBadgeText, { color: roleBadgeColor }]}>{roleBadgeLabel}</Text>
+                      </View>
+                    ) : null}
+                    <Ionicons name="chevron-down" size={22} color={colors.textSecondary} />
+                  </View>
+                )}
+              </LinearGradient>
+            </TouchableOpacity>
+          </>
+        ) : (
+          <LinearGradient
+            colors={[colors.primary + '22', colors.primary + '08']}
+            style={[styles.hero, { borderRadius: 20, overflow: 'hidden' }]}
+          >
+            <View style={styles.heroInner}>
+              <Text style={[styles.hello, { color: colors.textSecondary }]}>Olá,</Text>
+              <View style={styles.heroNameRow}>
+                <View style={styles.heroNameWrap}>
+                  <Text style={[styles.name, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
+                    {firstName || 'Visitante'}
+                  </Text>
+                </View>
+                <View style={styles.heroLogoBlock}>
+                  <Image
+                    source={isDark ? LogoDark : LogoLight}
+                    style={styles.heroLogo}
+                    resizeMode="contain"
+                  />
+                </View>
               </View>
-              <View style={styles.heroLogoBlock}>
-                <Image
-                  source={isDark ? LogoDark : LogoLight}
-                  style={styles.heroLogo}
-                  resizeMode="contain"
-                />
-              </View>
-            </View>
-            <View style={styles.heroStatusRow}>
-              <View style={styles.heroStatusLeft}>
-                {(user?.verified || isKycVerified) ? (
-                  <TouchableOpacity
-                    onPress={() => setShowVerifiedInfoModal(true)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    activeOpacity={0.7}
-                  >
-                    <VerifiedBadge variant="user" size={18} showLabel backgroundColor={colors.primary} textColor="#fff" />
-                  </TouchableOpacity>
-                ) : isNonPartner && isKycPending ? (
-                  <TouchableOpacity
-                    onPress={() => setShowKycPendingModal(true)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    style={styles.verificationChip}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="time-outline" size={20} color={colors.warning || '#d97706'} />
-                    <Text style={[styles.verificationChipText, { color: colors.warning || '#d97706' }]}>Verificação em análise</Text>
-                  </TouchableOpacity>
-                ) : isNonPartner ? (
-                  <View ref={verificationChipRef} collapsable={false}>
+              <View style={styles.heroStatusRow}>
+                <View style={styles.heroStatusLeft}>
+                  {(user?.verified || isKycVerified) ? (
                     <TouchableOpacity
-                      onPress={() => setShowVerificationModal(true)}
+                      onPress={() => setShowVerifiedInfoModal(true)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      activeOpacity={0.7}
+                    >
+                      <VerifiedBadge variant="user" size={18} showLabel backgroundColor={colors.primary} textColor="#fff" />
+                    </TouchableOpacity>
+                  ) : isNonPartner && isKycPending ? (
+                    <TouchableOpacity
+                      onPress={() => setShowKycPendingModal(true)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       style={styles.verificationChip}
                       activeOpacity={0.7}
                     >
-                      <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
-                      <Text style={[styles.verificationChipText, { color: colors.primary }]}>Solicitar verificação</Text>
+                      <Ionicons name="time-outline" size={20} color={colors.warning || '#d97706'} />
+                      <Text style={[styles.verificationChipText, { color: colors.warning || '#d97706' }]}>Verificação em análise</Text>
                     </TouchableOpacity>
+                  ) : isNonPartner ? (
+                    <View ref={verificationChipRef} collapsable={false}>
+                      <TouchableOpacity
+                        onPress={() => setShowVerificationModal(true)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={styles.verificationChip}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="shield-checkmark-outline" size={20} color={colors.primary} />
+                        <Text style={[styles.verificationChipText, { color: colors.primary }]}>Solicitar verificação</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+                </View>
+                {user ? (
+                  <View style={[styles.roleBadgeWrap, { backgroundColor: roleBadgeColor + '22' }]}>
+                    <Ionicons name={roleBadgeIcon} size={14} color={roleBadgeColor} />
+                    <Text style={[styles.roleBadgeText, { color: roleBadgeColor }]}>{roleBadgeLabel}</Text>
                   </View>
                 ) : null}
               </View>
-              {user ? (
-                <View style={[styles.roleBadgeWrap, { backgroundColor: roleBadgeColor + '22' }]}>
-                  <Ionicons name={roleBadgeIcon} size={14} color={roleBadgeColor} />
-                  <Text style={[styles.roleBadgeText, { color: roleBadgeColor }]}>{roleBadgeLabel}</Text>
+              <Text style={[styles.heroTagline, { color: colors.textSecondary }]}>
+                Encontre seu próximo companheiro
+              </Text>
+              {typeof feedTotalCount === 'number' && feedTotalCount > 0 ? (
+                <TouchableOpacity onPress={() => router.push('/feed')} activeOpacity={0.7}>
+                  <Text style={[styles.heroHint, { color: colors.primary }]}>
+                    {feedTotalCount} pet{feedTotalCount !== 1 ? 's' : ''} na sua região
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              {tutorStats ? (
+                <View ref={statsRowRef} collapsable={false} style={[styles.statsRow, { backgroundColor: colors.surface }]}>
+                  <View style={styles.stat}>
+                    <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.points}</Text>
+                    <Text style={[styles.statLabel, { color: colors.textSecondary }]}>pontos</Text>
+                  </View>
+                  <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
+                  <TouchableOpacity
+                    style={styles.stat}
+                    onPress={() => setShowAdoptionsExplanationModal(true)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.adoptedCount}</Text>
+                    <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
+                      {tutorStats.adoptedCount === 1 ? 'adoção' : 'adoções'}
+                    </Text>
+                  </TouchableOpacity>
+                  <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
+                  <View style={[styles.stat, styles.statTitleWrap]}>
+                    <View style={[styles.tutorLevelBadge, { backgroundColor: colors.primary + '18' }]}>
+                      <Ionicons
+                        name={TUTOR_LEVEL_ICON[tutorStats.level] ?? 'paw-outline'}
+                        size={20}
+                        color={colors.primary}
+                        style={styles.statTitleIcon}
+                      />
+                      <Text style={[styles.statTitle, { color: colors.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
+                        {tutorStats.title}
+                      </Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    hitSlop={12}
+                    onPress={() => setShowGamificationModal(true)}
+                    style={styles.statInfoBtn}
+                  >
+                    <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
+                  </TouchableOpacity>
                 </View>
               ) : null}
             </View>
-            <Text style={[styles.heroTagline, { color: colors.textSecondary }]}>
-              Encontre seu próximo companheiro
-            </Text>
-            {typeof feedTotalCount === 'number' && feedTotalCount > 0 ? (
-              <TouchableOpacity onPress={() => router.push('/feed')} activeOpacity={0.7}>
-                <Text style={[styles.heroHint, { color: colors.primary }]}>
-                  {feedTotalCount} pet{feedTotalCount !== 1 ? 's' : ''} na sua região
-                </Text>
-              </TouchableOpacity>
-            ) : null}
-            {tutorStats ? (
-              <View ref={statsRowRef} collapsable={false} style={[styles.statsRow, { backgroundColor: colors.surface }]}>
-                <View style={styles.stat}>
-                  <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.points}</Text>
-                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>pontos</Text>
-                </View>
-                <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
-                <TouchableOpacity
-                  style={styles.stat}
-                  onPress={() => setShowAdoptionsExplanationModal(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.statValue, { color: colors.primary }]}>{tutorStats.adoptedCount}</Text>
-                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>
-                    {tutorStats.adoptedCount === 1 ? 'adoção' : 'adoções'}
-                  </Text>
-                </TouchableOpacity>
-                <View style={[styles.statDivider, { backgroundColor: colors.textSecondary }]} />
-                <View style={[styles.stat, styles.statTitleWrap]}>
-                  <View style={[styles.tutorLevelBadge, { backgroundColor: colors.primary + '18' }]}>
-                    <Ionicons
-                      name={TUTOR_LEVEL_ICON[tutorStats.level] ?? 'paw-outline'}
-                      size={20}
-                      color={colors.primary}
-                      style={styles.statTitleIcon}
-                    />
-                    <Text style={[styles.statTitle, { color: colors.textPrimary }]} numberOfLines={2} ellipsizeMode="tail">
-                      {tutorStats.title}
-                    </Text>
-                  </View>
-                </View>
-                <TouchableOpacity
-                  hitSlop={12}
-                  onPress={() => setShowGamificationModal(true)}
-                  style={styles.statInfoBtn}
-                >
-                  <Ionicons name="information-circle-outline" size={22} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-            ) : null}
-          </View>
-        </LinearGradient>
+          </LinearGradient>
+        )}
 
         {/* Card "Descobrir pets" em segundo, logo após o hero */}
         <View ref={feedCardRef} style={{ marginBottom: spacing.lg }} collapsable={false}>
@@ -1746,6 +1863,32 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
+  },
+  heroCollapsedWrap: {
+    marginBottom: spacing.md,
+  },
+  heroGradientFill: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+  },
+  heroExpandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  heroCollapsed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  heroCollapsedName: {
+    fontSize: 17,
+    fontWeight: '700',
+    flex: 1,
+    minWidth: 0,
   },
   heroInner: {},
   heroNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, minHeight: 28 },
