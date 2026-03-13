@@ -15,18 +15,18 @@ export const lightColors = {
 } as const;
 
 export const darkColors = {
-  primary: '#2DD4BF',
-  primaryDark: '#14B8A6',
+  primary: '#14B8A6',       // teal mais contido no escuro
+  primaryDark: '#0D9488',
   accent: '#FB7185',
-  background: '#0C1210',
-  surface: '#1A2220',
-  headerBg: '#152520',     // um pouco mais claro que background – header
-  tabBarBg: '#152520',     // rodapé alinhado ao header
-  cardBg: '#1E2624',
+  background: '#0F1412',    // fundo principal
+  surface: '#1C2422',       // cards, blocos – bem legível
+  headerBg: '#161D1B',      // header e tab bar
+  tabBarBg: '#161D1B',
+  cardBg: '#232D2A',        // cards com mais contraste que surface
   textPrimary: '#F5F5F4',
-  textSecondary: '#A8A29E',
+  textSecondary: '#B8B4B0', // mais claro para legibilidade
   error: '#FCA5A5',
-  overlay: 'rgba(0,0,0,0.55)',
+  overlay: 'rgba(0,0,0,0.6)',
 } as const;
 
 export type ThemeColors = typeof lightColors;

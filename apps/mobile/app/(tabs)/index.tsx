@@ -449,7 +449,7 @@ export default function DashboardScreen() {
     },
   ];
 
-  // Card condicional no lugar de Conversas: admin → Administração; demais → Notificações
+  // Card condicional: admin → Administração; demais → Conversas (notificações ficam no sino do header)
   const conditionalCard: (typeof cards)[0] = isAdmin
     ? {
         id: 'admin',
@@ -460,15 +460,15 @@ export default function DashboardScreen() {
         gradient: ['rgba(217, 119, 6, 0.9)', 'rgba(180, 83, 9, 0.95)'],
       }
     : {
-        id: 'notifications',
-        title: 'Notificações',
+        id: 'chats',
+        title: 'Conversas',
         subtitle:
-          notificationsUnreadCount === 0
+          unreadTotal === 0
             ? 'Nenhuma nova'
-            : `${notificationsUnreadCount} não lida${notificationsUnreadCount !== 1 ? 's' : ''}`,
-        icon: 'notifications',
-        route: '/notifications',
-        badge: notificationsUnreadCount > 0 ? notificationsUnreadCount : undefined,
+            : `${unreadTotal} não lida${unreadTotal !== 1 ? 's' : ''}`,
+        icon: 'chatbubbles',
+        route: '/(tabs)/chats',
+        badge: unreadTotal > 0 ? unreadTotal : undefined,
       };
   const mapIdx = cards.findIndex((c) => c.id === 'map');
   const cardsWithConditional =

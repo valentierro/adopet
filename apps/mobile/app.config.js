@@ -3,7 +3,7 @@
 const baseExpo = {
   name: 'Adopet',
   slug: 'adopet',
-  version: '1.1.14',
+  version: '1.1.15',
   // default = permite rotação (recomendado pelo Play para Android 16+ e telas grandes).
   orientation: 'default',
   icon: './assets/brand/icon/app_icon_light.png',
@@ -16,7 +16,7 @@ const baseExpo = {
   },
   ios: {
     supportsTablet: true,
-    buildNumber: '70',
+    buildNumber: '71',
     bundleIdentifier: 'br.com.adopet.app',
     associatedDomains: ['applinks:appadopet.com.br'],
     infoPlist: { UIBackgroundModes: [] },
@@ -36,8 +36,8 @@ const baseExpo = {
       backgroundColor: '#FFFFFF',
     },
     package: 'br.com.adopet.app',
-    // Último publicado na Play Store: 70. Cada novo upload precisa de versionCode maior.
-    versionCode: 70,
+    // Último publicado na Play Store: 71. Cada novo upload precisa de versionCode maior.
+    versionCode: 71,
     intentFilters: [
       {
         action: 'VIEW',

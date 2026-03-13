@@ -58,7 +58,7 @@ const SEX_PREF_LABEL: Record<string, string> = { male: 'Macho', female: 'Fêmea'
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
+  const { colors, isDark, toggleTheme } = useTheme();
   const { config: clientConfig } = useClientConfig();
   const userId = useAuthStore((s) => s.user?.id);
   const logout = useAuthStore((s) => s.logout);
@@ -212,7 +212,10 @@ export default function ProfileScreen() {
           : 'Tutor';
   const roleBadgeIcon: keyof typeof Ionicons.glyphMap =
     roleBadgeLabel === 'Admin' ? 'shield-checkmark' : roleBadgeLabel === 'ONG' ? 'heart' : roleBadgeLabel === 'Parceiro' ? 'storefront' : 'paw';
-  const roleBadgeColor = roleBadgeLabel === 'Admin' ? '#b45309' : '#15803d';
+  const roleBadgeColor =
+    roleBadgeLabel === 'Admin'
+      ? (isDark ? '#F59E0B' : '#b45309')
+      : (isDark ? '#22C55E' : '#15803d');
 
   const uploadAvatarMutation = useMutation({
     mutationFn: async ({ uri, token }: { uri: string; token?: string | null }) => {
@@ -284,7 +287,11 @@ export default function ProfileScreen() {
   return (
     <ScreenContainer scroll>
       <LinearGradient
-        colors={[colors.primary + '22', colors.primary + '08']}
+        colors={
+          isDark
+            ? [colors.surface, colors.background]
+            : [colors.primary + '22', colors.primary + '08']
+        }
         style={[styles.profileHeaderBlock, { borderRadius: 20, overflow: 'hidden' }]}
       >
         <View style={styles.profileHeaderRow}>
@@ -318,9 +325,28 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
           <View style={styles.profileHeaderText}>
-            <Text style={[styles.profileHeaderName, { color: colors.textPrimary }]} numberOfLines={1}>
-              {user?.name ?? 'Carregando...'}
-            </Text>
+            <View style={styles.profileHeaderNameRow}>
+              <Text style={[styles.profileHeaderName, { color: colors.textPrimary }]} numberOfLines={1}>
+                {user?.name ?? 'Carregando...'}
+              </Text>
+              <View style={styles.profileHeaderThemeWrap}>
+                <TouchableOpacity
+                  onPress={() => hapticThen(toggleTheme)}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  style={styles.profileHeaderThemeBtn}
+                  accessibilityLabel={isDark ? 'Usar tema claro' : 'Usar tema escuro'}
+                >
+                  <Ionicons
+                    name={isDark ? 'sunny' : 'moon'}
+                    size={24}
+                    color={colors.textPrimary}
+                  />
+                </TouchableOpacity>
+                <Text style={[styles.profileHeaderThemeLabel, { color: colors.textSecondary }]}>
+                  {isDark ? 'Escuro' : 'Claro'}
+                </Text>
+              </View>
+            </View>
             {user?.username ? (
               <Text style={[styles.profileHeaderUserEmailLabel, { color: colors.textSecondary }]} numberOfLines={1}>
                 Usuário: @{user.username}
@@ -1110,7 +1136,16 @@ const styles = StyleSheet.create({
   },
   profileHeaderAvatarWrap: { marginBottom: 0 },
   profileHeaderText: { flex: 1, minWidth: 0 },
-  profileHeaderName: { fontSize: 20, fontWeight: '700', marginBottom: 4 },
+  profileHeaderNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    gap: spacing.sm,
+  },
+  profileHeaderName: { flex: 1, minWidth: 0, fontSize: 20, fontWeight: '700' },
+  profileHeaderThemeWrap: { alignItems: 'center', justifyContent: 'center' },
+  profileHeaderThemeBtn: { padding: spacing.xs },
+  profileHeaderThemeLabel: { fontSize: 10, marginTop: 2, fontWeight: '600' },
   profileHeaderUserEmailLabel: { fontSize: 14, marginBottom: 2 },
   profileHeaderEmailLine: { fontSize: 14, marginBottom: 4 },
   profileHeaderLinkRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },

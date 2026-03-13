@@ -29,6 +29,8 @@ import { spacing } from '../../src/theme';
 type FeedItem = FeedResponse['items'][number];
 
 const FEED_QUERY_KEY = ['feed'];
+/** Limite da primeira página do feed para visitante (garante 10+ por seção). Deve estar na queryKey para refetch usar o mesmo. */
+const GUEST_FEED_LIMIT = 150;
 const GRID_GAP = spacing.sm;
 const GRID_PADDING = spacing.md;
 /** Padding lateral do grid na tela (menor que GRID_PADDING para não cortar o card da direita) */
@@ -328,7 +330,20 @@ export default function FeedScreen() {
   const effectiveRadiusKm = userId ? (prefs?.radiusKm ?? 300) : guestRadiusKm;
   const sortByTrending = sortMode === 'trending';
   const { data, isLoading, isError, refetch, isRefetching } = useQuery({
-    queryKey: [...FEED_QUERY_KEY, cursor, effectiveRadiusKm, speciesFilter, partnerFilter, userCoords?.lat, userCoords?.lng, triageFilters, sortMode, debouncedNameSearch],
+    queryKey: [
+      ...FEED_QUERY_KEY,
+      cursor,
+      effectiveRadiusKm,
+      speciesFilter,
+      partnerFilter,
+      userCoords?.lat,
+      userCoords?.lng,
+      triageFilters,
+      sortMode,
+      debouncedNameSearch,
+      isGuest,
+      ...(isGuest ? ['limit', GUEST_FEED_LIMIT] : []),
+    ],
     queryFn: () =>
       fetchFeed({
         ...(userCoords && { lat: userCoords.lat, lng: userCoords.lng }),
@@ -339,6 +354,7 @@ export default function FeedScreen() {
         partnerFilter: partnerFilter !== 'all' ? partnerFilter : undefined,
         ...(sortByTrending && { sortBy: 'trending' }),
         ...triageFilters,
+        ...(isGuest && { limit: GUEST_FEED_LIMIT }),
       }),
     staleTime: 60_000,
     enabled: true,
@@ -352,6 +368,7 @@ export default function FeedScreen() {
 
   // Primeira carga: define lista; ao carregar mais: append (mesma ordem/prioridade da API para grid e swipe)
   // Se abriu com petId (ex.: clicou no carrossel "Conheça esses pets"), coloca esse pet primeiro no swipe
+  // Visitante: não substituir a lista em refetch em segundo plano (só na carga inicial ou no pull-to-refresh)
   useEffect(() => {
     if (!data?.items?.length) return;
     if (cursor === null) {
@@ -368,7 +385,10 @@ export default function FeedScreen() {
             .catch(() => setAccumulatedItems(data.items));
         }
       } else {
-        setAccumulatedItems(data.items);
+        setAccumulatedItems((prev) => {
+          if (isGuest && (prev?.length ?? 0) > 0) return prev;
+          return data.items;
+        });
       }
     } else {
       setAccumulatedItems((prev) => {
@@ -382,6 +402,7 @@ export default function FeedScreen() {
   const items = accumulatedItems ?? data?.items ?? [];
   const displayGridItems = effectiveViewMode === 'grid' ? items : [];
   const GUEST_SECTION_MAX = 5;
+  const GUEST_SECTION_MIN_ITEMS = 10;
   const guestSections: {
     title: string;
     data: FeedItem[];
@@ -395,7 +416,8 @@ export default function FeedScreen() {
       gridSpecies?: FeedSpeciesFilter;
       gridSize?: string;
     }[] = [];
-    const near = displayGridItems.slice(0, 20);
+    const nearLen = Math.max(GUEST_SECTION_MIN_ITEMS, Math.min(30, displayGridItems.length));
+    const near = displayGridItems.slice(0, nearLen);
     if (near.length > 0) sections.push({ title: 'Pets perto de você', data: near });
     const dogs = displayGridItems.filter((p) => String(p.species).toUpperCase() === 'DOG');
     if (dogs.length > 0) sections.push({ title: 'Cachorros para adoção', data: dogs, gridSpecies: 'DOG' });
@@ -406,7 +428,8 @@ export default function FeedScreen() {
       const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return tb - ta;
     });
-    const recent = byDate.slice(0, 15);
+    const recentLen = Math.max(GUEST_SECTION_MIN_ITEMS, Math.min(25, byDate.length));
+    const recent = byDate.slice(0, recentLen);
     if (recent.length > 0) sections.push({ title: 'Recém-chegados', data: recent });
     const forApartment = displayGridItems.filter((p) => String(p.size || '').toLowerCase() === 'small');
     if (forApartment.length > 0 && sections.length < GUEST_SECTION_MAX) {
@@ -418,7 +441,7 @@ export default function FeedScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      refetch();
+      if (userId) refetch();
       getViewedPetIds(userId).then(setViewedPetIds);
       if (userId) {
         setMatchScoreIntroCheckDone(false);
@@ -975,9 +998,10 @@ export default function FeedScreen() {
         </Pressable>
         <View style={styles.headerRight}>
           <Text style={[styles.hint, { color: colors.textSecondary }]}>
-            {(effectiveViewMode === 'grid' ? displayGridItems.length : items.length)}
-            {data?.totalCount != null && data.totalCount > 0 ? ` de ${data.totalCount} ` : ' '}
-            {(effectiveViewMode === 'grid' ? displayGridItems.length : items.length) !== 1 ? 'pets' : 'pet'}
+            {(() => {
+              const total = data?.totalCount ?? (effectiveViewMode === 'grid' ? displayGridItems.length : items.length);
+              return `${total} pet${total !== 1 ? 's' : ''}`;
+            })()}
           </Text>
           {!isGuest && (
             <View ref={feedViewModeToggleRef} collapsable={false} style={styles.viewModeToggle}>
@@ -1755,7 +1779,7 @@ export default function FeedScreen() {
                 </View>
               );
             }}
-            onEndReached={nextCursor ? loadMore : undefined}
+            onEndReached={!isGuest && nextCursor ? loadMore : undefined}
             onEndReachedThreshold={0.4}
             ListEmptyComponent={
               changingFilter && (isRefetching || isLoading) ? (

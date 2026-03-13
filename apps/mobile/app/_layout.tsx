@@ -12,8 +12,10 @@ import {
   Dimensions,
   StyleSheet,
   Animated,
+  Appearance,
   type AppStateStatus,
 } from 'react-native';
+import { useThemeStore } from '../src/stores/themeStore';
 import Constants from 'expo-constants';
 import { Ionicons } from '@expo/vector-icons';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -111,6 +113,17 @@ function RootLayout() {
       SplashScreen.hideAsync();
     }, 380);
     return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    const setColorSchemeNative =
+      typeof (Appearance as { setColorScheme?: (s: 'light' | 'dark' | null) => void }).setColorScheme === 'function'
+        ? (Appearance as { setColorScheme: (s: 'light' | 'dark' | null) => void }).setColorScheme
+        : null;
+    useThemeStore.getState().hydrate().then(() => {
+      const scheme = useThemeStore.getState().preference;
+      if (scheme && setColorSchemeNative) setColorSchemeNative(scheme);
+    });
   }, []);
 
   useEffect(() => {

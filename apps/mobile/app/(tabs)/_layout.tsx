@@ -1,5 +1,5 @@
 import { Tabs, useRouter } from 'expo-router';
-import { TouchableOpacity } from 'react-native';
+import { TouchableOpacity, View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -7,6 +7,7 @@ import { usePushToken } from '../../src/hooks/usePushToken';
 import { useNotificationResponse } from '../../src/hooks/useNotificationResponse';
 import { useAuthStore } from '../../src/stores/authStore';
 import { getConversations } from '../../src/api/conversations';
+import { getMyNotificationsUnreadCount } from '../../src/api/me';
 import { getAdminStats } from '../../src/api/admin';
 import { HeaderLogo } from '../../src/components';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +22,49 @@ function HeaderBackButton() {
       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
     >
       <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+    </TouchableOpacity>
+  );
+}
+
+function HeaderNotificationsButton() {
+  const router = useRouter();
+  const { colors } = useTheme();
+  const userId = useAuthStore((s) => s.user?.id);
+  const { data: notificationsData } = useQuery({
+    queryKey: ['me', 'notifications-unread-count'],
+    queryFn: getMyNotificationsUnreadCount,
+    enabled: !!userId,
+  });
+  const count = notificationsData?.count ?? 0;
+  if (!userId) return null;
+  return (
+    <TouchableOpacity
+      onPress={() => router.push('/notifications')}
+      style={{ padding: 8, marginRight: 4 }}
+      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      accessibilityLabel={count > 0 ? `${count} notificações não lidas` : 'Notificações'}
+    >
+      <View>
+        <Ionicons name="notifications-outline" size={24} color={colors.textPrimary} />
+        {count > 0 && (
+          <View
+            style={{
+              position: 'absolute',
+              top: -2,
+              right: -2,
+              minWidth: 18,
+              height: 18,
+              borderRadius: 9,
+              backgroundColor: colors.accent || '#E11D48',
+              justifyContent: 'center',
+              alignItems: 'center',
+              paddingHorizontal: 4,
+            }}
+          >
+            <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>{count > 99 ? '99+' : count}</Text>
+          </View>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -75,6 +119,7 @@ export default function TabsLayout() {
         headerStyle: { backgroundColor: colors.headerBg },
         headerTintColor: colors.textPrimary,
         headerLeft: () => <HeaderBackButton />,
+        headerRight: () => <HeaderNotificationsButton />,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: {
@@ -85,6 +130,7 @@ export default function TabsLayout() {
         },
       }}
     >
+      {/* Ordem do footer: Início | Explorar | Anunciar | Favoritos | Perfil. Conversas fora do footer (acesso pelo card na Home). */}
       <Tabs.Screen
         name="index"
         options={{
@@ -97,24 +143,13 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="feed"
         options={{
-          href: isGuest ? '/(tabs)/feed' : null,
-          title: isGuest ? 'Explorar' : 'Feed',
+          href: isGuest ? '/(tabs)/feed' : undefined,
+          title: 'Explorar',
           headerShown: true,
           headerTitle: () => <HeaderLogo />,
           headerTitleAlign: 'center',
           headerLeft: isGuest ? undefined : () => <HeaderBackButton />,
           tabBarIcon: ({ color, size }) => <Ionicons name="paw" size={size} color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="favorites"
-        options={{
-          href: isGuest ? '/(tabs)/favorites' : undefined,
-          title: 'Favoritos',
-          headerTitle: () => <HeaderLogo />,
-          headerTitleAlign: 'center',
-          headerLeft: () => <HeaderBackButton />,
-          tabBarIcon: ({ color, size }) => <Ionicons name="heart" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
@@ -129,18 +164,27 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="favorites"
+        options={{
+          href: isGuest ? '/(tabs)/favorites' : undefined,
+          title: 'Favoritos',
+          headerTitle: () => <HeaderLogo />,
+          headerTitleAlign: 'center',
+          headerLeft: () => <HeaderBackButton />,
+          tabBarIcon: ({ color, size }) => <Ionicons name="heart" size={size} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="chats"
         options={{
-          href: isGuest ? '/(tabs)/chats' : undefined,
+          href: null,
           title: 'Conversas',
           headerTitle: () => <HeaderLogo />,
           headerTitleAlign: 'center',
           headerLeft: () => <HeaderBackButton />,
           tabBarIcon: ({ color, size }) => <Ionicons name="chatbubbles" size={size} color={color} />,
-          tabBarBadge: !isGuest && unreadTotal > 0 ? (unreadTotal > 99 ? '99+' : unreadTotal) : undefined,
         }}
       />
-      {/* Visitante: tab "Entrar" abre entrar.tsx que redireciona para welcome. Logado: tab "Perfil". */}
       <Tabs.Screen
         name="entrar"
         options={{

@@ -10,17 +10,17 @@ export const DRAGGABLE_CARD_IDS = [
   'adopted',
   'favorites',
   'map',
-  'notifications', // ou 'admin' para admin
+  'chats', // ou 'admin' para admin
   'passed',
 ] as const;
 
 export type DraggableCardId = (typeof DRAGGABLE_CARD_IDS)[number];
 
-/** Ordem padrão dos cards por perfil. Admin usa 'admin' no lugar de 'notifications'. */
+/** Ordem padrão dos cards por perfil. Admin usa 'admin' no lugar de 'chats'. */
 export function getDefaultOrder(profileKey: ProfileKey): string[] {
   const ids = [...DRAGGABLE_CARD_IDS];
   if (profileKey === 'admin') {
-    return ids.map((id) => (id === 'notifications' ? 'admin' : id));
+    return ids.map((id) => (id === 'chats' ? 'admin' : id));
   }
   return ids as unknown as string[];
 }
@@ -39,7 +39,8 @@ export async function getCardsOrder(profileKey: ProfileKey): Promise<string[]> {
     const available = new Set(defaultOrder);
     const merged: string[] = [];
     for (const id of saved) {
-      if (available.has(id)) merged.push(id);
+      if (id === 'notifications') merged.push('chats');
+      else if (available.has(id)) merged.push(id);
     }
     for (const id of defaultOrder) {
       if (!merged.includes(id)) merged.push(id);

@@ -3,6 +3,20 @@
  * Evita bug do Expo/Metro com paths do pnpm (.pnpm/...@expo+metro...) onde + vira espaço.
  */
 
+// Na web: ignorar timeout de carregamento de fonte (expo-font/FontFaceObserver) para não exibir tela de erro.
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener(
+    'unhandledrejection',
+    function (event) {
+      var msg = event.reason && event.reason.message;
+      if (typeof msg === 'string' && msg.indexOf('timeout exceeded') !== -1) {
+        event.preventDefault();
+      }
+    },
+    true
+  );
+}
+
 // Primeira coisa a rodar: stub de WebSocket para evitar "constructor is not callable" em createWebSocketConnection
 // (Expo Go e development build no Android/iOS).
 (function () {
