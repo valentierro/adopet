@@ -16,6 +16,8 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
   Platform,
+  TextInput,
+  Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
@@ -34,6 +36,9 @@ import { getFavorites } from '../../src/api/favorites';
 import { getConversations } from '../../src/api/conversations';
 import { getPassedPets } from '../../src/api/swipes';
 import { fetchFeed } from '../../src/api/feed';
+import { getPartners } from '../../src/api/partners';
+import type { Pet } from '@adopet/shared';
+import type { Partner } from '../../src/api/partners';
 import { spacing } from '../../src/theme';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { getSpeciesLabel } from '../../src/utils/petLabels';
@@ -181,6 +186,10 @@ function useDashboardData() {
       : Array.isArray(favoritesPage?.items)
         ? favoritesPage.items.length
         : 0;
+  const favoritePetIds = useMemo(
+    () => new Set((favoritesPage?.items ?? []).map((i) => i.petId)),
+    [favoritesPage?.items],
+  );
   const unreadTotal = conversations.reduce((s, c) => s + (c.unreadCount ?? 0), 0);
   const passedCount = passedData?.items?.length ?? 0;
   const feedPreviewItems = feedData?.items ?? [];
@@ -214,6 +223,7 @@ function useDashboardData() {
     myAdoptionsCount,
     pendingConfirmations,
     favoritesCount,
+    favoritePetIds,
     conversationsCount: conversations.length,
     unreadTotal,
     passedCount,
@@ -252,6 +262,7 @@ export default function DashboardScreen() {
     trendingFeedItems,
     pendingConfirmations,
     notificationsUnreadCount,
+    favoritePetIds,
     refetchAll,
     refreshing,
   } = useDashboardData();
@@ -274,6 +285,44 @@ export default function DashboardScreen() {
   const [reorderDraft, setReorderDraft] = useState<string[]>([]);
   const [cardsOrder, setCardsOrderState] = useState<string[]>([]);
   const [cardsOrderLoaded, setCardsOrderLoaded] = useState(false);
+  /** Busca global no header */
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [globalSearchPets, setGlobalSearchPets] = useState<Pet[]>([]);
+  const [globalSearchPartners, setGlobalSearchPartners] = useState<Partner[]>([]);
+  const [globalSearchLoading, setGlobalSearchLoading] = useState(false);
+  const [showGlobalSearchResults, setShowGlobalSearchResults] = useState(false);
+  const [globalSearchPetsExpanded, setGlobalSearchPetsExpanded] = useState(false);
+  const [globalSearchPartnersExpanded, setGlobalSearchPartnersExpanded] = useState(false);
+  const [globalSearchSettingsExpanded, setGlobalSearchSettingsExpanded] = useState(false);
+  const [favoriteTooltipPetId, setFavoriteTooltipPetId] = useState<string | null>(null);
+  const globalSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const favoriteTooltipTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Itens do menu Perfil para a seção Configurações na busca global (label usado no filtro). */
+  const GLOBAL_SEARCH_SETTINGS_ITEMS: { id: string; label: string; route: string; icon: keyof typeof Ionicons.glyphMap }[] = useMemo(
+    () => [
+      { id: 'profile-edit', label: 'Editar perfil', route: '/profile-edit', icon: 'person-outline' },
+      { id: 'change-password', label: 'Segurança (alterar senha)', route: '/change-password', icon: 'lock-closed-outline' },
+      { id: 'notifications', label: 'Notificações', route: '/notifications', icon: 'notifications-outline' },
+      { id: 'saved-searches', label: 'Buscas salvas', route: '/saved-searches', icon: 'search-outline' },
+      { id: 'kyc', label: 'Solicitar verificação (KYC)', route: '/kyc', icon: 'shield-checkmark-outline' },
+      { id: 'preferences', label: 'Preferências de notificações', route: '/notifications', icon: 'options-outline' },
+      { id: 'my-adoption-requests', label: 'Minhas solicitações de adoção', route: '/my-adoption-requests', icon: 'document-text-outline' },
+      { id: 'adoption-confirm', label: 'Confirmar adoção', route: '/adoption-confirm', icon: 'checkmark-done-outline' },
+      { id: 'partner-portal', label: 'Portal do parceiro', route: '/partner-portal', icon: 'business-outline' },
+      { id: 'partners', label: 'Parceiros Adopet', route: '/partners', icon: 'people-outline' },
+      { id: 'bug-report', label: 'Bug report / Sugestões', route: '/bug-report-suggestion', icon: 'bug-outline' },
+      { id: 'survey', label: 'Avaliar o app', route: '/survey', icon: 'stats-chart-outline' },
+      { id: 'terms', label: 'Termos de Uso', route: '/terms', icon: 'document-text-outline' },
+      { id: 'privacy', label: 'Política de Privacidade', route: '/privacy', icon: 'shield-checkmark-outline' },
+      { id: 'export-data', label: 'Exportar meus dados (LGPD)', route: '/(tabs)/profile', icon: 'download-outline' },
+    ],
+    [],
+  );
+  const globalSearchSettingsFiltered = useMemo(() => {
+    const q = globalSearchQuery.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return GLOBAL_SEARCH_SETTINGS_ITEMS.filter((item) => item.label.toLowerCase().includes(q));
+  }, [globalSearchQuery, GLOBAL_SEARCH_SETTINGS_ITEMS]);
   /** Tamanho dos cards do carrossel "Descobrir pets" */
   const FEED_CAROUSEL_WIDTH = 110;
   const FEED_CAROUSEL_HEIGHT = 95;
@@ -517,6 +566,62 @@ export default function DashboardScreen() {
     if (showReorderModal) setReorderDraft(cardsOrder);
   }, [showReorderModal, cardsOrder]);
 
+  /** Busca global: debounce 300ms, mínimo 2 caracteres */
+  useEffect(() => {
+    const query = globalSearchQuery.trim();
+    if (globalSearchDebounceRef.current) {
+      clearTimeout(globalSearchDebounceRef.current);
+      globalSearchDebounceRef.current = null;
+    }
+    if (query.length < 2) {
+      setGlobalSearchPets([]);
+      setGlobalSearchPartners([]);
+      setShowGlobalSearchResults(false);
+      return;
+    }
+    globalSearchDebounceRef.current = setTimeout(() => {
+      globalSearchDebounceRef.current = null;
+      setGlobalSearchLoading(true);
+      setShowGlobalSearchResults(true);
+      Promise.all([
+        fetchFeed({ q: query, limit: 12 }),
+        getPartners(undefined, query),
+      ])
+        .then(([feedRes, partnersList]) => {
+          setGlobalSearchPets(feedRes.items ?? []);
+          setGlobalSearchPartners(partnersList ?? []);
+        })
+        .catch(() => {
+          setGlobalSearchPets([]);
+          setGlobalSearchPartners([]);
+        })
+        .finally(() => setGlobalSearchLoading(false));
+    }, 300);
+    return () => {
+      if (globalSearchDebounceRef.current) clearTimeout(globalSearchDebounceRef.current);
+    };
+  }, [globalSearchQuery]);
+
+  /** Recolher seções ao mudar o termo de busca */
+  useEffect(() => {
+    setGlobalSearchPetsExpanded(false);
+    setGlobalSearchPartnersExpanded(false);
+    setGlobalSearchSettingsExpanded(false);
+  }, [globalSearchQuery]);
+
+  /** Tooltip do badge de favorito: some após 2,5 s */
+  useEffect(() => {
+    if (!favoriteTooltipPetId) return;
+    if (favoriteTooltipTimeoutRef.current) clearTimeout(favoriteTooltipTimeoutRef.current);
+    favoriteTooltipTimeoutRef.current = setTimeout(() => {
+      favoriteTooltipTimeoutRef.current = null;
+      setFavoriteTooltipPetId(null);
+    }, 2500);
+    return () => {
+      if (favoriteTooltipTimeoutRef.current) clearTimeout(favoriteTooltipTimeoutRef.current);
+    };
+  }, [favoriteTooltipPetId]);
+
   const handleReorderSave = useCallback(async () => {
     await setCardsOrder(profileKey, reorderDraft);
     setCardsOrderState(reorderDraft);
@@ -554,6 +659,309 @@ export default function DashboardScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      {/* Header com busca global e notificações (apenas logado) */}
+      {user && (
+        <View
+          style={[
+            styles.homeHeader,
+            {
+              paddingTop: insets.top + spacing.sm,
+              paddingBottom: spacing.sm,
+              paddingHorizontal: spacing.lg,
+              backgroundColor: colors.headerBg,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.textSecondary + '20',
+            },
+          ]}
+        >
+          <View style={[styles.homeHeaderSearchWrap, { backgroundColor: colors.surface }]}>
+            <Ionicons name="search-outline" size={20} color={colors.textSecondary} style={styles.homeHeaderSearchIcon} />
+            <TextInput
+              style={[styles.homeHeaderSearchInput, { color: colors.textPrimary, paddingRight: globalSearchQuery.length > 0 ? 36 : 4 }]}
+              placeholder="Buscar pets, parceiros, configurações..."
+              placeholderTextColor={colors.textSecondary}
+              value={globalSearchQuery}
+              onChangeText={setGlobalSearchQuery}
+              onFocus={() => {
+                if (globalSearchQuery.trim().length >= 2) setShowGlobalSearchResults(true);
+              }}
+              returnKeyType="search"
+              autoCorrect={false}
+              autoCapitalize="none"
+              accessibilityLabel="Busca global"
+              accessibilityHint="Digite para buscar pets e parceiros"
+            />
+            {globalSearchQuery.length > 0 ? (
+              <TouchableOpacity
+                onPress={() => setGlobalSearchQuery('')}
+                style={styles.homeHeaderSearchClear}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityLabel="Limpar busca"
+              >
+                <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ) : globalSearchLoading ? (
+              <Ionicons name="sync" size={18} color={colors.textSecondary} style={styles.homeHeaderSearchLoading} />
+            ) : null}
+          </View>
+          <TouchableOpacity
+            onPress={() => router.push('/notifications')}
+            style={styles.homeHeaderBellWrap}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityLabel={notificationsUnreadCount > 0 ? `${notificationsUnreadCount} notificações não lidas` : 'Notificações'}
+          >
+            <View>
+              <Ionicons name="notifications-outline" size={24} color={colors.textPrimary} />
+              {notificationsUnreadCount > 0 && (
+                <View
+                  style={[
+                    styles.homeHeaderBellBadge,
+                    { backgroundColor: colors.accent || '#E11D48' },
+                  ]}
+                >
+                  <Text style={styles.homeHeaderBellBadgeText}>
+                    {notificationsUnreadCount > 99 ? '99+' : notificationsUnreadCount}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
+      {/* Overlay de resultados da busca global — começa abaixo do header; área ocupa quase a tela inteira */}
+      {user && showGlobalSearchResults && globalSearchQuery.trim().length >= 2 && (() => {
+        const headerHeight = insets.top + 40 + spacing.sm * 2;
+        const tabBarReserve = 100;
+        const resultsAreaHeight = Math.max(280, windowHeight - headerHeight - tabBarReserve);
+        /** Recolhido: nenhum item. Expandido: todos os itens (rolagem na lista). */
+        const petsToShow = globalSearchPetsExpanded ? globalSearchPets : [];
+        const partnersToShow = globalSearchPartnersExpanded ? globalSearchPartners : [];
+        const settingsToShow = globalSearchSettingsExpanded ? globalSearchSettingsFiltered : [];
+        const hasAnyResults = globalSearchPets.length > 0 || globalSearchPartners.length > 0 || globalSearchSettingsFiltered.length > 0;
+        return (
+          <>
+            <Pressable
+              style={[styles.globalSearchBackdrop, { top: headerHeight }]}
+              onPress={() => {
+                Keyboard.dismiss();
+                setShowGlobalSearchResults(false);
+              }}
+            />
+            <View
+              style={[
+                styles.globalSearchOverlay,
+                {
+                  backgroundColor: colors.background,
+                  top: headerHeight,
+                  paddingHorizontal: spacing.lg,
+                  paddingTop: spacing.md,
+                },
+              ]}
+              pointerEvents="box-none"
+            >
+              <ScrollView
+                style={[styles.globalSearchResultsScroll, { maxHeight: resultsAreaHeight }]}
+                contentContainerStyle={styles.globalSearchResultsContent}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
+                showsVerticalScrollIndicator={true}
+              >
+                {globalSearchLoading ? (
+                  <View style={[styles.globalSearchStateWrap, { backgroundColor: colors.surface }]}>
+                    <Ionicons name="sync" size={28} color={colors.primary} style={styles.globalSearchStateIcon} />
+                    <Text style={[styles.globalSearchStateText, { color: colors.textPrimary }]}>Buscando...</Text>
+                    <Text style={[styles.globalSearchStateSub, { color: colors.textSecondary }]}>Pets e parceiros</Text>
+                  </View>
+                ) : !hasAnyResults ? (
+                  <View style={[styles.globalSearchStateWrap, { backgroundColor: colors.surface }]}>
+                    <Ionicons name="search-outline" size={40} color={colors.textSecondary} style={styles.globalSearchStateIcon} />
+                    <Text style={[styles.globalSearchStateText, { color: colors.textPrimary }]}>Nenhum resultado</Text>
+                    <Text style={[styles.globalSearchStateSub, { color: colors.textSecondary }]}>Tente outro termo</Text>
+                  </View>
+                ) : null}
+                {!globalSearchLoading && globalSearchPets.length > 0 && (
+                  <View style={[styles.globalSearchSectionCard, { backgroundColor: colors.surface, borderColor: colors.textSecondary + '25' }]}>
+                    <TouchableOpacity
+                      style={styles.globalSearchSectionHeader}
+                      onPress={() => setGlobalSearchPetsExpanded((v) => !v)}
+                      activeOpacity={0.8}
+                      accessibilityLabel={globalSearchPetsExpanded ? 'Recolher seção Pets' : 'Expandir seção Pets'}
+                      accessibilityState={{ expanded: globalSearchPetsExpanded }}
+                    >
+                      <View style={[styles.globalSearchSectionIconWrap, { backgroundColor: colors.primary + '20' }]}>
+                        <Ionicons name="paw" size={18} color={colors.primary} />
+                      </View>
+                      <Text style={[styles.globalSearchSectionTitle, { color: colors.textPrimary }]}>Pets</Text>
+                      <Text style={[styles.globalSearchSectionCount, { color: colors.textSecondary }]}>{globalSearchPets.length}</Text>
+                      {globalSearchPets.length > 0 && (
+                        <Ionicons
+                          name={globalSearchPetsExpanded ? 'chevron-up' : 'chevron-down'}
+                          size={22}
+                          color={colors.textSecondary}
+                          style={styles.globalSearchSectionChevron}
+                        />
+                      )}
+                    </TouchableOpacity>
+                    {petsToShow.map((pet) => (
+                      <TouchableOpacity
+                        key={pet.id}
+                        style={[styles.globalSearchRow, { borderTopWidth: 1, borderTopColor: colors.textSecondary + '15' }]}
+                        onPress={() => {
+                          setGlobalSearchQuery('');
+                          setShowGlobalSearchResults(false);
+                          Keyboard.dismiss();
+                          router.push(`/(tabs)/pet/${pet.id}`);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        {pet.photos?.[0] ? (
+                          <Image source={{ uri: pet.photos[0] }} style={styles.globalSearchRowImage} />
+                        ) : (
+                          <View style={[styles.globalSearchRowImage, styles.globalSearchRowImagePlaceholder, { backgroundColor: colors.background }]}>
+                            <Ionicons name="paw" size={22} color={colors.textSecondary} />
+                          </View>
+                        )}
+                        <View style={styles.globalSearchRowText}>
+                          <Text style={[styles.globalSearchRowTitle, { color: colors.textPrimary }]} numberOfLines={1}>{pet.name}</Text>
+                          <Text style={[styles.globalSearchRowSub, { color: colors.textSecondary }]} numberOfLines={1}>
+                            {getSpeciesLabel(pet.species)}
+                            {typeof pet.age === 'number' ? ` · ${pet.age} ${pet.age === 1 ? 'ano' : 'anos'}` : ''}
+                            {pet.city ? ` · ${pet.city}` : ''}
+                          </Text>
+                        </View>
+                        {favoritePetIds.has(pet.id) && (
+                          <View style={styles.globalSearchRowFavoriteBadgeWrap}>
+                            {favoriteTooltipPetId === pet.id && (
+                              <View
+                                style={[
+                                  styles.globalSearchRowFavoriteTooltip,
+                                  { backgroundColor: colors.surface, borderColor: colors.textSecondary + '30' },
+                                ]}
+                              >
+                                <Text style={[styles.globalSearchRowFavoriteTooltipText, { color: colors.textPrimary }]}>
+                                  Este pet está na sua lista de favoritos
+                                </Text>
+                              </View>
+                            )}
+                            <Pressable
+                              style={[styles.globalSearchRowFavoriteBadge, { backgroundColor: colors.accent + '20' }]}
+                              onLongPress={() => setFavoriteTooltipPetId(pet.id)}
+                              accessibilityLabel="Nos favoritos"
+                              accessibilityHint="Toque e segure para ver a dica"
+                            >
+                              <Ionicons name="heart" size={16} color={colors.accent || '#E11D48'} />
+                            </Pressable>
+                          </View>
+                        )}
+                        <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                {!globalSearchLoading && globalSearchPartners.length > 0 && (
+                  <View style={[styles.globalSearchSectionCard, { backgroundColor: colors.surface, borderColor: colors.textSecondary + '25' }]}>
+                    <TouchableOpacity
+                      style={styles.globalSearchSectionHeader}
+                      onPress={() => setGlobalSearchPartnersExpanded((v) => !v)}
+                      activeOpacity={0.8}
+                      accessibilityLabel={globalSearchPartnersExpanded ? 'Recolher seção Parceiros' : 'Expandir seção Parceiros'}
+                      accessibilityState={{ expanded: globalSearchPartnersExpanded }}
+                    >
+                      <View style={[styles.globalSearchSectionIconWrap, { backgroundColor: colors.primary + '20' }]}>
+                        <Ionicons name="business" size={18} color={colors.primary} />
+                      </View>
+                      <Text style={[styles.globalSearchSectionTitle, { color: colors.textPrimary }]}>Parceiros</Text>
+                      <Text style={[styles.globalSearchSectionCount, { color: colors.textSecondary }]}>{globalSearchPartners.length}</Text>
+                      {globalSearchPartners.length > 0 && (
+                        <Ionicons
+                          name={globalSearchPartnersExpanded ? 'chevron-up' : 'chevron-down'}
+                          size={22}
+                          color={colors.textSecondary}
+                          style={styles.globalSearchSectionChevron}
+                        />
+                      )}
+                    </TouchableOpacity>
+                    {partnersToShow.map((partner) => (
+                      <TouchableOpacity
+                        key={partner.id}
+                        style={[styles.globalSearchRow, { borderTopWidth: 1, borderTopColor: colors.textSecondary + '15' }]}
+                        onPress={() => {
+                          setGlobalSearchQuery('');
+                          setShowGlobalSearchResults(false);
+                          Keyboard.dismiss();
+                          router.push(`/(tabs)/partners/${partner.id}`);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        {partner.logoUrl ? (
+                          <Image source={{ uri: partner.logoUrl }} style={styles.globalSearchRowImage} />
+                        ) : (
+                          <View style={[styles.globalSearchRowImage, styles.globalSearchRowImagePlaceholder, { backgroundColor: colors.background }]}>
+                            <Ionicons name="business" size={22} color={colors.textSecondary} />
+                          </View>
+                        )}
+                        <View style={styles.globalSearchRowText}>
+                          <Text style={[styles.globalSearchRowTitle, { color: colors.textPrimary }]} numberOfLines={1}>{partner.name}</Text>
+                          <Text style={[styles.globalSearchRowSub, { color: colors.textSecondary }]} numberOfLines={1}>
+                            {partner.city ?? partner.type ?? 'Parceiro'}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                {!globalSearchLoading && globalSearchSettingsFiltered.length > 0 && (
+                  <View style={[styles.globalSearchSectionCard, { backgroundColor: colors.surface, borderColor: colors.textSecondary + '25' }]}>
+                    <TouchableOpacity
+                      style={styles.globalSearchSectionHeader}
+                      onPress={() => setGlobalSearchSettingsExpanded((v) => !v)}
+                      activeOpacity={0.8}
+                      accessibilityLabel={globalSearchSettingsExpanded ? 'Recolher seção Configurações' : 'Expandir seção Configurações'}
+                      accessibilityState={{ expanded: globalSearchSettingsExpanded }}
+                    >
+                      <View style={[styles.globalSearchSectionIconWrap, { backgroundColor: colors.primary + '20' }]}>
+                        <Ionicons name="settings-outline" size={18} color={colors.primary} />
+                      </View>
+                      <Text style={[styles.globalSearchSectionTitle, { color: colors.textPrimary }]}>Configurações</Text>
+                      <Text style={[styles.globalSearchSectionCount, { color: colors.textSecondary }]}>{globalSearchSettingsFiltered.length}</Text>
+                      {globalSearchSettingsFiltered.length > 0 && (
+                        <Ionicons
+                          name={globalSearchSettingsExpanded ? 'chevron-up' : 'chevron-down'}
+                          size={22}
+                          color={colors.textSecondary}
+                          style={styles.globalSearchSectionChevron}
+                        />
+                      )}
+                    </TouchableOpacity>
+                    {settingsToShow.map((item) => (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[styles.globalSearchRow, { borderTopWidth: 1, borderTopColor: colors.textSecondary + '15' }]}
+                        onPress={() => {
+                          setGlobalSearchQuery('');
+                          setShowGlobalSearchResults(false);
+                          Keyboard.dismiss();
+                          router.push(item.route as any);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[styles.globalSearchRowImage, styles.globalSearchRowImagePlaceholder, { backgroundColor: colors.primary + '18' }]}>
+                          <Ionicons name={item.icon} size={22} color={colors.primary} />
+                        </View>
+                        <View style={styles.globalSearchRowText}>
+                          <Text style={[styles.globalSearchRowTitle, { color: colors.textPrimary }]} numberOfLines={1}>{item.label}</Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </ScrollView>
+            </View>
+          </>
+        );
+      })()}
       <ScrollView
         ref={mainScrollRef}
         onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -563,7 +971,7 @@ export default function DashboardScreen() {
         contentContainerStyle={[
           styles.scrollContent,
           {
-            paddingTop: insets.top + spacing.md,
+            paddingTop: user ? spacing.md : insets.top + spacing.md,
             paddingBottom: insets.bottom + spacing.xl,
             paddingHorizontal: spacing.lg,
           },
@@ -1297,6 +1705,122 @@ export default function DashboardScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  homeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  homeHeaderSearchWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 40,
+    borderRadius: 12,
+    paddingHorizontal: spacing.md,
+  },
+  homeHeaderSearchIcon: { marginRight: spacing.sm },
+  homeHeaderSearchInput: { flex: 1, fontSize: 15, paddingVertical: 8, paddingRight: 4 },
+  homeHeaderSearchClear: { position: 'absolute', right: 8, top: 0, bottom: 0, justifyContent: 'center' },
+  homeHeaderSearchLoading: { marginLeft: spacing.xs },
+  homeHeaderBellWrap: { padding: 8 },
+  homeHeaderBellBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  homeHeaderBellBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  globalSearchBackdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    zIndex: 999,
+  },
+  globalSearchOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+  },
+  globalSearchResultsScroll: {},
+  globalSearchResultsContent: { paddingBottom: spacing.xl },
+  globalSearchStateWrap: {
+    borderRadius: 16,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  globalSearchStateIcon: { marginBottom: spacing.sm },
+  globalSearchStateText: { fontSize: 17, fontWeight: '600' },
+  globalSearchStateSub: { fontSize: 14, marginTop: 4 },
+  globalSearchSectionCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginBottom: spacing.lg,
+  },
+  globalSearchSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  globalSearchSectionIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  globalSearchSectionTitle: { fontSize: 15, fontWeight: '700', flex: 1 },
+  globalSearchSectionCount: { fontSize: 13 },
+  globalSearchSectionChevron: { marginLeft: spacing.xs },
+  globalSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  globalSearchRowImage: { width: 48, height: 48, borderRadius: 12 },
+  globalSearchRowImagePlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  globalSearchRowText: { flex: 1, marginLeft: spacing.md, minWidth: 0 },
+  globalSearchRowFavoriteBadgeWrap: { position: 'relative', marginRight: spacing.xs },
+  globalSearchRowFavoriteBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  globalSearchRowFavoriteTooltip: {
+    position: 'absolute',
+    bottom: 36,
+    right: 0,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    shadowOpacity: 0.15,
+    elevation: 4,
+    width: 220,
+    zIndex: 10,
+  },
+  globalSearchRowFavoriteTooltipText: { fontSize: 12, textAlign: 'center', lineHeight: 16 },
+  globalSearchRowTitle: { fontSize: 16, fontWeight: '600' },
+  globalSearchRowSub: { fontSize: 13, marginTop: 2 },
   scrollContent: { flexGrow: 1, paddingBottom: spacing.xl },
   confirmBanner: {
     flexDirection: 'row',

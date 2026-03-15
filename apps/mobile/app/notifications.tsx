@@ -491,7 +491,7 @@ export default function NotificationsScreen() {
               <View style={[styles.prefsRow, { backgroundColor: colors.background }]}>
                 <View style={styles.prefsRowContent}>
                   <Ionicons name="paw-outline" size={20} color={colors.primary} style={styles.prefsRowIcon} />
-                  <View>
+                  <View style={styles.prefsRowTextWrap}>
                     <Text style={[styles.prefsRowLabel, { color: colors.textPrimary }]}>Novos pets na sua região</Text>
                     <Text style={[styles.prefsRowDesc, { color: colors.textSecondary }]}>
                       Avisos quando surgirem pets novos (espécie e raio em Editar perfil e na aba Mapa)
@@ -508,7 +508,7 @@ export default function NotificationsScreen() {
               <View style={[styles.prefsRow, { backgroundColor: colors.background }]}>
                 <View style={styles.prefsRowContent}>
                   <Ionicons name="chatbubbles-outline" size={20} color={colors.primary} style={styles.prefsRowIcon} />
-                  <View>
+                  <View style={styles.prefsRowTextWrap}>
                     <Text style={[styles.prefsRowLabel, { color: colors.textPrimary }]}>Mensagens e conversas</Text>
                     <Text style={[styles.prefsRowDesc, { color: colors.textSecondary }]}>
                       Quando alguém enviar mensagem ou iniciar conversa sobre um pet
@@ -525,7 +525,7 @@ export default function NotificationsScreen() {
               <View style={[styles.prefsRow, { backgroundColor: colors.background }]}>
                 <View style={styles.prefsRowContent}>
                   <Ionicons name="time-outline" size={20} color={colors.primary} style={styles.prefsRowIcon} />
-                  <View>
+                  <View style={styles.prefsRowTextWrap}>
                     <Text style={[styles.prefsRowLabel, { color: colors.textPrimary }]}>Lembretes de conversas</Text>
                     <Text style={[styles.prefsRowDesc, { color: colors.textSecondary }]}>
                       Lembrete quando você não responde há um tempo
@@ -542,7 +542,7 @@ export default function NotificationsScreen() {
               <View style={[styles.prefsRow, { backgroundColor: colors.background }]}>
                 <View style={styles.prefsRowContent}>
                   <Ionicons name="document-text-outline" size={20} color={colors.primary} style={styles.prefsRowIcon} />
-                  <View>
+                  <View style={styles.prefsRowTextWrap}>
                     <Text style={[styles.prefsRowLabel, { color: colors.textPrimary }]}>Lembretes para atualizar anúncios</Text>
                     <Text style={[styles.prefsRowDesc, { color: colors.textSecondary }]}>
                       Mensagem periódica (~30 dias) para conferir se seus anúncios estão em dia
@@ -840,7 +840,7 @@ const styles = StyleSheet.create({
   },
   prefsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
@@ -851,7 +851,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     flex: 1,
+    minWidth: 0,
     marginRight: spacing.sm,
+  },
+  prefsRowTextWrap: {
+    flex: 1,
+    minWidth: 0,
   },
   prefsRowIcon: {
     marginRight: spacing.sm,

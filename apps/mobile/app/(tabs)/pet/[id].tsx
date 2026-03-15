@@ -19,6 +19,7 @@ import {
   TextInput,
   Animated,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { ScreenContainer, PrimaryButton, SecondaryButton, StatusBadge, LoadingLogo, VerifiedBadge, TutorLevelBadge, MatchScoreBadge, Toast } from '../../../src/components';
@@ -43,6 +44,7 @@ import { trackEvent } from '../../../src/analytics';
 import { spacing } from '../../../src/theme';
 import { configureExpandAnimation } from '../../../src/utils/layoutAnimation';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 
 const REPORT_REASONS: { label: string; value: string }[] = [
   { label: 'Conteúdo inadequado', value: 'INAPPROPRIATE' },
@@ -590,6 +592,7 @@ export default function PetDetailsScreen() {
 
   return (
     <>
+    <View style={{ flex: 1 }}>
     <ScreenContainer scroll>
       <PetPhotoGallery photos={photos} onPhotoPress={setFullScreenPhoto} verified={pet.verified} />
       <Modal
@@ -605,7 +608,32 @@ export default function PetDetailsScreen() {
         </Pressable>
       </Modal>
 
-      <Text style={[styles.name, { color: colors.textPrimary }]}>{pet.name}</Text>
+      <View style={styles.nameRow}>
+        <Text style={[styles.name, { color: colors.textPrimary }]}>{pet.name}</Text>
+        {userId && (
+          <TouchableOpacity
+            onPress={() => {
+              if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              if (isFavorited) {
+                removeFavMutation.mutate();
+              } else {
+                addFavMutation.mutate();
+              }
+            }}
+            disabled={addFavMutation.isPending || removeFavMutation.isPending}
+            style={styles.nameFavoriteBtn}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityLabel={isFavorited ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+            accessibilityRole="button"
+          >
+            <Ionicons
+              name={isFavorited ? 'heart' : 'heart-outline'}
+              size={28}
+              color={isFavorited ? (colors.accent || '#E11D48') : colors.textSecondary}
+            />
+          </TouchableOpacity>
+        )}
+      </View>
       <Text style={[styles.meta, { color: colors.textSecondary }]}>
         {getSpeciesLabel(pet.species)}
         {pet.breed ? ` • ${pet.breed}` : ''} • {pet.age} ano(s) • {getSizeLabel(pet.size) || '—'} •{' '}
@@ -1474,8 +1502,9 @@ export default function PetDetailsScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-      <Toast message={toastMessage} onHide={() => setToastMessage(null)} />
     </ScreenContainer>
+      <Toast message={toastMessage} onHide={() => setToastMessage(null)} variant="success" duration={2500} />
+    </View>
     {matchScoreModalContent}
     </>
   );
@@ -1526,10 +1555,19 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
   name: {
     fontSize: 24,
     fontWeight: '700',
-    marginBottom: spacing.xs,
+    flex: 1,
+  },
+  nameFavoriteBtn: {
+    marginLeft: spacing.sm,
+    padding: 4,
   },
   meta: {
     fontSize: 14,

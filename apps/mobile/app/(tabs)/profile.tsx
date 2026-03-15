@@ -1125,6 +1125,7 @@ const styles = StyleSheet.create({
   completeBannerTitle: { fontSize: 16, fontWeight: '700' },
   completeBannerSub: { fontSize: 13, marginTop: 2 },
   profileHeaderBlock: {
+    marginTop: spacing.md,
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.lg,
