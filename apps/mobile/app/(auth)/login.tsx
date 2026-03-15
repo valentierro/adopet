@@ -19,7 +19,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { PrimaryButton } from '../../src/components';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuthStore } from '../../src/stores/authStore';
-import { getApiUrlConfigIssue } from '../../src/api/client';
+import { getApiUrlConfigIssue, getApiBaseUrl } from '../../src/api/client';
 import { getFriendlyErrorMessage } from '../../src/utils/errorMessage';
 import { spacing } from '../../src/theme';
 
@@ -146,6 +146,9 @@ export default function LoginScreen() {
         </View>
         <Text style={[styles.versionText, { color: colors.textSecondary }]}>
           Versão {APP_VERSION}
+        </Text>
+        <Text style={[styles.versionText, { color: colors.textSecondary }]} numberOfLines={1}>
+          API: {getApiBaseUrl()}
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>

@@ -28,7 +28,8 @@ import { spacing } from '../../src/theme';
 
 type FeedItem = FeedResponse['items'][number];
 
-const FEED_QUERY_KEY = ['feed'];
+/** Inclui a URL da API para não reutilizar cache de outro backend (ex.: build prod vs play-internal). */
+const FEED_QUERY_KEY = ['feed', process.env.EXPO_PUBLIC_API_URL ?? ''];
 /** Limite da primeira página do feed para visitante (garante 10+ por seção). Deve estar na queryKey para refetch usar o mesmo. */
 const GUEST_FEED_LIMIT = 150;
 const GRID_GAP = spacing.sm;
@@ -228,7 +229,7 @@ export default function FeedScreen() {
     return v !== '';
   });
 
-  const guestSlidesOrange = colors.warning ?? '#d97706';
+  const guestSlidesOrange = '#d97706';
 
   const insets = useSafeAreaInsets();
   const { width: screenWidth } = useWindowDimensions();
@@ -1706,8 +1707,8 @@ export default function FeedScreen() {
                             accessibilityLabel={partner.isPaidPartner ? 'Patrocinado' : 'Parceiro'}
                             accessibilityRole="image"
                           >
-                            {partner.logoUrl ? (
-                              <ExpoImage source={{ uri: partner.logoUrl }} style={styles.gridPartnerLogo} contentFit="contain" />
+                            {(partner as { logoUrl?: string }).logoUrl ? (
+                              <ExpoImage source={{ uri: (partner as { logoUrl?: string }).logoUrl! }} style={styles.gridPartnerLogo} contentFit="contain" />
                             ) : (
                               <Ionicons name={partner.isPaidPartner ? 'star' : 'heart'} size={12} color="#fff" />
                             )}
@@ -1757,7 +1758,7 @@ export default function FeedScreen() {
                     </View>
                   </TouchableOpacity>
                   {!isGuest && (
-                    <View style={[styles.gridCardActions, { backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border ?? colors.textSecondary + '20' }]}>
+                    <View style={[styles.gridCardActions, { backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.textSecondary + '20' }]}>
                       <TouchableOpacity
                         style={[styles.gridCardActionBtn, { backgroundColor: colors.surface }]}
                         onPress={onPass}

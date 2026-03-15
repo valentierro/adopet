@@ -8,7 +8,7 @@ import { PrimaryButton } from './PrimaryButton';
 
 export type TourStep = {
   key: string;
-  targetRef: React.RefObject<View>;
+  targetRef: React.RefObject<View | null>;
   title: string;
   message: string;
   /** Posição do tooltip em relação ao alvo */

@@ -9,6 +9,11 @@ const rawBase =
     : rawBaseFromEnv;
 const BASE_URL = rawBase.endsWith('/v1') ? rawBase : rawBase.replace(/\/?$/, '') + '/v1';
 
+/** URL base da API (sem /v1), para exibir em diagnóstico (ex.: tela de login). */
+export function getApiBaseUrl(): string {
+  return rawBaseFromEnv;
+}
+
 /** Em build de produção, localhost não funciona no celular. */
 export function getApiUrlConfigIssue(): string | null {
   if (typeof __DEV__ !== 'undefined' && __DEV__) return null;
